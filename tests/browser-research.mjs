@@ -1,0 +1,35 @@
+import {chromium} from 'playwright';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+import {createWorkbench,root} from '../src/server.mjs';
+import {normalizeProduct,hash} from '../src/reference-library.mjs';
+import {createClickPacer} from '../tools/interaction.mjs';
+const directory=fs.mkdtempSync(path.join(os.tmpdir(),'ec-reference-ui-')),output=path.join(root,'tests/results');
+fs.mkdirSync(output,{recursive:true});
+const app=createWorkbench({dataDirectory:directory,configuration:{},researchOptions:{client:{configured:false}}});
+const bytes=fs.readFileSync(path.join(root,'public/mode-samples/fast_case2.jpg')),url=app.saveImage(bytes);
+const p=normalizeProduct({url:'https://www.amazon.com/dp/B000000001',title:'界面测试参考资料',brand:'测试品牌',images:['https://m.media-amazon.com/fixture.jpg']});
+Object.assign(p.assets[0],{status:'downloaded',localUrl:url,sha256:hash(bytes),mime:'image/jpeg'});
+p.analysis={status:'completed',analyzedAt:'2026-11-01',tags:['充电宝'],images:[{id:p.assets[0].id,role:'main',purpose:'测试主图',layout:'中间展示主体，四周留白',camera:'正面',lighting:'柔光',palette:'白色',textDensity:'低',transferableGuidance:'保留主体轮廓'}]};app.research.library.upsert(p);
+app.research.library.state.imageAnalyses={[hash(bytes)]:p.analysis.images[0]};app.research.library.save();
+await new Promise(resolve=>app.server.listen(0,'127.0.0.1',resolve));const base='http://127.0.0.1:'+app.server.address().port;
+const browser=await chromium.launch({channel:'msedge',headless:true}),context=await browser.newContext({viewport:{width:1440,height:1000}});
+await context.addInitScript(()=>localStorage.setItem('aplus_newbie_tour_v1','true'));
+const page=await context.newPage(),errors=[],requests=[],pacer=createClickPacer();
+page.on('pageerror',e=>errors.push(e.message));page.on('request',r=>{if(/^https?:/.test(r.url())&&!r.url().startsWith(base))requests.push(r.url());});
+const click=selector=>pacer.perform(()=>page.locator(selector).click(),{target:selector});
+try {
+  await page.goto(base);await page.locator('#localReferenceButton').waitFor();await page.waitForFunction(()=>typeof window.openReferenceLibrary==='function');
+  await click('#localReferenceButton');await page.locator('#referenceStats').filter({hasText:'1 张已分析'}).waitFor();
+  assert.equal(await page.locator('#referenceCollectButton').isDisabled(),true);assert.equal(await page.locator('#referenceAnalyze').isDisabled(),true);
+  await click('[data-reference]');await click('#referenceUse');assert.match(await page.locator('#referenceMessage').innerText(),/1 套参考/);
+  await click('[data-analysis]');await page.locator('#referenceAnalysis').filter({hasText:'中间展示主体'}).waitFor();
+  await page.screenshot({path:path.join(output,'reference-analysis.png')});await click('[data-close-analysis]');
+  await click('#referenceClose');await click('#localReferenceButton');assert.equal(await page.locator('[data-reference]').isChecked(),true);
+  await page.screenshot({path:path.join(output,'reference-library.png')});
+  assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
+  const report={passed:true,scope:'isolated-fixture-reference-library-ui',checks:['统计与配置状态','参考选择保存和重新打开','逐图分析可查','无外部服务调用'],errors,externalRequests:requests,interaction:pacer.metrics()};
+  fs.writeFileSync(path.join(output,'reference-browser-report.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report));
+}finally{await browser.close();await new Promise(resolve=>app.server.close(resolve));fs.rmSync(directory,{recursive:true,force:true});}

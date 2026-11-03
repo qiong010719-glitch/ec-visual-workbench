@@ -1,0 +1,1375 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <script src="/local/bridge.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AUPlus 电商视觉工作台 · 本地复刻</title>
+    <script src="vendor/tailwindcss-play.js"></script>
+    <script src="vendor/Tone.js"></script>
+    <script src="vendor/jszip.min.js"></script>
+    <script src="vendor/html2canvas.min.js"></script>
+
+    <!-- 新手引导 (driver.js v1) -->
+    <link rel="stylesheet" href="vendor/driver.css"/>
+    <script src="vendor/driver.js.iife.js"></script>
+
+    <link rel="stylesheet" href="/original/original-01.css">
+</head>
+<body class="custom-scrollbar antialiased">
+<!-- ── 桌面壁纸层（Aqua Glass 主题） ── -->
+<div id="wallpaper"></div>
+<div id="wallpaperDim"></div>
+
+<!-- ── 壁纸设置面板 ── -->
+<div id="wpPanel" class="wp-panel">
+    <div class="wp-panel-title">桌面壁纸</div>
+    <div class="wp-grid" id="wpGrid"></div>
+    <div class="wp-row wp-mix-row">
+        <span class="wp-mix-label">自定义混色</span>
+        <div class="wp-mix-swatches">
+            <input type="color" id="wpMix0" value="#2f4bb8" oninput="setMixColor(0, this.value)" title="左上光斑颜色">
+            <input type="color" id="wpMix1" value="#7b3fd6" oninput="setMixColor(1, this.value)" title="右上光斑颜色">
+            <input type="color" id="wpMix2" value="#12849e" oninput="setMixColor(2, this.value)" title="底部光斑颜色">
+        </div>
+        <button class="wp-mix-random" onclick="randomMix()">随机</button>
+        <button class="wp-mix-random" onclick="toggleSaveMixRow()" title="把当前混色保存为我的预设">保存</button>
+    </div>
+    <div class="wp-row wp-save-row" id="wpSaveRow" style="display:none">
+        <input type="text" id="wpPresetName" maxlength="12" placeholder="给这个配色起个名字…" onkeydown="if(event.key==='Enter')saveMixPreset()">
+        <button class="wp-mix-random" onclick="saveMixPreset()">保存</button>
+    </div>
+    <div class="wp-row">
+        <button class="wp-upload-btn" onclick="document.getElementById('wpFileInput').click()">＋ 上传自定义壁纸…</button>
+        <input type="file" id="wpFileInput" accept="image/*" class="hidden" onchange="handleWallpaperUpload(this)">
+    </div>
+    <div class="wp-row wp-slider-row">
+        <label>壁纸暗度</label>
+        <input type="range" id="wpDim" min="0" max="80" value="20" oninput="setWpDim(this.value)">
+    </div>
+    <div class="wp-row wp-slider-row">
+        <label>玻璃浓度</label>
+        <input type="range" id="wpGlass" min="25" max="92" value="38" oninput="setWpGlass(this.value)">
+    </div>
+    <button class="wp-reset-btn" onclick="resetWpDefaults()" title="恢复推荐的暗度与玻璃浓度">↺ 恢复推荐默认值</button>
+</div>
+<div id="modeSelectionModal" class="fixed inset-0 z-[9999] items-start justify-center bg-black/90 backdrop-blur-md overflow-y-auto py-8" style="display:none">
+    <div class="relative w-full max-w-5xl mx-4 p-8 msm-box">
+        
+        <h2 class="text-3xl font-bold font-mono text-white mb-2 text-center">选择设计模式</h2>
+        <p class="text-gray-400 text-center text-sm font-mono mb-3">SELECT GENERATION MODE</p>
+        <div class="flex items-center gap-3 msm-warn rounded-xl px-4 py-3 mb-8">
+            <span class="text-yellow-400 text-lg flex-shrink-0">⚠️</span>
+            <p class="text-yellow-300/90 text-xs font-mono leading-relaxed">
+                <span class="font-bold text-yellow-400">请先仔细阅读各模式说明和案例</span>，再做选择。不同模式出图风格差异显著，选错后可在<span class="text-yellow-300 underline decoration-dotted">左上角模式下拉框</span>随时切换。<br>
+                <span class="text-yellow-500/70">鼠标悬停案例图可放大预览 · 点击选中即进入对应引擎</span>
+            </p>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 msm-grid">
+            <div class="flex flex-col gap-0 msm-col msm-col--ultra">
+                <button onclick="showUltraFastWarning()" class="group relative flex flex-col p-6 msm-card rounded-t-2xl hover:border-[#00FFC5]/50 transition-all duration-300 text-left overflow-hidden">
+                    <div class="absolute inset-0 bg-gradient-to-br from-[#00FFC5]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-xl font-bold text-[#00FFC5] font-mono">极速飙车模式</h3>
+                        <span class="msm-ultra-tag">铺货专用</span>
+                    </div>
+                    <div class="msm-ultra-warn">⚠️ 只在<strong>完全不追求质量的极速铺货</strong>时用。跳过构思与视觉专家直接出图，细节和跨图一致性会明显打折——日常出图请选左侧两种模式。</div>
+                    <p class="text-gray-300 text-sm leading-relaxed mb-4">2-3 分钟一次成型，<strong class="text-gray-100">一次生成就拿到整套</strong>主副图或 A+。走的是经典亚马逊页面风格，整套图风格统一、卖点文字表现出色。<br><br>它<strong class="text-gray-100">跳过「一键构思」直接出图</strong>，所以部分产品在细节和跨图一致性上会打折扣。成本只按一次生成算，<strong class="text-gray-100">建议多跑几轮挑最满意的一版</strong>；如果同一个产品连着几轮都不理想，换个模式通常比继续重试更划算。</p>
+                    <div class="mt-auto space-y-2">
+                        <div class="flex items-center text-xs text-gray-500"><span class="w-2 h-2 rounded-full bg-[#00FFC5] mr-2"></span>适合：整套风格统一、卖点文字突出；跳过构思直接出图</div>
+                        <div class="flex items-center text-xs text-gray-500"><span class="w-2 h-2 rounded-full bg-[#00FFC5] mr-2"></span>时间：2-3 分钟</div>
+                    </div>
+                </button>
+                <div class="msm-samples rounded-b-2xl p-3">
+                    <div class="sample-hint sample-hint--teal font-mono">// 案例参考 · 点击放大</div>
+                    <div class="grid grid-cols-2 gap-x-2">
+                        <div class="font-mono text-[9px] text-[#00FFC5]/70 tracking-wider mb-1">案例 1 · 主副图</div>
+                        <div class="font-mono text-[9px] text-[#00FFC5]/70 tracking-wider mb-1">案例 2 · A+（同上产品）</div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2 mb-2">
+                        <img src="mode-samples/ultra_1.jpg" alt="极速模式案例1" onclick="openSampleLightbox(this.src)" class="w-full rounded cursor-zoom-in object-cover hover:scale-105 hover:z-10 transition-all duration-200 border border-[#00FFC5]/20" style="aspect-ratio:auto;max-height:160px;object-fit:cover;">
+                        <img src="mode-samples/ultra_2.jpg" alt="极速模式案例2" onclick="openSampleLightbox(this.src)" class="w-full rounded cursor-zoom-in object-cover hover:scale-105 hover:z-10 transition-all duration-200 border border-[#00FFC5]/20" style="aspect-ratio:auto;max-height:160px;object-fit:cover;">
+                    </div>
+                    <div class="grid grid-cols-2 gap-x-2">
+                        <div class="font-mono text-[9px] text-[#00FFC5]/70 tracking-wider mb-1">案例 3 · 主副图</div>
+                        <div class="font-mono text-[9px] text-[#00FFC5]/70 tracking-wider mb-1">案例 4 · A+（同上产品）</div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <img src="mode-samples/ultra_3.jpg" alt="极速模式案例3" onclick="openSampleLightbox(this.src)" class="w-full rounded cursor-zoom-in object-cover hover:scale-105 hover:z-10 transition-all duration-200 border border-[#00FFC5]/20" style="aspect-ratio:auto;max-height:160px;object-fit:cover;">
+                        <img src="mode-samples/ultra_4.jpg" alt="极速模式案例4" onclick="openSampleLightbox(this.src)" class="w-full rounded cursor-zoom-in object-cover hover:scale-105 hover:z-10 transition-all duration-200 border border-[#00FFC5]/20" style="aspect-ratio:auto;max-height:160px;object-fit:cover;">
+                    </div>
+                </div>
+            </div>
+            <div class="flex flex-col gap-0 msm-col">
+                <button onclick="selectModeFromModal('fast')" class="group relative flex flex-col p-6 msm-card rounded-t-2xl hover:border-[#ff3366]/50 transition-all duration-300 text-left overflow-hidden">
+                    <div class="absolute inset-0 bg-gradient-to-br from-[#ff3366]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-xl font-bold text-[#ff3366] font-mono">快速设计模式</h3>
+                        <span class="text-xs bg-[#ff3366]/20 text-[#ff3366] px-2 py-1 rounded border border-[#ff3366]/30">FAST MODE</span>
+                    </div>
+                    <p class="text-gray-300 text-sm leading-relaxed mb-4">适合<strong class="text-gray-100">卖点多、需要靠文字和图标讲清楚</strong>的产品。引擎会重点平衡文字图标排版与品牌留白的画报感，风格居中偏商业。<br><br>可以用<strong class="text-gray-100">「信息密度」</strong>调文字要多还是要少，用<strong class="text-gray-100">「场景化倾向」</strong>决定卖点用不用真实使用场景来演示——这两个旋钮对本模式影响最大。<br><br>跨图统一性略弱于另外两个模式。</p>
+                    <div class="mt-auto space-y-2">
+                        <div class="flex items-center text-xs text-gray-500"><span class="w-2 h-2 rounded-full bg-[#ff3366] mr-2"></span>时间：5-7 分钟</div>
+                        <div class="flex items-center text-xs text-gray-500"><span class="w-2 h-2 rounded-full bg-[#ff3366] mr-2"></span>优势：排版与留白平衡，卖点凸显；密度/场景化可调</div>
+                    </div>
+                </button>
+                <div class="msm-samples rounded-b-2xl p-3">
+                    <div class="sample-hint sample-hint--red font-mono">// 案例参考 · 4 个真实产品 · 点击放大</div>
+
+                    <div class="font-mono text-[9px] text-[#ff3366]/70 tracking-wider mb-1">案例 1 · 主副图 + A+（同一产品）</div>
+                    <div class="grid grid-cols-2 gap-2 mb-2">
+                        <img src="mode-samples/fast_case1_a.jpg" alt="快速模式案例1-主副图" onclick="openSampleLightbox(this.src)" class="w-full rounded cursor-zoom-in object-cover hover:scale-105 hover:z-10 transition-all duration-200 border border-[#ff3366]/20" style="aspect-ratio:auto;max-height:160px;object-fit:cover;object-position:top;">
+                        <img src="mode-samples/fast_case1_b.jpg" alt="快速模式案例1-A+" onclick="openSampleLightbox(this.src)" class="w-full rounded cursor-zoom-in object-cover hover:scale-105 hover:z-10 transition-all duration-200 border border-[#ff3366]/20" style="aspect-ratio:auto;max-height:160px;object-fit:cover;object-position:top;">
+                    </div>
+
+                    <div class="font-mono text-[9px] text-[#ff3366]/70 tracking-wider mb-1">案例 2</div>
+                    <div class="grid grid-cols-1 gap-2 mb-2">
+                        <img src="mode-samples/fast_case2.jpg" alt="快速模式案例2" onclick="openSampleLightbox(this.src)" class="w-full rounded cursor-zoom-in object-cover hover:scale-105 hover:z-10 transition-all duration-200 border border-[#ff3366]/20" style="aspect-ratio:auto;max-height:160px;object-fit:cover;object-position:top;">
+                    </div>
+
+                    <div class="font-mono text-[9px] text-[#ff3366]/70 tracking-wider mb-1">案例 3</div>
+                    <div class="grid grid-cols-1 gap-2">
+                        <img src="mode-samples/fast_case3.jpg" alt="快速模式案例3" onclick="openSampleLightbox(this.src)" class="w-full rounded cursor-zoom-in object-cover hover:scale-105 hover:z-10 transition-all duration-200 border border-[#ff3366]/20" style="aspect-ratio:auto;max-height:160px;object-fit:cover;object-position:top;">
+                    </div>
+
+                    <div class="font-mono text-[9px] text-[#ff3366]/70 tracking-wider mb-1 mt-2">案例 4 · 主副图 + A+（同一产品·整套）</div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <img src="mode-samples/fast_case4_a.jpg" alt="快速模式案例4-主副图6张" onclick="openSampleLightbox(this.src)" class="w-full rounded cursor-zoom-in object-cover hover:scale-105 hover:z-10 transition-all duration-200 border border-[#ff3366]/20" style="aspect-ratio:auto;max-height:160px;object-fit:cover;object-position:top;">
+                        <img src="mode-samples/fast_case4_b.jpg" alt="快速模式案例4-A+模块5张" onclick="openSampleLightbox(this.src)" class="w-full rounded cursor-zoom-in object-cover hover:scale-105 hover:z-10 transition-all duration-200 border border-[#ff3366]/20" style="aspect-ratio:auto;max-height:160px;object-fit:cover;object-position:top;">
+                    </div>
+                </div>
+            </div>
+            <div class="flex flex-col gap-0 msm-col">
+                <button onclick="selectModeFromModal('master')" class="group relative flex flex-col p-6 msm-card rounded-t-2xl hover:border-[#a855f7]/50 transition-all duration-300 text-left overflow-hidden">
+                    <div class="absolute inset-0 bg-gradient-to-br from-[#a855f7]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-xl font-bold text-[#a855f7] font-mono">大师设计模式</h3>
+                        <span class="text-xs bg-[#a855f7]/20 text-[#a855f7] px-2 py-1 rounded border border-[#a855f7]/30">MASTER MODE</span>
+                    </div>
+                    <p class="text-gray-300 text-sm leading-relaxed mb-4">追求极致视觉张力与极简高级感。适合<strong class="text-gray-100">靠气质打动人、不需要堆文字说明</strong>的产品——同样一件东西，出来能显著拉高一个质感档次。<br><br>强调光影雕刻、极简构图与沉浸式场景化表达，通常大量留白，引擎优先保障空间透视与摄影级质感。<br><br>出图最慢，但<strong class="text-gray-100">单张成图的视觉上限最高</strong>。</p>
+                    <div class="mt-auto space-y-2">
+                        <div class="flex items-center text-xs text-gray-500"><span class="w-2 h-2 rounded-full bg-[#a855f7] mr-2"></span>时间：11-14 分钟</div>
+                        <div class="flex items-center text-xs text-gray-500"><span class="w-2 h-2 rounded-full bg-[#a855f7] mr-2"></span>优势：极简高级感，光影质感与场景化冲击</div>
+                    </div>
+                </button>
+                <div class="msm-samples rounded-b-2xl p-3">
+                    <div class="sample-hint sample-hint--purple font-mono">// 案例参考 · 4 个真实产品 · 点击放大</div>
+
+                    <div class="font-mono text-[9px] text-[#a855f7]/70 tracking-wider mb-1">案例 1 · 主副图 + A+（同一产品·整套）</div>
+                    <div class="grid grid-cols-2 gap-2 mb-2">
+                        <img src="mode-samples/master_case1_a.jpg" alt="大师模式案例1-主副图6张" onclick="openSampleLightbox(this.src)" class="w-full rounded cursor-zoom-in object-cover hover:scale-105 hover:z-10 transition-all duration-200 border border-[#a855f7]/20" style="aspect-ratio:auto;max-height:160px;object-fit:cover;object-position:top;">
+                        <img src="mode-samples/master_case1_b.jpg" alt="大师模式案例1-A+模块5张" onclick="openSampleLightbox(this.src)" class="w-full rounded cursor-zoom-in object-cover hover:scale-105 hover:z-10 transition-all duration-200 border border-[#a855f7]/20" style="aspect-ratio:auto;max-height:160px;object-fit:cover;object-position:top;">
+                    </div>
+
+                    <div class="font-mono text-[9px] text-[#a855f7]/70 tracking-wider mb-1">案例 2 · 主副图 + A+（同一产品·整套）</div>
+                    <div class="grid grid-cols-1 gap-2 mb-2">
+                        <img src="mode-samples/master_case2.jpg" alt="大师模式案例2" onclick="openSampleLightbox(this.src)" class="w-full rounded cursor-zoom-in object-cover hover:scale-105 hover:z-10 transition-all duration-200 border border-[#a855f7]/20" style="aspect-ratio:auto;max-height:160px;object-fit:cover;object-position:top;">
+                    </div>
+
+                    <div class="font-mono text-[9px] text-[#a855f7]/70 tracking-wider mb-1">案例 3</div>
+                    <div class="grid grid-cols-1 gap-2 mb-2">
+                        <img src="mode-samples/master_case3.jpg" alt="大师模式案例3" onclick="openSampleLightbox(this.src)" class="w-full rounded cursor-zoom-in object-cover hover:scale-105 hover:z-10 transition-all duration-200 border border-[#a855f7]/20" style="aspect-ratio:auto;max-height:160px;object-fit:cover;object-position:top;">
+                    </div>
+
+                    <div class="font-mono text-[9px] text-[#a855f7]/70 tracking-wider mb-1">案例 4</div>
+                    <div class="grid grid-cols-1 gap-2">
+                        <img src="mode-samples/master_case4.jpg" alt="大师模式案例4" onclick="openSampleLightbox(this.src)" class="w-full rounded cursor-zoom-in object-cover hover:scale-105 hover:z-10 transition-all duration-200 border border-[#a855f7]/20" style="aspect-ratio:auto;max-height:160px;object-fit:cover;object-position:top;">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Sample Image Lightbox -->
+<div id="sampleLightbox" onclick="closeSampleLightbox()" class="fixed inset-0 z-[99999] hidden items-center justify-center bg-black/95 backdrop-blur-sm cursor-zoom-out">
+    <img id="sampleLightboxImg" src="" alt="" class="max-w-[90vw] max-h-[90vh] object-contain rounded-lg shadow-2xl">
+    <div class="absolute top-4 right-4 text-gray-400 text-sm font-mono bg-black/60 px-3 py-1 rounded border border-gray-700">点击任意处关闭</div>
+</div>
+
+
+
+    <div class="purah-pad">
+        <div class="mac-titlebar" id="macTitlebar">
+            <div class="mac-title">AUPlus 视觉工作台</div>
+            <div class="mac-tools">
+                <span id="spotHint" class="wp-hint" style="display:none">
+                    <span class="wp-hint-text">💡 鼠标聚光灯特效，开关在这</span>
+                    <span class="wp-hint-arrow">👉</span>
+                    <button class="wp-hint-close" onclick="spotHintAskClose(event)" title="关闭提示">✕</button>
+                </span>
+                <button class="mac-tool-btn" id="spotlightBtn" onclick="toggleSpotlight()" title="鼠标聚光：光圈跟随鼠标，四周轻微压暗"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.5 1.5M16.9 16.9l1.5 1.5M18.4 5.6l-1.5 1.5M7.1 16.9l-1.5 1.5"/></svg><span id="spotLabel">聚光</span></button>
+                <button class="mac-tool-btn" onclick="const m=document.getElementById('modeSelectionModal');m.style.display='flex'"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01"/><path d="M11.5 12H12v4h.5"/></svg>模式详情</button>
+                <button class="mac-tool-btn" onclick="document.getElementById('announceModal').classList.add('show')">📢 原站公告</button>
+            </div>
+        </div>
+
+<div id="announceModal" class="announce-modal" style="z-index:99999;">
+    <div class="announce-box" style="max-height:90vh;overflow-y:auto;position:relative;width:600px;">
+
+        <div style="text-align:center;margin-bottom:1.5rem;">
+            <div style="font-size:4rem;">🚀</div>
+            <h3 style="color:#fff;font-size:1.3rem;font-weight:800;letter-spacing:-0.01em;margin-top:0.8rem;">新版本公告</h3>
+            <p style="color:rgba(235,235,245,0.45);font-size:0.7rem;letter-spacing:0.2em;margin-top:0.3rem;">RELEASE ANNOUNCEMENT</p>
+        </div>
+
+        <div style="font-family:'PingFang SC',sans-serif;font-size:0.98rem;line-height:1.85;color:#fff;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.12);border-radius:1rem;padding:1.4rem 1.5rem;margin-bottom:1.2rem;">
+            <p style="font-size:1.15rem;font-weight:800;color:#fff;margin-bottom:0.9rem;text-align:center;">🎨 界面全新改版 + 多项功能升级</p>
+
+            <p style="color:#fff;font-weight:800;margin:0.9rem 0 0.35rem;">✨ 全新界面</p>
+            <p style="color:rgba(235,235,245,0.72);font-size:0.94rem;">毛玻璃质感、可换壁纸、图片支持大图预览，整体更清爽好用。</p>
+
+            <p style="color:#fff;font-weight:800;margin:0.9rem 0 0.35rem;">🎛️ 更多可控选项</p>
+            <p style="color:rgba(235,235,245,0.72);font-size:0.94rem;">新增 <b style="color:#fff;">生图模型 / 信息密度 / 场景化倾向 / 产品类型</b> 四个调节项——文字要多要少、要不要真实使用场景、是保健品还是结构件，都能自己定。保健品与结构件还有专项优化。</p>
+
+            <p style="color:#fff;font-weight:800;margin:0.9rem 0 0.35rem;">⭐ 出图后可直接评分</p>
+            <p style="color:rgba(235,235,245,0.72);font-size:0.94rem;">生成完会弹出评分窗（打星＋可选评语），也可随时点右侧 ⭐ 补评。每张图还能单独点 👎 反馈。<b style="color:#fff;">你的每一次评价都会用来优化模型</b>，出图会越用越准。</p>
+
+            <p style="color:#fff;font-weight:800;margin:0.9rem 0 0.35rem;">📸 新手引导 & 看样片</p>
+            <p style="color:rgba(235,235,245,0.72);font-size:0.94rem;">新手引导已全面更新，出图页也有专属引导。上传区新增 <b style="color:#fff;">「看样片」</b>，用对照图告诉你什么样的输入图才能出好结果——<b style="color:#fff;">这一项对出图质量影响最大，强烈建议看一眼</b>。</p>
+
+            <p style="color:#fff;font-weight:800;margin:0.9rem 0 0.35rem;">📝 填写说明重写</p>
+            <p style="color:rgba(235,235,245,0.72);font-size:0.94rem;">产品名称、核心卖点、强制要求的填写指引全部重写，讲清了怎么填效果最好（比如<b style="color:#fff;">卖点里不要写配色和风格</b>，会盖掉系统视觉专家的判断）。</p>
+        </div>
+
+        <div style="font-family:'PingFang SC',sans-serif;background:rgba(255,214,10,0.07);border:1px solid rgba(255,214,10,0.45);border-radius:1rem;padding:1.1rem 1.3rem;margin-bottom:1.2rem;">
+            <p style="font-size:0.72rem;letter-spacing:0.15em;color:#FFD60A;opacity:0.85;margin-bottom:0.5rem;font-weight:700;">NOTICE · 当前已知问题</p>
+            <p style="color:#FFE87A;font-size:0.95rem;line-height:1.8;">任务和图片保存在本机。生成通过图片生成服务处理，费用以实际服务账单为准；出错原因会显示在任务提示中。</p>
+        </div>
+
+        <div style="font-family:'PingFang SC',sans-serif;background:rgba(255,214,10,0.06);border:1px solid rgba(255,214,10,0.35);border-radius:1rem;padding:1.3rem;margin-bottom:1.5rem;text-align:center;">
+            <p style="font-size:0.7rem;letter-spacing:0.15em;color:#FFD60A;opacity:0.7;margin-bottom:0.6rem;font-weight:700;">COMING SOON · 下一轮重磅更新</p>
+            <p style="font-size:1.25rem;font-weight:800;margin-bottom:0.7rem;color:#FFD60A;">🎨 输出图片 PSD 功能！</p>
+            <p style="color:rgba(255,224,130,0.9);font-size:0.96rem;line-height:1.75;">生成的图片可以转换为 PSD 格式，<br>直接放到 PS 去进行分层编辑。</p>
+            <p style="color:#FFD60A;font-size:1rem;font-weight:800;margin-top:0.7rem;">屌不屌！很快就会更新 ⚡</p>
+        </div>
+        <button onclick="document.getElementById('announceModal').classList.remove('show')" class="modal-btn modal-btn-confirm" style="width:100%;">我知道了</button>
+
+    </div>
+</div>
+
+<link rel="stylesheet" href="/original/original-02.css">
+        <div class="game-bg"></div>
+
+        <div id="authOverlay" class="absolute inset-0 z-[5000] flex flex-col items-center justify-center transition-opacity duration-500 px-4" style="background:rgba(14,15,22,0.62);backdrop-filter:blur(40px) saturate(160%);-webkit-backdrop-filter:blur(40px) saturate(160%);">
+            <img src="3F3F3F2F3F.png" class="h-20 mb-5 filter drop-shadow-[0_0_30px_rgba(0,255,197,0.4)]" onerror="this.style.display='none'">
+            <h2 class="text-2xl md:text-3xl mb-1.5 text-center" style="color:#fff;font-weight:800;letter-spacing:-0.01em;">A-PLUS 视觉生图引擎</h2>
+            <p class="text-gray-400 font-mono text-[10px] tracking-[0.3em] mb-7 uppercase text-center">AUPlus Visual Studio</p>
+
+            <!-- 登录 / 注册 卡片 -->
+            <div id="authCard" class="rounded-2xl px-7 py-6 w-full max-w-[420px]" style="background:linear-gradient(160deg,rgba(56,60,80,0.55),rgba(30,32,44,0.68));backdrop-filter:blur(50px) saturate(190%);-webkit-backdrop-filter:blur(50px) saturate(190%);border:1px solid rgba(255,255,255,0.16);box-shadow:0 30px 90px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.12);">
+                <!-- 邀请制：注册入口已关闭，账号由站长开通 -->
+                <div class="flex gap-1 mb-5 rounded-full p-1" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);">
+                    <button id="authTabLogin" onclick="setAuthMode('login')" type="button" class="auth-tab active flex-1 py-2.5 rounded-full font-bold tracking-[0.2em] text-sm transition-all">登 录</button>
+                </div>
+
+                <!-- 表单 -->
+                <div class="flex flex-col gap-2.5">
+                    <label class="text-[10px] uppercase" style="color:var(--text-3);letter-spacing:0.12em;font-weight:600;">邮箱 Email</label>
+                    <input type="email" id="terminalEmail" class="sheikah-input text-base py-3" placeholder="your@email.com" autocomplete="email">
+
+                    <label class="text-[10px] uppercase mt-2" style="color:var(--text-3);letter-spacing:0.12em;font-weight:600;">密码 Password</label>
+                    <input type="password" id="terminalPwd" onkeypress="if(event.key==='Enter') authenticateTerminal()" class="sheikah-input text-base tracking-[0.2em] py-3" placeholder="至少 6 位" autocomplete="current-password">
+
+                    <p id="authPwdHint" class="text-[11px] text-zonai-yellow/85 font-mono mt-1 hidden leading-relaxed">📧 <strong>注册后会发送验证邮件</strong>，请到邮箱点击链接确认；如未收到请检查垃圾邮件。</p>
+
+                    <a id="authForgotLink" href="#" onclick="forgotPassword(event)" class="text-[11px] text-sheikah-blue/80 hover:text-sheikah-blue font-mono self-end mt-1 transition cursor-pointer">忘记密码？</a>
+                </div>
+
+                <!-- 提交按钮 -->
+                <button onclick="authenticateTerminal()" id="authSubmitBtn" type="button" class="w-full mt-5 py-3.5 rounded-full transition-all duration-300" style="background:var(--sheikah-blue);color:#fff;font-weight:800;letter-spacing:0.15em;border:none;box-shadow:0 6px 20px rgba(10,132,255,0.35);cursor:pointer;">登 录</button>
+
+                <p id="authErrText" class="text-red-500 font-mono text-xs mt-3 opacity-0 transition-opacity text-center min-h-[1.2em]"></p>
+
+                <!-- 邀请制说明 -->
+                <div class="mt-4 pt-4 border-t border-white/10 text-center">
+                    <p class="text-[11px] text-gray-400 font-['PingFang_SC'] leading-relaxed">
+                        本工具目前为 <span class="text-zonai-teal font-bold">邀请制</span>，不开放自助注册。<br>
+                        需要账号请<a onclick="showContactAdmin()" class="text-zonai-teal cursor-pointer hover:underline font-bold">联系站长开通 →</a>
+                    </p>
+                </div>
+            </div>
+
+            <!-- 游客：先逛逛（可看广告位 / 公告 / 模式简介与案例，生成仍需登录） -->
+            <button onclick="enterGuestMode()" type="button" id="guestEnterBtn" class="mt-5">
+                👀 游客预览模式 · 先逛逛 →
+            </button>
+
+            <!-- 注册成功 / 验证邮件提醒（默认 hidden，覆盖整个 authOverlay） -->
+            <div id="authVerifyHint" class="hidden absolute inset-0 flex flex-col items-center justify-center bg-[#050607]/97 backdrop-blur-xl px-4 z-10">
+                <div class="rounded-2xl px-8 py-7 w-full max-w-[460px] text-center" style="background:linear-gradient(160deg,rgba(56,60,80,0.7),rgba(30,32,44,0.8));backdrop-filter:blur(50px) saturate(190%);-webkit-backdrop-filter:blur(50px) saturate(190%);border:1px solid rgba(255,214,10,0.35);box-shadow:0 30px 90px rgba(0,0,0,0.5);">
+                    <div class="text-5xl mb-3">📬</div>
+                    <h3 class="text-xl text-zonai-yellow font-bold tracking-[0.2em] mb-3">验证邮件已发送</h3>
+                    <p class="text-gray-300 text-sm leading-relaxed mb-2">我们刚刚向 <strong id="authVerifyEmail" class="text-zonai-teal break-all"></strong> 发了一封验证邮件。</p>
+                    <p class="text-zonai-yellow/90 text-xs leading-relaxed mb-5 bg-zonai-yellow/5 border border-zonai-yellow/30 rounded-lg p-3">
+                        ⚠️ <strong>注意检查垃圾邮件 / 推广邮件文件夹</strong><br>
+                        点击邮件里的「Confirm your mail」链接确认后，回到这里登录即可。
+                    </p>
+                    <div class="flex flex-col gap-2.5">
+                        <button onclick="resendVerification()" id="authResendBtn" type="button" class="px-6 py-3 border border-zonai-yellow text-zonai-yellow hover:bg-zonai-yellow hover:text-black font-bold tracking-[0.2em] rounded-full transition text-sm">📤 没收到？重新发送</button>
+                        <button onclick="hideVerifyHintAndLogin()" type="button" class="px-6 py-3 border border-zonai-teal text-zonai-teal hover:bg-zonai-teal hover:text-black font-bold tracking-[0.2em] rounded-full transition text-sm">← 返回登录</button>
+                    </div>
+                    <p id="authResendStatus" class="text-xs text-gray-400 mt-4 min-h-[1.2em]"></p>
+                </div>
+            </div>
+        </div>
+
+        <div id="championsOverlay" class="champions-overlay">
+            <img src="BotW_Champions_Artwork.png" class="champions-img" id="heroImg" alt="Champions" onerror="this.style.display='none'">
+            <h1 class="victory-text font-[Orbitron]">设计完成!</h1>
+            <div class="progress-container">
+                <div class="progress-bar-bg"><div id="shrineProgressBar" class="progress-bar-fill"></div></div>
+                <p id="shrineStatusText" class="mt-4 text-sheikah-blue/70 font-mono text-sm tracking-widest uppercase">AI 设计师正在解析产品资料…</p>
+<div class="mt-6 px-4 text-center font-['PingFang SC'] text-sm leading-relaxed space-y-3">
+    <p class="text-zonai-yellow">⏱ 本次任务由多个 AI Agent 协同完成，请耐心等待。</p>
+    <div class="flex flex-col sm:flex-row justify-center items-center gap-2 sm:gap-6 text-sm">
+        <span class="px-3 py-1 rounded-full border border-[#ff3366]/40 text-[#ff3366]">快速设计模式 · 约 5-7 分钟</span>
+        <span class="px-3 py-1 rounded-full border border-[#a855f7]/40 text-[#a855f7]">大师设计模式 · 约 11-14 分钟</span>
+    </div>
+    <p class="text-gray-400">若快速模式超过 10 分钟、大师模式超过 20 分钟仍未完成，请点击下方【强制断开】按钮后重试。</p>
+    <p class="text-gray-500 text-xs">由于多 Agent 协同的特殊性，偶发停滞属正常现象。有时还会遭遇谷歌API抽风，若遭遇此情况，断开重试即可。如问题持续出现，请联系客服，我们将退还消耗的点数。</p>
+</div>
+                <button onclick="abortAgentTask()" class="mt-8 px-6 py-2 border border-red-900/50 text-red-500/50 hover:text-red-400 hover:border-red-500 rounded-full font-mono text-xs tracking-widest transition-all">强制停止</button>
+            </div>
+        </div>
+
+        <div id="errorOverlay" class="error-overlay">
+            <div class="error-box">
+                <div class="text-6xl mb-4 animate-bounce">⚠️</div>
+                <h3 id="errorTitle" class="text-3xl text-red-500 font-black mb-4 uppercase tracking-widest">Signal Interrupted</h3>
+                <p id="errorDesc" class="text-red-300 opacity-90 leading-relaxed text-lg font-['PingFang SC']">连接异常，请重试。</p>
+                <button onclick="document.getElementById('errorOverlay').style.display='none'" class="mt-8 px-12 py-3 bg-red-700 hover:bg-red-600 text-white rounded-full font-bold tracking-widest transition-colors shadow-lg">知道了</button>
+            </div>
+        </div>
+
+        <!-- 💰 充值弹窗（支付宝电脑网站支付，1:1 到点） -->
+        <div id="rechargeModal" class="rc-overlay" style="z-index:100001;" onclick="if(event.target===this)closeRechargeModal()">
+            <div class="rc-box" style="max-width:400px;">
+                <div class="rc-head">
+                    <h3 class="rc-title">充值点数</h3>
+                    <button onclick="closeRechargeModal()" class="rc-close">✕</button>
+                </div>
+                <p class="rc-sub">支付宝扫码支付，<b style="color:#fff;">1 元 = 1 点</b>，到账即用。</p>
+                <div class="rc-presets" id="rechargePresets"></div>
+                <label class="rc-label">自定义金额（元）</label>
+                <input type="number" id="rechargeAmount" min="1" max="5000" step="1" placeholder="输入整数金额" oninput="onRechargeInput()" class="rc-input">
+                <div id="rechargeHint" class="rc-hint"></div>
+                <button onclick="submitRecharge()" id="rechargeSubmit" disabled class="rc-pay">去支付宝支付</button>
+                <p class="rc-note">点击后跳转支付宝收银台，付完自动返回。<br>点数几秒内到账，如未到账刷新页面或联系站长。</p>
+                <button onclick="closeRechargeModal();openOrdersModal()" class="rc-ghost">查看充值记录 / 查账</button>
+            </div>
+        </div>
+
+        <!-- 📋 查账 / 充值记录弹窗（登录用户自查：金额 / 到账状态 / 流水号 / 时间） -->
+        <div id="ordersModal" class="rc-overlay" style="z-index:100002;" onclick="if(event.target===this)closeOrdersModal()">
+            <div class="rc-box" style="max-width:620px;max-height:84vh;display:flex;flex-direction:column;">
+                <div class="rc-head">
+                    <h3 class="rc-title">充值记录 · 查账</h3>
+                    <div style="display:flex;align-items:center;gap:0.5rem;">
+                        <button onclick="exportOrdersCSV()" title="导出充值+赠送记录为 CSV" class="oc-chip-btn">导出 CSV</button>
+                        <button onclick="closeOrdersModal()" class="rc-close">✕</button>
+                    </div>
+                </div>
+                <div id="ordersBalance" class="oc-balance">当前余额：加载中…</div>
+                <div id="ordersList" class="custom-scrollbar" style="overflow-y:auto;height:46vh;font-size:0.78rem;color:var(--text-1);">加载中…</div>
+                <p class="rc-note">已付款但显示「待到账」超过几分钟？把该行「订单号」发给站长核对。</p>
+            </div>
+        </div>
+
+        <div id="agentConfirmModal" class="rc-overlay" style="z-index:7000;">
+            <div class="rc-box" style="max-width:440px;text-align:center;padding:2.2rem 2rem;">
+                <div style="font-size:2.2rem;margin-bottom:0.8rem;">⚡</div>
+                <h3 class="rc-title" style="margin-bottom:0.8rem;">确认派发任务</h3>
+                <p style="color:var(--text-2);line-height:1.8;margin-bottom:1.8rem;font-size:0.9rem;">请确认信息无误再提交。<br>提交后流程将自动执行，无法中途撤回。</p>
+                <div class="modal-btn-group" style="justify-content:center;">
+                    <button id="agentConfirmCancel" class="modal-btn modal-btn-cancel">取消</button>
+                    <button id="agentConfirmOk" class="modal-btn modal-btn-confirm">确认开始构思</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ★ 保健品/瓶装补剂 专项提醒卡（从 YIMU 移植） -->
+        <div id="supplementModal" class="prompt-modal-overlay">
+            <div class="prompt-modal-box" style="max-width:640px;">
+                <h3 class="text-xl mb-4 font-black flex items-center gap-3" style="color:#fff;">
+                    📦 保健品/瓶装补剂 专项
+                </h3>
+                <div class="mb-4" style="background:var(--fill-1); border:1px solid var(--separator); border-radius:0.9rem; padding:1rem;">
+                    <p class="text-xs font-mono mb-2" style="color:var(--text-2);">📎 参考图建议（影响出图质量）</p>
+                    <div class="text-sm mb-1" style="color:#f0fdf4;">🔴 <strong>必需：</strong>瓶子/包装完整清晰图 ×1+（必需，保真锚点）</div>
+                    <div class="text-sm mb-1" style="color:#f0fdf4;">🟡 <strong>强烈建议：</strong>内容物特写：咀嚼片/软胶囊/粉/油滴 ×1（强烈建议，解锁『内容物当主角』图，避免张张瓶子）</div>
+                    <div class="text-sm" style="color:#f0fdf4;">🟢 <strong>可选：</strong>标签/成分表清晰图（用于瓶身局部特写）</div>
+                </div>
+                <div class="mb-4" style="background:var(--fill-1); border:1px solid var(--separator); border-radius:0.9rem; padding:1rem;">
+                    <p class="text-xs font-mono mb-3" style="color:var(--text-2);">🎛️ 图片配额（总数须 = 7）</p>
+                    <div class="grid gap-2" style="grid-template-columns: 1fr 1fr;">
+                        <label class="flex items-center justify-between gap-2 text-sm" style="color:#e2e8f0;"><span>A 全身英雄</span><input type="number" id="allocA" min="0" max="7" value="2" oninput="recalcAllocation()" class="sheikah-input text-center font-mono font-bold" style="width:60px;"></label>
+                        <label class="flex items-center justify-between gap-2 text-sm" style="color:#e2e8f0;"><span>B 局部特写</span><input type="number" id="allocB" min="0" max="7" value="2" oninput="recalcAllocation()" class="sheikah-input text-center font-mono font-bold" style="width:60px;"></label>
+                        <label class="flex items-center justify-between gap-2 text-sm" style="color:#e2e8f0;"><span>C 内容物主角</span><input type="number" id="allocC" min="0" max="7" value="2" oninput="recalcAllocation()" class="sheikah-input text-center font-mono font-bold" style="width:60px;"></label>
+                        <label class="flex items-center justify-between gap-2 text-sm" style="color:#e2e8f0;"><span>D 纯卖点概念 <span style="color:#fbbf24; font-size:0.7em;">≤1·人工过闸</span></span><input type="number" id="allocD" min="0" max="1" value="1" oninput="recalcAllocation()" class="sheikah-input text-center font-mono font-bold" style="width:60px;"></label>
+                    </div>
+                    <div id="allocTotal" class="mt-3 text-center font-mono font-bold text-sm" style="color:#4ade80;">合计 7 / 7 ✅</div>
+                </div>
+                <label class="flex items-center gap-3 mb-5 cursor-pointer text-sm" style="color:#e2e8f0;">
+                    <input type="checkbox" id="supplementConfirmed" style="width:16px; height:16px; accent-color:var(--sheikah-blue);">
+                    我已按建议提供内容物图，按上方配额出图
+                </label>
+                <div class="modal-btn-group">
+                    <button onclick="useSupplementDefault()" class="modal-btn modal-btn-cancel">用默认（只有瓶子）</button>
+                    <button id="supplementConfirmBtn" onclick="confirmSupplement()" class="modal-btn modal-btn-confirm">确认使用此方案</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ★ 结构件/支架/家具 专项提醒卡（从 YIMU 移植） -->
+        <div id="structuralModal" class="prompt-modal-overlay">
+            <div class="prompt-modal-box" style="max-width:640px; border-color:rgba(56,189,248,0.5); box-shadow:0 0 60px rgba(56,189,248,0.15);">
+                <h3 class="text-xl mb-4 font-black tracking-widest uppercase flex items-center gap-3" style="color:#38bdf8;">
+                    🪑 结构件/支架/家具 专项
+                </h3>
+                <div class="mb-4" style="background:rgba(56,189,248,0.06); border:1px solid rgba(56,189,248,0.2); border-radius:0.8rem; padding:1rem;">
+                    <p class="text-xs font-mono mb-2" style="color:#38bdf8; opacity:0.8;">📎 参考图建议（结构件出图质量的命门）</p>
+                    <div class="text-sm mb-1" style="color:#f0f9ff;">🔴 <strong>必需：</strong>产品完整清晰图·多角度 ×2+（正面/侧面/45°——想出哪个角度就必须传哪个角度，AI 不会脑补没见过的角度）</div>
+                    <div class="text-sm mb-1" style="color:#f0f9ff;">🟡 <strong>强烈建议：</strong>关键结构特写：关节/轮子/卡扣/接口 ×1+（解锁最安全的『结构细节特写』图）</div>
+                    <div class="text-sm" style="color:#f0f9ff;">🟢 <strong>可选：</strong>真实使用状态图（装上设备/坐人/摆物）</div>
+                </div>
+                <div class="mb-4" style="background:rgba(0,0,0,0.3); border:1px solid rgba(56,189,248,0.2); border-radius:0.8rem; padding:1rem;">
+                    <p class="text-xs font-mono mb-2" style="color:#38bdf8; opacity:0.8;">📋 部件清单（选填·强烈建议·防结构画错的硬约束）</p>
+                    <textarea id="structureNotes" rows="2" placeholder="例：5轮星形底座 / 2个固定扶手 / 单节气压升降杆 / 网布靠背" class="sheikah-input w-full text-sm font-mono custom-scrollbar" style="color:#38bdf8; border-color:rgba(56,189,248,0.35); background:rgba(0,0,0,0.6); resize:vertical;"></textarea>
+                </div>
+                <div class="mb-4" style="background:rgba(0,0,0,0.3); border:1px solid rgba(56,189,248,0.2); border-radius:0.8rem; padding:1rem;">
+                    <p class="text-xs font-mono mb-3" style="color:#38bdf8; opacity:0.8;">🎛️ 图片配额（总数须 = 7）</p>
+                    <div class="grid gap-2" style="grid-template-columns: 1fr 1fr;">
+                        <label class="flex items-center justify-between gap-2 text-sm" style="color:#e2e8f0;"><span>A 全身英雄<span style="opacity:0.5;font-size:0.75em;">·锁视角</span></span><input type="number" id="stAllocA" min="0" max="7" value="2" oninput="recalcStructAllocation()" class="sheikah-input text-center font-mono font-bold" style="width:60px; color:#38bdf8; border-color:rgba(56,189,248,0.35); background:rgba(0,0,0,0.6);"></label>
+                        <label class="flex items-center justify-between gap-2 text-sm" style="color:#e2e8f0;"><span>B 结构细节特写<span style="opacity:0.5;font-size:0.75em;">·最安全</span></span><input type="number" id="stAllocB" min="0" max="7" value="2" oninput="recalcStructAllocation()" class="sheikah-input text-center font-mono font-bold" style="width:60px; color:#38bdf8; border-color:rgba(56,189,248,0.35); background:rgba(0,0,0,0.6);"></label>
+                        <label class="flex items-center justify-between gap-2 text-sm" style="color:#e2e8f0;"><span>C 场景图<span style="opacity:0.5;font-size:0.75em;">·锁视角</span></span><input type="number" id="stAllocC" min="0" max="7" value="2" oninput="recalcStructAllocation()" class="sheikah-input text-center font-mono font-bold" style="width:60px; color:#38bdf8; border-color:rgba(56,189,248,0.35); background:rgba(0,0,0,0.6);"></label>
+                        <label class="flex items-center justify-between gap-2 text-sm" style="color:#e2e8f0;"><span>D 纯卖点概念 <span style="color:#fbbf24; font-size:0.7em;">≤1·人工过闸</span></span><input type="number" id="stAllocD" min="0" max="1" value="1" oninput="recalcStructAllocation()" class="sheikah-input text-center font-mono font-bold" style="width:60px; color:#38bdf8; border-color:rgba(56,189,248,0.35); background:rgba(0,0,0,0.6);"></label>
+                    </div>
+                    <div id="stAllocTotal" class="mt-3 text-center font-mono font-bold text-sm" style="color:#38bdf8;">合计 7 / 7 ✅</div>
+                </div>
+                <label class="flex items-center gap-3 mb-5 cursor-pointer text-sm" style="color:#e2e8f0;">
+                    <input type="checkbox" id="structuralConfirmed" style="width:16px; height:16px; accent-color:#38bdf8;">
+                    我已提供多角度垫图，按上方配额出图
+                </label>
+                <div class="modal-btn-group">
+                    <button onclick="useStructuralDefault()" class="modal-btn modal-btn-cancel" style="border-color:rgba(56,189,248,0.3); color:#38bdf8;">用默认（垫图角度不全）</button>
+                    <button id="structuralConfirmBtn" onclick="confirmStructural()" class="modal-btn modal-btn-confirm" style="background:#38bdf8; color:#000; box-shadow:0 0 20px rgba(56,189,248,0.4);">确认使用此方案</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="promptModal" class="prompt-modal-overlay">
+            <div class="prompt-modal-box">
+                <h3 class="text-xl text-zonai-teal mb-4 font-black tracking-widest uppercase flex items-center gap-3">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                    提示词微调 <span id="modalSlotTitle" class="text-sheikah-blue ml-2"></span>
+                </h3>
+                <textarea id="modalTextarea" class="prompt-textarea custom-scrollbar"></textarea>
+                <div class="modal-btn-group">
+                    <button onclick="closeEditModal()" class="modal-btn modal-btn-cancel">取消放弃</button>
+                    <button onclick="saveAndRedrawSingle()" class="modal-btn modal-btn-confirm">保存并触发重绘</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="customLayoutModal" class="prompt-modal-overlay">
+            <div class="prompt-modal-box custom-scrollbar" style="max-width:760px; max-height:88vh; overflow-y:auto; border-color:rgba(192,132,252,0.5); box-shadow:0 0 60px rgba(192,132,252,0.15);">
+                <h3 class="text-xl mb-4 font-black tracking-widest uppercase flex items-center gap-3" style="color:#c084fc;">
+                    🎛️ 自定义方案
+                </h3>
+
+                <!-- 数量配置 -->
+                <div class="mb-4" style="background:rgba(192,132,252,0.06); border:1px solid rgba(192,132,252,0.25); border-radius:0.8rem; padding:1rem;">
+                    <p class="text-xs font-mono mb-3" style="color:#c084fc; opacity:0.85;">📐 图片数量（主图可为 0；改动数量后下方逐张卡片自动刷新）</p>
+                    <div class="grid gap-2" style="grid-template-columns: 1fr 1fr;">
+                        <label class="flex items-center justify-between gap-2 text-sm" style="color:#e2e8f0;">
+                            <span>主图</span>
+                            <input type="number" id="clMain" min="0" max="1" value="1" oninput="onCustomCountChange()" class="sheikah-input text-center font-mono font-bold" style="width:60px; color:#c084fc; border-color:rgba(192,132,252,0.35); background:rgba(0,0,0,0.6);">
+                        </label>
+                        <label class="flex items-center justify-between gap-2 text-sm" style="color:#e2e8f0;">
+                            <span>副图（卖点图）</span>
+                            <input type="number" id="clSub" min="0" max="6" value="6" oninput="onCustomCountChange()" class="sheikah-input text-center font-mono font-bold" style="width:60px; color:#c084fc; border-color:rgba(192,132,252,0.35); background:rgba(0,0,0,0.6);">
+                        </label>
+                        <label class="flex items-center justify-between gap-2 text-sm" style="color:#e2e8f0;">
+                            <span>A+ 模块</span>
+                            <input type="number" id="clAplus" min="0" max="7" value="0" oninput="onCustomCountChange()" class="sheikah-input text-center font-mono font-bold" style="width:60px; color:#c084fc; border-color:rgba(192,132,252,0.35); background:rgba(0,0,0,0.6);">
+                        </label>
+                        <label class="flex items-center justify-between gap-2 text-sm" style="color:#e2e8f0;">
+                            <span>A+ 类型</span>
+                            <select id="clAplusType" onchange="onCustomCountChange()" class="sheikah-input text-xs font-mono font-bold" style="width:130px; color:#c084fc; border-color:rgba(192,132,252,0.35); background:rgba(0,0,0,0.6);">
+                                <option value="premium" selected>高级 A+</option>
+                                <option value="old">老版 A+</option>
+                            </select>
+                        </label>
+                    </div>
+                    <div id="clTotalLine" class="mt-3 text-center font-mono font-bold text-sm" style="color:#c084fc;">合计 7 张</div>
+                </div>
+
+                <!-- 逐张定制卡片 -->
+                <div class="mb-4" style="background:rgba(0,0,0,0.3); border:1px solid rgba(192,132,252,0.25); border-radius:0.8rem; padding:1rem;">
+                    <p class="text-xs font-mono mb-1" style="color:#c084fc; opacity:0.85;">✏️ 逐张定制（每项都选填）</p>
+                    <p class="text-[10px] font-mono mb-3" style="color:#94a3b8;">内容要求留空 = AI 自行发挥；参考图不勾 = 云端自动匹配。勾选的参考图会强制作为该张的垫图（按勾选顺序）。</p>
+                    <div id="customSlotCards"></div>
+                </div>
+
+                <!-- 按钮 -->
+                <div class="modal-btn-group">
+                    <button onclick="cancelCustomLayout()" class="modal-btn modal-btn-cancel" style="border-color:rgba(192,132,252,0.3); color:#c084fc;">取消</button>
+                    <button id="customConfirmBtn" onclick="confirmCustomLayout()" class="modal-btn modal-btn-confirm" style="background:#c084fc; color:#000; box-shadow:0 0 20px rgba(192,132,252,0.4);">确认使用此方案</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="cropModal" class="crop-modal-overlay">
+            <div class="crop-workspace">
+                <div class="crop-left custom-scrollbar" id="cropScrollContainer">
+                    <div class="crop-image-container" id="cropImageContainer">
+                        <img id="cropBaseImg" src="" style="max-width: 100%; max-height: 75vh; display: block;" crossorigin="anonymous">
+                        <div id="smartBoxesOverlay" class="absolute inset-0 pointer-events-none"></div>
+                        <div id="manualBox" class="manual-box hidden"></div>
+                    </div>
+                </div>
+                
+                <div class="crop-right p-6 flex flex-col gap-6">
+                    <div class="flex justify-between items-center">
+                        <h2 class="text-xl font-black text-zonai-teal tracking-widest italic uppercase">裁切工作台</h2>
+                        <button onclick="closeCropModal()" class="text-gray-500 hover:text-white transition">✖</button>
+                    </div>
+
+                    <div class="flex p-1 bg-black/40 border border-white/10 rounded-xl">
+                        <button id="btnModeSmart" onclick="switchCropMode('smart')" class="flex-1 py-2 text-xs font-bold rounded-lg transition-all crop-btn-active">智能识别白边</button>
+                        <button id="btnModeManual" onclick="switchCropMode('manual')" class="flex-1 py-2 text-xs font-bold rounded-lg transition-all text-gray-500">A+ 连排切割</button>
+                    </div>
+
+                    <div id="panelSmart" class="space-y-4">
+                        <div class="bg-black/20 p-4 rounded-xl border border-white/5">
+                            <div class="flex justify-between items-center mb-2">
+                                <label class="text-[10px] text-gray-400 uppercase font-mono">白边颜色容差</label>
+                                <span id="toleranceVal" class="text-xs text-zonai-teal font-bold">245</span>
+                            </div>
+                            <input type="range" id="cropTolerance" min="200" max="255" value="245" oninput="document.getElementById('toleranceVal').innerText=this.value" class="w-full accent-zonai-teal">
+                            <p class="text-xs text-gray-400 mt-2 leading-relaxed">
+                                📌 <b class="text-gray-200">数值越小，识别越严格</b>——只有与纯白色差异较大的像素才算内容，适合背景非纯白图片。<br>
+                                数值越大，越宽松——轻微灰色也算白边，适合背景极白的图片。<br>
+                                <span class="text-yellow-400">⚠️ 数值过小时，图片内部的浅色区域会被误判为白边，导致区域被切断。</span>
+                            </p>
+                        </div>
+                        <button onclick="executeSmartCrop()" class="w-full py-4 rounded-xl transition-all v13-primary">开始智能识别</button>
+                    </div>
+
+                    <div id="panelManual" class="space-y-4 hidden">
+                        <div class="grid grid-cols-1 gap-2">
+                            <label class="flex items-center p-3 border border-white/10 rounded-lg cursor-pointer bg-black/20 hover:border-sheikah-blue transition">
+                                <input type="radio" name="cropType" value="old" checked onchange="updateManualBox()">
+                                <span class="ml-3 text-xs text-gray-300 font-mono">老A+ (970x600)</span>
+                            </label>
+                            <label class="flex items-center p-3 border border-white/10 rounded-lg cursor-pointer bg-black/20 hover:border-sheikah-blue transition">
+                                <input type="radio" name="cropType" value="premium" onchange="updateManualBox()">
+                                <span class="ml-3 text-xs text-gray-300 font-mono">高级A+ (1464x600)</span>
+                            </label>
+                        </div>
+                        <div class="bg-black/20 p-4 rounded-xl border border-white/5">
+                            <div class="flex justify-between items-center mb-2">
+                                <label class="text-[10px] text-gray-400 uppercase font-mono">缩放比例</label>
+                                <span id="cropWidthPercentVal" class="text-xs text-sheikah-blue font-bold">50%</span>
+                            </div>
+                            <input type="range" id="cropWidthPercent" min="10" max="100" value="50" oninput="document.getElementById('cropWidthPercentVal').innerText=this.value+'%'; updateManualBox();" class="w-full accent-sheikah-blue">
+                        </div>
+                        <button onclick="executeManualCrop()" id="manualCropBtn" class="w-full py-4 rounded-xl transition-all v13-primary">执行 4 连切</button>
+                    </div>
+
+                    <div class="flex-grow flex flex-col min-h-0">
+                        <div class="flex justify-between items-center mb-2">
+                            <h3 class="text-xs text-gray-400 font-mono uppercase">裁切结果预览</h3>
+                            <span id="cropResultCount" class="text-[10px] text-gray-500">READY</span>
+                        </div>
+                        <div id="cropResultsGrid" class="flex-grow overflow-y-auto grid grid-cols-2 gap-2 pr-2 custom-scrollbar content-start">
+                            <!-- Thumbs here -->
+                        </div>
+                    </div>
+
+                    <button onclick="downloadAllCrops()" class="w-full py-3 rounded-xl transition-all flex items-center justify-center gap-2 v13-white">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+                        打包下载全部
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div id="inpaintModal" class="prompt-modal-overlay">
+            <div class="prompt-modal-box" style="width: 85vw; max-width: 1200px; display: flex; flex-direction: column; gap: 1rem;">
+                <h3 class="text-xl text-zonai-yellow mb-2 font-black tracking-widest uppercase flex items-center justify-between">
+                    <span>🖌️ 局部重绘 <span id="inpaintSlotTitle" class="text-white text-sm ml-2"></span></span>
+                    
+                    <div id="historyControls" class="flex items-center gap-4 text-sm font-mono text-sheikah-blue hidden">
+                        <button onclick="prevHistory()" class="hover:text-zonai-yellow transition">◀ 倒转</button>
+                        <span id="historyIndicator">V.1 / 1</span>
+                        <button onclick="nextHistory()" class="hover:text-zonai-yellow transition">前进 ▶</button>
+                    </div>
+                </h3>
+
+                <div class="flex gap-4 h-[60vh]">
+                    <div class="relative flex-grow bg-black/50 border border-zonai-yellow/30 rounded-xl overflow-hidden flex justify-center items-center" id="canvasContainer">
+                        <img id="inpaintBaseImg" src="" crossorigin="anonymous" class="absolute max-w-full max-h-full object-contain pointer-events-none" />
+                        <canvas id="inpaintCanvas" class="absolute cursor-crosshair touch-none"></canvas>
+                    </div>
+
+                    <div class="w-80 flex flex-col gap-4">
+                        <div class="p-4 bg-black/40 border border-sheikah-blue/30 rounded-xl">
+                            <label class="text-xs text-sheikah-blue font-mono tracking-widest block mb-2">画笔粗细 / BRUSH SIZE</label>
+                            <input type="range" id="brushSize" min="5" max="100" value="30" class="w-full mb-4" style="accent-color: var(--zonai-teal);">
+                            <div class="flex gap-2">
+                                <button onclick="undoBrush()" class="action-mini-btn flex-1">↩️ 撤销</button>
+                                <button onclick="clearCanvas()" class="action-mini-btn flex-1 text-red-400 border-red-400">🗑️ 清空</button>
+                            </div>
+                        </div>
+
+                        <div class="p-4 bg-black/40 border border-sheikah-blue/30 rounded-xl">
+                            <label class="text-xs text-sheikah-blue font-mono tracking-widest block mb-2">画笔颜色 / INK COLOR</label>
+                            <div class="flex gap-3">
+                                <button onclick="changeBrushColor('#FF3333')" class="w-8 h-8 rounded-full bg-[#FF3333] border-2 border-white/50 focus:border-white hover:scale-110 transition"></button>
+                                <button onclick="changeBrushColor('#000000')" class="w-8 h-8 rounded-full bg-black border-2 border-white/50 focus:border-white hover:scale-110 transition"></button>
+                                <button onclick="changeBrushColor('#00FFC5')" class="w-8 h-8 rounded-full bg-zonai-teal border-2 border-white/50 focus:border-white hover:scale-110 transition"></button>
+                                <button onclick="changeBrushColor('#FFFFFF')" class="w-8 h-8 rounded-full bg-white border-2 border-white/50 focus:border-white hover:scale-110 transition"></button>
+                            </div>
+                        </div>
+
+                        <div class="p-4 bg-black/40 border border-sheikah-blue/30 rounded-xl flex-grow flex flex-col">
+                            <label class="text-xs text-sheikah-blue font-mono tracking-widest block mb-2">重绘指令 / NEW PROMPT</label>
+                            <button onclick="fillSizeFixPrompt('inpaintPrompt')" class="text-left text-[10px] text-zonai-yellow/90 hover:text-zonai-yellow bg-zonai-yellow/10 border border-zonai-yellow/30 rounded-lg px-2 py-1.5 mb-2 leading-relaxed font-['PingFang SC'] transition" title="点击自动填入产品大小修正指令">📏 <strong>产品大小不对？</strong>红笔圈住产品 → 青绿色笔画一个目标大小的圈 → 点我填入修正指令</button>
+                            <textarea id="inpaintPrompt" class="flex-grow sheikah-input resize-none text-sm custom-scrollbar" placeholder="例如：把红圈里的项链换成纯金材质，保持高光..."></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal-btn-group mt-2">
+                    <button onclick="sendToEditStudio()" class="modal-btn modal-btn-cancel text-zonai-yellow" style="border-color: rgba(230,200,80,0.5); margin-right: auto;" title="把这张图带到编辑模式：上传正确产品素材，保风格换主体">🔄 送入编辑模式</button>
+                    <button onclick="closeInpaintModal()" class="modal-btn modal-btn-cancel">取消</button>
+                    <button onclick="sendInpaintTask()" class="modal-btn modal-btn-confirm flex items-center gap-2">
+                        确认重绘
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <nav class="sidebar-categories">
+            <div id="nav-dash" class="category-icon active" data-label="工作台" title="工作台：填写产品信息、上传参考图、生成" onclick="switchView('dashboard', this)"><svg width="45" height="45" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div>
+            <div id="nav-notes" class="category-icon" data-label="图库" title="快速 / 大师模式的生成结果" onclick="switchView('adventure-log', this)"><svg width="45" height="45" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
+            <div id="nav-ultra" class="category-icon" data-label="极速" onclick="switchView('ultra-log', this)" title="极速飙车模式的生成结果"><svg width="45" height="45" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
+            <div id="nav-edit" class="category-icon" data-label="编辑" onclick="switchView('edit-studio', this)" title="编辑模式：保留风格、替换产品"><svg width="45" height="45" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg></div>
+            <div id="nav-rating" class="category-icon" data-label="评价" onclick="showRatingModal()" title="评价本次生成，帮助模型进步"><svg width="45" height="45" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg></div>
+            <div id="nav-partners" class="category-icon" data-label="合作" onclick="switchView('partners', this)" title="更多好产品 · 合作展示"><svg width="45" height="45" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="4" width="20" height="16" rx="2.5"/><path d="M7 4v16M17 4v16M2 9h5M2 15h5M17 9h5M17 15h5"/></svg><span class="partner-dot" id="partnerDot"></span></div>
+        </nav>
+
+        <div class="main-content">
+            <section id="view-dashboard" class="dashboard-view">
+                <header class="ws-header">
+                    <div class="ws-title-wrap">
+                        <img src="3F3F3F2F3F.png" class="header-logo-img" onerror="this.style.display='none'">
+                        <div>
+                            <h2 class="text-5xl text-zonai-teal italic game-title tracking-wider">工作台</h2>
+                            <span class="ws-subtitle">AUPlus Visual Studio</span>
+                        </div>
+                    </div>
+                    <div class="ws-toolbar">
+                        <span id="wpHint" class="wp-hint" style="display:none">
+                            <span class="wp-hint-text">✨ 戳这里能换壁纸、调特效——这么酷炫，确定不试试？</span>
+                            <span class="wp-hint-arrow">👉</span>
+                            <button class="wp-hint-close" onclick="wpHintAskClose(event)" title="关闭提示">✕</button>
+                        </span>
+                        <button onclick="toggleWpPanel(event)" id="wpBtn" class="wp-btn" title="更换桌面壁纸"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="1.5"/><path d="M4 18l5-5 4 4 3-3 4 4"/></svg><span>壁纸</span></button>
+                        <span id="newbieTourTip" class="tour-tip-badge hidden">第一次使用必读 <span class="tour-tip-arrow">👉</span></span>
+                        <button onclick="startNewbieTour()" id="newbieTourBtn"
+                            class="wp-btn"
+                            title="再看一次新手引导">
+                            <span class="text-base leading-none">📘</span>
+                            <span class="tracking-widest font-bold">新手引导</span>
+                        </button>
+                        <div class="ws-status" title="与生图服务连接正常">
+                             <span class="dot"></span>
+                             <span>已连接</span><span id="gameTime">12:00 PM</span>
+                        </div>
+                        <div class="ws-credits">
+                             <span id="creditDisplay" onclick="openOrdersModal()" style="cursor:pointer;color:var(--zonai-yellow);font-variant-numeric:tabular-nums;" title="点击查看充值记录 / 查账">⚡ -- 点</span>
+                             <button onclick="openRechargeModal()" id="rechargeBtn" title="点数不够？点这里充值" class="rc-topup-btn">＋ 充值</button>
+                        </div>
+                    </div>
+                </header>
+
+                <div class="yahaha-strip"><img src="TWW_Koroks_Artwork.png" class="yahaha-img" onerror="this.style.display='none'"></div>
+
+                <div class="workspace-grid">
+                    <div class="panel-glass">
+                        <h3 class="text-sm text-zonai-teal mb-3 italic game-title uppercase tracking-widest flex items-center shrink-0">
+                            1 · 产品信息
+                            <div class="guide-tooltip" id="tip-info-icon">
+                                <svg class="w-6 h-6 text-zonai-yellow transition tooltip-icon animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                <div class="tooltip-content text-zonai-yellow">
+                                    <strong class="block mb-2 text-white text-base">📘 填写技巧</strong>
+                                    <strong class="text-white">1. 卖点一条一行，别写一大段</strong><br>
+                                    大段文字会稀释重点，AI 拿到的信息越集中，越不容易出幻觉。<br><br>
+                                    <strong class="text-white">2. 有参数一定写具体数字</strong><br>
+                                    尺寸、容量、重量都写上。AI 对产品大小没概念时，最容易把比例画错。<br><br>
+                                    <strong class="text-white">3. 冷门产品必须写清使用场景</strong><br>
+                                    AI 的弱点就是不认识冷门产品，不知道怎么用就会在场景上翻车。写清「给谁用、在哪用、解决什么问题」。<br><br>
+                                    <strong class="text-white">4. ⚠️ 卖点里不要写视觉指令</strong><br>
+                                    配色、字体、光线、构图、画面风格——这些由系统内置的 <strong class="text-white">4 位视觉专家</strong>（色彩 / 美学 / 字体 / 亚马逊合规）决定。你写了会覆盖他们的专业判断，<strong class="text-white">出图反而更差</strong>。<br>
+                                    真有硬性约束就写到「强制设计要求」，而且越少越好。
+                                </div>
+                            </div>
+                            <div class="newbie-ui ml-3 hidden items-center gap-3">
+                                <span class="text-[14px] font-black text-zonai-yellow newbie-glow tracking-widest bg-zonai-teal/20 px-3 py-1 rounded border border-zonai-yellow">⬅️ 悬停查看！新手必看！</span>
+                                <button onclick="dismissNewbie()" class="px-3 py-1 rounded border border-zonai-yellow text-zonai-yellow text-[10px] hover:bg-zonai-yellow hover:text-black transition">我已了解</button>
+                            </div>
+                        </h3>
+                        
+                        <h3 class="text-[10px] text-gray-500 font-mono tracking-widest mt-4 mb-2 pl-1 border-l-2 border-[#ff3366]">GENERATION MODE</h3>
+
+                        <!-- 隐藏的原生 select，供 JS 读值用 -->
+                        <select id="generationMode" class="hidden">
+                            <option value="ultra_fast">极速飙车模式</option>
+                            <option value="fast" selected>快速设计模式</option>
+                            <option value="master">大师设计模式</option>
+                        </select>
+
+                        <!-- 模式选择器 + 说明 + 表单一起纳入滚动区，避免头部固定元素把下方
+                             选择控件挤到几乎不可见、滚不动（国家选择器等曾被压没） -->
+                        <div class="scroll-container flex flex-col gap-3" style="padding-top:2px;">
+
+                        <!-- 模式选择器 v2：快速 / 大师 为主（分段控件），极速飙车降级为小按钮 + 铺货警示 -->
+                        <div id="modeSelectorUI" class="mode-selector mb-1">
+                            <div class="mode-seg" id="modeSeg">
+                                <span class="mode-thumb" id="modeThumb" aria-hidden="true"></span>
+                                <button type="button" onclick="setModeUI('fast')" id="modeBtn_fast" class="mode-btn" data-mode="fast">
+                                    <span class="mode-dot"></span>
+                                    <span class="mode-text"><span class="mode-name">快速设计</span><span class="mode-sub">卖点信息密集</span></span>
+                                </button>
+                                <button type="button" onclick="setModeUI('master')" id="modeBtn_master" class="mode-btn" data-mode="master">
+                                    <span class="mode-dot"></span>
+                                    <span class="mode-text"><span class="mode-name">大师设计</span><span class="mode-sub">光影质感场景</span></span>
+                                </button>
+                            </div>
+                            <button type="button" onclick="setModeUI('ultra_fast')" id="modeBtn_ultra_fast" class="mode-btn mode-btn--ultra" data-mode="ultra_fast" title="仅适用于完全不追求质量的极速铺货">
+                                <span class="mode-dot"></span>
+                                <span class="mode-name">极速飙车</span>
+                                <span class="mode-sub">合图输出 · 铺货专用</span>
+                            </button>
+                            <div class="mode-warn" id="ultraModeWarn" role="note">
+                                <strong>极速飙车只适合完全不追求质量的极速铺货。</strong>它跳过构思和 4 位视觉专家直接出图，细节与跨图一致性会明显打折。日常出图请用快速或大师模式。
+                            </div>
+                        </div>
+
+                        <div id="modeDescription" class="text-[10px] text-gray-400 mb-4 px-2 leading-relaxed">一次性成型超级快速，2-3分钟出图</div>
+
+                            <select id="designScope" class="sheikah-input text-sm font-mono font-bold custom-scrollbar shrink-0" onchange="handleScopeChange()">
+                                <option value="" disabled selected>请选择图文输出范围…</option>
+                                <option value="main_and_6">主幅图7张</option>
+                                <option value="main_6_old_aplus">主幅图7张 + 5张老A+</option>
+                                <option value="main_6_premium_aplus">主幅图7张 + 5张高级A+</option>
+                                <option value="old_aplus_only">纯5张老A+ 模块</option>
+                                <option value="premium_aplus_only">纯5张高级A+ 模块</option>
+                                <option value="thd_only">THD要求图 7张 (无字/无人物)</option>
+                                <option value="custom">🎛️ 自定义方案（数量/逐张要求/参考图）</option>
+                            </select>
+                            <button id="customEditBtn" onclick="openCustomModal()" style="display:none; color:#c084fc; border:1px dashed rgba(192,132,252,0.45); background:rgba(192,132,252,0.08); border-radius:0.6rem; padding:6px 10px;" class="text-xs font-mono font-bold shrink-0">🎛️ 编辑自定义方案（数量/要求/参考图）</button>
+                            <div id="scopeCostDisplay" class="text-xs font-mono mt-1 text-zonai-yellow hidden px-1"></div>
+
+                            <!-- ★ 5 控制旋钮（从 YIMU 内部版移植） -->
+                            <select id="modelChoice" class="sheikah-input text-sm font-mono font-bold custom-scrollbar shrink-0" onchange="saveAppState()" title="快速模式与大师模式通用：选择底层生图模型">
+                                <option value="gpt-image-2" selected>模型 · GPT Image 2</option>
+                                <option value="gpt-image-2.5-sunburst">模型 · GPT Image 2.5 Sunburst</option>
+                            </select>
+
+                            <select id="infoDensity" class="sheikah-input text-sm font-mono font-bold custom-scrollbar shrink-0" onchange="saveAppState()" title="仅快速模式生效：控制文字与图标的信息密度">
+                                <option value="high" selected>信息密度 · 高（图标文字密集）</option>
+                                <option value="medium">信息密度 · 中（适度留白）</option>
+                                <option value="low">信息密度 · 低（呼吸感/摄影优先）</option>
+                            </select>
+
+                            <select id="sceneIntensity" class="sheikah-input text-sm font-mono font-bold custom-scrollbar shrink-0" style="color:#fb923c; border-color:rgba(251,146,60,0.35); background-color:rgba(0,0,0,0.8);" onchange="saveAppState()" title="场景化倾向：调整卖点用『真实使用场景』演示的比重，与信息密度完全独立（场景化高时文字照样可多）。默认『原版』= 与改动前一模一样。快速模式即时生效；大师模式随后接线。">
+                                <option value="original" selected>场景化 · 原版（默认）</option>
+                                <option value="low">场景化 · 轻（少量场景演示）</option>
+                                <option value="medium">场景化 · 中（约半数卖点用场景）</option>
+                                <option value="high">场景化 · 强（尽量用场景演示）</option>
+                            </select>
+
+                            <select id="genChannel" class="sheikah-input text-sm font-mono font-bold custom-scrollbar shrink-0" style="color:#f87171; border-color:rgba(248,113,113,0.5); background-color:rgba(0,0,0,0.8);" onchange="onChannelChange()" title="生图渠道：默认通道（速度快、成本低）；备用通道（抗超长提示词，默认通道出图卡住/失败时切到这个重试）。备用通道与默认通道机制不同：它会等整套图全部生成完毕后一次性显示，中途看不到进度是正常的（默认通道是一张张点亮）。正常约 2-3 分钟；并发被占满时会排队重试、耗时变长。仅影响生图这一步，不影响构思。">
+                                <option value="kie" selected>渠道 · 默认通道（快、省）</option>
+                                <option value="flyfus">渠道 · 备用通道（整套一起出）</option>
+                            </select>
+
+                            <select id="categoryChoice" class="sheikah-input text-sm font-mono font-bold custom-scrollbar shrink-0" onchange="onCategoryChange()" title="选择产品大类以启用专项配额与参考图引导">
+                                <option value="general" selected>产品类型 · 通用（默认）</option>
+                                <option value="supplement_bottle">产品类型 · 保健品/瓶装补剂</option>
+                                <option value="structural_product">产品类型 · 结构件 / 支架 / 家具</option>
+                            </select>
+
+                            <select id="targetMarket" class="sheikah-input text-sm font-mono font-bold custom-scrollbar shrink-0" onchange="saveAppState()">
+                                <optgroup label="🌎 北美及拉美战区 (Americas)">
+                                    <option value='{"market":"美国", "lang":"English"}'>🇺🇸 美国 (US / English)</option>
+                                    <option value='{"market":"加拿大", "lang":"English"}'>🇨🇦 加拿大 (CA / English)</option>
+                                    <option value='{"market":"墨西哥", "lang":"Español"}'>🇲🇽 墨西哥 (MX / Español)</option>
+                                </optgroup>
+                                <optgroup label="🇪🇺 欧洲核心战区 (Europe)">
+                                    <option value='{"market":"英国", "lang":"English"}'>🇬🇧 英国 (UK / English)</option>
+                                    <option value='{"market":"德国", "lang":"Deutsch"}'>🇩🇪 德国 (DE / Deutsch)</option>
+                                    <option value='{"market":"法国", "lang":"Français"}'>🇫🇷 法国 (FR / Français)</option>
+                                    <option value='{"market":"意大利", "lang":"Italiano"}'>🇮🇹 意大利 (IT / Italiano)</option>
+                                    <option value='{"market":"西班牙", "lang":"Español"}'>🇪🇸 西班牙 (ES / Español)</option>
+                                </optgroup>
+                                <optgroup label="🌏 亚太及华语战区 (Asia & CN)">
+                                    <option value='{"market":"日本", "lang":"日本語"}'>🇯🇵 日本 (JP / 日本语)</option>
+                                    <option value='{"market":"韩国", "lang":"한국어"}'>🇰🇷 韩国 (KR / 한국어)</option>
+                                    <option value='{"market":"中国大陆", "lang":"简体中文"}'>🇨🇳 中国大陆 (CN / 简体中文)</option>
+                                    <option value='{"market":"港澳台及海外华侨", "lang":"繁体中文"}'>🇭🇰 港澳台 (HK&TW / 繁體中文)</option>
+                                </optgroup>
+                                <optgroup label="🐪 中东新兴战区 (Middle East)">
+                                    <option value='{"market":"中东地区", "lang":"العربية (Arabic)"}'>🇦🇪 中东地区 (Middle East / العربية)</option>
+                                </optgroup>
+                                <optgroup label="🌐 全球战略 (Global)">
+                                    <option value='{"market":"全球通用(偏欧美审美)", "lang":"English"}'>🌍 全球通用 (Global / English)</option>
+                                </optgroup>
+                            </select>
+
+                            <select id="modelEthnicity" class="sheikah-input text-sm font-mono font-bold custom-scrollbar shrink-0" onchange="saveAppState()" title="图里出现模特/人物/手部时用什么人种。默认跟着上面选的目标地区走">
+                                <option value="auto" selected>模特人种 · 跟随目标地区（默认）</option>
+                                <option value="caucasian">模特人种 · 欧美白人</option>
+                                <option value="black">模特人种 · 非裔</option>
+                                <option value="hispanic">模特人种 · 拉丁裔</option>
+                                <option value="east_asian">模特人种 · 东亚</option>
+                                <option value="southeast_asian">模特人种 · 东南亚</option>
+                                <option value="south_asian">模特人种 · 南亚</option>
+                                <option value="middle_eastern">模特人种 · 中东</option>
+                                <option value="mixed">模特人种 · 多元混合</option>
+                            </select>
+
+                            <input type="text" id="prodName" class="sheikah-input text-sm shrink-0 fe-field" placeholder="产品名称及物理特征 · 点击展开填写" oninput="saveAppState()" readonly onclick="openFieldEditor('prodName')">
+                            <textarea id="prodDesc" class="flex-grow sheikah-input resize-none leading-relaxed text-sm min-h-[80px] fe-field" placeholder="详细核心卖点描述 · 点击展开填写" oninput="saveAppState()" readonly onclick="openFieldEditor('prodDesc')"></textarea>
+                            
+                            <p class="text-[10px] text-red-400/80 mb-1 font-mono tracking-wider shrink-0 mt-2">⚠️ 如果有强制要求请写在此处，模型会绝对优先执行该权重：</p>
+                            <textarea id="strictReq" class="h-16 shrink-0 sheikah-input resize-none leading-relaxed text-sm border-red-500/50 focus:border-red-500 fe-field" placeholder="[选填] 强制设计要求 · 点击展开填写" oninput="saveAppState()" readonly onclick="openFieldEditor('strictReq')"></textarea>
+                            <label id="textDepthRow" class="flex items-center gap-2 shrink-0 mt-2 cursor-pointer select-none" title="开：标题巨字与产品前后叠压，制造空间穿插感（主图/尺寸图/无字图不受影响）；关：文字不压产品，按常规排版">
+                                <input type="checkbox" id="textDepth" class="accent-red-500 w-4 h-4" onchange="saveAppState()">
+                                <span class="text-[11px] font-mono tracking-wider text-red-300/90">✦ 文字穿插（开＝强制文字与产品前后穿插，关＝不穿插）</span>
+                            </label>
+
+                        </div>
+
+                        <button onclick="summonAgent()" id="agentBtn" class="btn-agent mt-4 shrink-0">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 1 0 10 10H12V2z"/><path d="M12 12 2.1 7.1"/><path d="M12 12l9.9 4.9"/></svg>
+                            一键构思
+                        </button>
+                    </div>
+
+                    <div class="panel-glass flex flex-col" id="dropZoneContainer">
+                        <div class="flex justify-between items-center mb-1 flex-shrink-0">
+                            <h3 class="text-sm text-zonai-teal italic game-title uppercase tracking-widest flex items-center">
+                                2 · 参考图
+                                <button type="button" onclick="openSampleGuide()" title="看样片：什么样的图能出好结果" class="oc-chip-btn">📸 看样片</button>
+                                <div class="guide-tooltip" id="tip-image-icon">
+                                    <svg class="w-6 h-6 text-zonai-yellow transition tooltip-icon animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                    <div class="tooltip-content text-zonai-yellow">
+                                        <strong class="block mb-2 text-white text-base">📘 上传技巧</strong>
+                                        <strong class="text-white">1. ⚠️ 一定要传对分类（最重要）</strong><br>
+                                        你点哪个框上传，图片就会被打上哪个分类标签。系统靠这个标签做两件事：<br>
+                                        · 标为「<strong class="text-white">产品主体图</strong>」的会被当成<strong class="text-white">产品保真锚点</strong>，全程防止产品被画走样<br>
+                                        · 智能匹配会按标签和画面内容，把合适的素材分配给对应的卖点图<br>
+                                        <strong class="text-white">传错分类＝匹配错乱</strong>，出图质量直接下降。<br><br>
+                                        <strong class="text-white">2. 产品主体图：背景越干净越好</strong><br>
+                                        可以不高清、不精致（Agent 会重新打光、渲染材质），但<strong class="text-white">细节必须看得清</strong>——拍糊了 AI 只能瞎猜。<strong class="text-white">只传 1 张最能代表整体外观的</strong>（系统只取第 1 张当保真锚点），其他角度请放到对应分类。<br><br>
+                                        <strong class="text-white">3. 别指望一张图让 AI 脑补全部</strong><br>
+                                        AI 不会凭空造出你没给的细节。偶尔成功只是因为那个品类在模型里见得多而已。<br><br>
+                                        <strong class="text-white">4. 最多 8 张，大小不限</strong><br>
+                                        系统会自动压缩到最适合 AI 识别的尺寸，手机直拍的大图直接传即可。
+                                    </div>
+                                </div>
+                                <div class="newbie-ui ml-3 hidden items-center gap-3">
+                                    <span class="text-[14px] font-black text-zonai-yellow newbie-glow tracking-widest bg-zonai-teal/20 px-3 py-1 rounded border border-zonai-yellow">⬅️ 悬停查看！新手必看！</span>
+                                    <button onclick="dismissNewbie()" class="px-3 py-1 rounded border border-zonai-yellow text-zonai-yellow text-[10px] hover:bg-zonai-yellow hover:text-black transition">我已了解</button>
+                                </div>
+                            </h3>
+                            <span class="text-[10px] text-zonai-teal/60 font-mono tracking-widest" id="uploadCountIndicator">0/8</span>
+                        </div>
+                        
+                       <p class="text-[13px] font-semibold mb-1 shrink-0" style="color: var(--text-2);">图片最多 8 张，大小不限（系统自动压缩，不影响识别）。点击格子或直接拖拽图片传入。</p>
+
+                        <input type="file" id="hiddenFileInput" multiple accept="image/*" class="hidden" onchange="handleDirectUpload(this)">
+                        
+                        <div class="ref-grid">
+                            <div onclick="openUploader('产品主体图')" ondragover="preventDefaults(event); this.classList.add('bg-zonai-teal/30', 'border-zonai-teal')" ondragleave="this.classList.remove('bg-zonai-teal/30', 'border-zonai-teal')" ondrop="handleDirectDrop(event, '产品主体图'); this.classList.remove('bg-zonai-teal/30', 'border-zonai-teal')" class="group relative border border-dashed border-white/20 hover:border-zonai-teal bg-black/40 hover:bg-zonai-teal/10 rounded-lg h-14 flex justify-center items-center cursor-pointer transition overflow-hidden">
+                                <span class="text-[13px] font-black text-gray-200 group-hover:opacity-0 transition-opacity tracking-wide"><span class="cat-dot" style="background:#30D158;"></span>产品主体图</span>
+                                <div class="absolute inset-0 bg-black/95 px-3 hidden group-hover:flex items-center justify-center text-[11px] text-zonai-teal text-center z-10 leading-relaxed font-mono">
+                                    展示产品主体，有多角度更好，不要把细节图和配件之类的弄进来
+                                </div>
+                            </div>
+                            
+                            <div onclick="openUploader('功能展示图')" ondragover="preventDefaults(event); this.classList.add('bg-sheikah-blue/30', 'border-sheikah-blue')" ondragleave="this.classList.remove('bg-sheikah-blue/30', 'border-sheikah-blue')" ondrop="handleDirectDrop(event, '功能展示图'); this.classList.remove('bg-sheikah-blue/30', 'border-sheikah-blue')" class="group relative border border-dashed border-white/20 hover:border-sheikah-blue bg-black/40 hover:bg-sheikah-blue/10 rounded-lg h-14 flex justify-center items-center cursor-pointer transition overflow-hidden">
+                                <span class="text-[13px] font-black text-gray-200 group-hover:opacity-0 transition-opacity tracking-wide"><span class="cat-dot" style="background:#0A84FF;"></span>功能展示图</span>
+                                <div class="absolute inset-0 bg-black/95 px-3 hidden group-hover:flex items-center justify-center text-[11px] text-sheikah-blue text-center z-10 leading-relaxed font-mono">
+                                    展示产品功能性特写
+                                </div>
+                            </div>
+                            
+                            <div onclick="openUploader('材质细节图')" ondragover="preventDefaults(event); this.classList.add('bg-[#B026FF]/30', 'border-[#B026FF]')" ondragleave="this.classList.remove('bg-[#B026FF]/30', 'border-[#B026FF]')" ondrop="handleDirectDrop(event, '材质细节图'); this.classList.remove('bg-[#B026FF]/30', 'border-[#B026FF]')" class="group relative border border-dashed border-white/20 hover:border-[#B026FF] bg-black/40 hover:bg-[#B026FF]/10 rounded-lg h-14 flex justify-center items-center cursor-pointer transition overflow-hidden">
+                                <span class="text-[13px] font-black text-gray-200 group-hover:opacity-0 transition-opacity tracking-wide"><span class="cat-dot" style="background:#BF5AF2;"></span>材质细节图</span>
+                                <div class="absolute inset-0 bg-black/95 px-3 hidden group-hover:flex items-center justify-center text-[11px] text-[#B026FF] text-center z-10 leading-relaxed font-mono">
+                                    展示产品材质细节
+                                </div>
+                            </div>
+                            
+                            <div onclick="openUploader('尺寸图')" ondragover="preventDefaults(event); this.classList.add('bg-white/30', 'border-white')" ondragleave="this.classList.remove('bg-white/30', 'border-white')" ondrop="handleDirectDrop(event, '尺寸图'); this.classList.remove('bg-white/30', 'border-white')" class="group relative border border-dashed border-white/20 hover:border-white bg-black/40 hover:bg-white/10 rounded-lg h-14 flex justify-center items-center cursor-pointer transition overflow-hidden">
+                                <span class="text-[13px] font-black text-gray-200 group-hover:opacity-0 transition-opacity tracking-wide"><span class="cat-dot" style="background:#E5E5EA;"></span>尺寸图</span>
+                                <div class="absolute inset-0 bg-black/95 px-3 hidden group-hover:flex items-center justify-center text-[11px] text-white text-center z-10 leading-relaxed font-mono">
+                                    展示产品大小，最好旁边有手或真人大小的剪影做对比
+                                </div>
+                            </div>
+                            
+                            <div onclick="openUploader('互动图')" ondragover="preventDefaults(event); this.classList.add('bg-zonai-yellow/30', 'border-zonai-yellow')" ondragleave="this.classList.remove('bg-zonai-yellow/30', 'border-zonai-yellow')" ondrop="handleDirectDrop(event, '互动图'); this.classList.remove('bg-zonai-yellow/30', 'border-zonai-yellow')" class="group relative border border-dashed border-white/20 hover:border-zonai-yellow bg-black/40 hover:bg-zonai-yellow/10 rounded-lg h-14 flex justify-center items-center cursor-pointer transition overflow-hidden">
+                                <span class="text-[13px] font-black text-gray-200 group-hover:opacity-0 transition-opacity tracking-wide"><span class="cat-dot" style="background:#FFD60A;"></span>互动图</span>
+                                <div class="absolute inset-0 bg-black/95 px-3 hidden group-hover:flex items-center justify-center text-[11px] text-zonai-yellow text-center z-10 leading-relaxed font-mono">
+                                    产品与人互动与环境互动的图片
+                                </div>
+                            </div>
+                            
+                            <div onclick="openUploader('配件图')" ondragover="preventDefaults(event); this.classList.add('bg-orange-500/30', 'border-orange-500')" ondragleave="this.classList.remove('bg-orange-500/30', 'border-orange-500')" ondrop="handleDirectDrop(event, '配件图'); this.classList.remove('bg-orange-500/30', 'border-orange-500')" class="group relative border border-dashed border-white/20 hover:border-orange-500 bg-black/40 hover:bg-orange-500/10 rounded-lg h-14 flex justify-center items-center cursor-pointer transition overflow-hidden">
+                                <span class="text-[13px] font-black text-gray-200 group-hover:opacity-0 transition-opacity tracking-wide"><span class="cat-dot" style="background:#FF9F0A;"></span>配件图</span>
+                                <div class="absolute inset-0 bg-black/95 px-3 hidden group-hover:flex items-center justify-center text-[11px] text-orange-500 text-center z-10 leading-relaxed font-mono">
+                                    产品附带的配件放这里
+                                </div>
+                            </div>
+                            
+                            <div onclick="openUploader('参数说明图')" ondragover="preventDefaults(event); this.classList.add('bg-pink-500/30', 'border-pink-500')" ondragleave="this.classList.remove('bg-pink-500/30', 'border-pink-500')" ondrop="handleDirectDrop(event, '参数说明图'); this.classList.remove('bg-pink-500/30', 'border-pink-500')" class="group relative border border-dashed border-white/20 hover:border-pink-500 bg-black/40 hover:bg-pink-500/10 rounded-lg h-14 flex justify-center items-center cursor-pointer transition overflow-hidden">
+                                <span class="text-[13px] font-black text-gray-200 group-hover:opacity-0 transition-opacity tracking-wide"><span class="cat-dot" style="background:#FF375F;"></span>参数说明图</span>
+                                <div class="absolute inset-0 bg-black/95 px-3 hidden group-hover:flex items-center justify-center text-[11px] text-pink-500 text-center z-10 leading-relaxed font-mono">
+                                    产品的参数图片
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="materialPreviewGrid" class="grid grid-cols-4 gap-2 scroll-container content-start border-t border-white/10 pt-3"></div>
+                    </div>
+
+                    <div class="panel-glass h-full hidden">
+                        <h3 class="text-sm text-zonai-teal mb-3 italic game-title uppercase tracking-widest shrink-0">3 · 设计指令</h3>
+                        <textarea id="sopText" class="scroll-container sheikah-input border-none bg-black/40 resize-none leading-relaxed text-[11px] font-mono" placeholder="等待 AI 生成设计指令，或手动填写…" oninput="saveAppState()"></textarea>
+                    </div>
+                </div>
+
+                <div class="cta-row">
+                    <button onclick="triggerGeneration()" id="mainBtn" class="btn-ultrahand-main" disabled>
+                        <img src="totk-what-were-your-favorite-ultrahand-creations-v0-c6lyir7oo06e1.png" class="ultrahand-icon-fixed" onerror="this.style.display='none'">
+                        <span>开始生成</span>
+                    </button>
+                    <div class="cta-hint" id="ctaHint">先填好产品信息、上传参考图，点「一键构思」；设计指令生成后这里会亮起</div>
+                    <div class="cta-ultra-note" id="ctaUltraNote">⚡ 当前是极速飙车模式（铺货专用）：跳过构思直接出图，不追求质量。要好图请切回快速 / 大师。</div>
+                    <div class="kbd-hint" id="kbdHint"></div>
+                    <div class="link-parallel-img"></div>
+                </div>
+            </section>
+
+            <section id="view-adventure-log" class="hidden h-full flex results-view overflow-hidden relative">
+                <div class="results-side flex flex-col relative z-20">
+                    <header class="mb-6">
+                        <h2 class="text-6xl text-sheikah-blue italic game-title tracking-widest">快速模式与大师模式</h2>
+                        <p class="text-zonai-yellow font-black text-sm mt-2 tracking-wide animate-pulse">⚡ 重绘单张图片 = 2点</p>
+                        <span class="text-[10px] text-sheikah-blue/40 block mt-4 uppercase tracking-[0.4em] font-mono">GENERATION LOG</span>
+                    </header>
+                    <div id="progressStatus" class="flex-grow status-box-enhanced font-mono text-xs space-y-4">
+                        <div class="text-sheikah-blue flex items-center gap-2"><div class="w-2 h-2 bg-sheikah-blue animate-ping"></div><span>状态 · 已连接</span></div>
+                        <div id="logContent" class="text-sheikah-blue/60 leading-relaxed font-['PingFang SC']">等待任务输入…</div>
+                        <div class="mt-4 pt-4 border-t border-sheikah-blue/20 text-[#FFD60A] flex items-start gap-2">
+    <svg class="w-4 h-4 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+    <span class="text-[10px] leading-relaxed font-['PingFang SC'] tracking-wide">任务和图片保存在本机。生成通过图片生成服务处理，费用以实际服务账单为准；出错原因会显示在任务提示中。</span>
+</div>
+<div class="mt-4 pt-4 border-t border-sheikah-blue/20 text-[#FFD60A] flex items-start gap-2">
+    <svg class="w-4 h-4 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+    <span class="text-[10px] leading-relaxed font-['PingFang SC'] tracking-wide">工作台的「通道状态」会显示实际图片通道。未受理的任务可检查配置后重试。</span>
+</div>
+                        <div class="mt-4 pt-4 border-t border-sheikah-blue/20 text-[#00FF00] flex items-start gap-2 animate-[pulse_2s_ease-in-out_infinite]" style="">
+    <svg class="w-4 h-4 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+    <span class="text-[10px] leading-relaxed font-['PingFang SC'] tracking-wide">请等待所有图片加载完毕后再进行重绘或编辑，以免截图失败影响评价系统。</span>
+</div>
+                    </div>
+                    <div class="master-sword-container"><img src="Weapon_Sword_070.png" id="staticSword" onerror="this.style.display='none'"></div>
+                    <div class="mt-4">
+<div onclick="batchDownloadAll()" id="batchBtnContainer" class="btn-split-container">
+                            <div class="btn-split-part btn-split-top font-mono" style="font-family:'PingFang SC', sans-serif; font-size: 1rem; font-weight: bold; letter-spacing: 0.1em; display: flex; align-items: center; justify-content: center;">一键打包下载</div>
+                            <div id="batchBtnSubtitle" class="btn-split-part btn-split-bottom font-mono" style="font-size: 0.65rem; color: #888;">全部成品 · 打包较慢，请耐心等待</div>
+                        </div>
+                        <!-- 📱 手机端画幅：仅"高级A+"出图后显示，基于桌面成图 i2i 重排为 1200×900（每张 1 点，失败退） -->
+                        <button onclick="generateMobileReformat()" id="mobileReformatBtn" class="hidden w-full mt-3 py-3 rounded-xl transition-all text-xs v13-primary">📱 生成手机版 (1200×900) · 1 点/张</button>
+                    </div>
+                </div>
+                
+                <div class="flex-grow z-10" id="galleryContainer" style="overflow-y:auto; min-height:0; height:100%;"></div>
+            </section>
+
+            <!-- ⚡ 极速飙车图库 view -->
+            <section id="view-ultra-log" class="hidden h-full flex results-view overflow-hidden relative">
+                <div class="results-side flex flex-col relative z-20">
+                    <header class="mb-6">
+                        <h2 class="text-6xl text-zonai-yellow italic game-title tracking-widest">极速模式</h2>
+                        <p class="text-zonai-yellow font-black text-sm mt-2 tracking-wide animate-pulse">⚡ 极速模式 · 合图生成</p>
+                        <span class="text-[10px] text-sheikah-blue/40 block mt-4 uppercase tracking-[0.4em] font-mono">Ultra Fast Engine</span>
+                    </header>
+                    <div class="flex-grow status-box-enhanced font-mono text-xs space-y-4">
+                        <div class="text-zonai-yellow flex items-center gap-2"><div class="w-2 h-2 bg-zonai-yellow animate-ping"></div><span>极速引擎 · 就绪</span></div>
+                        <div id="ultraLogContent" class="text-[#00FFC5]/60 leading-relaxed font-['PingFang SC']">等待极速任务派发...</div>
+                        <div class="mt-4 pt-4 border-t border-sheikah-blue/20 text-[#FFD60A] flex items-start gap-2">
+    <svg class="w-4 h-4 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+    <span class="text-[10px] leading-relaxed font-['PingFang SC'] tracking-wide">任务和图片保存在本机。生成通过图片生成服务处理，费用以实际服务账单为准；出错原因会显示在任务提示中。</span>
+</div>
+<div class="mt-4 pt-4 border-t border-sheikah-blue/20 text-[#FFD60A] flex items-start gap-2">
+    <svg class="w-4 h-4 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+    <span class="text-[10px] leading-relaxed font-['PingFang SC'] tracking-wide">工作台的「通道状态」会显示实际图片通道。未受理的任务可检查配置后重试。</span>
+</div>
+                    </div>
+                </div>
+                <div class="flex-grow z-10" id="ultraGalleryContainer" style="overflow-y:auto; min-height:0; height:100%;"></div>
+            </section>
+
+            <!-- ========== 🔄 编辑模式：保风格 · 换产品 ========== -->
+        <!-- 编辑模式通用圈注弹窗（底图/素材图画圈，保存时合成进图片） -->
+        <div id="editAnnModal" class="prompt-modal-overlay">
+            <div class="prompt-modal-box" style="width: 85vw; max-width: 1200px; display: flex; flex-direction: column; gap: 1rem;">
+                <h3 class="text-xl text-zonai-yellow mb-2 font-black tracking-widest uppercase">
+                    🖊️ 图片圈注 <span id="editAnnTitle" class="text-white text-sm ml-2"></span>
+                </h3>
+                <div class="flex gap-4 h-[60vh]">
+                    <div class="relative flex-grow bg-black/50 border border-zonai-yellow/30 rounded-xl overflow-hidden flex justify-center items-center">
+                        <img id="editAnnImg" src="" crossorigin="anonymous" class="absolute max-w-full max-h-full object-contain pointer-events-none" />
+                        <canvas id="editAnnCanvas" class="absolute cursor-crosshair touch-none"></canvas>
+                    </div>
+                    <div class="w-72 flex flex-col gap-4">
+                        <div class="p-4 bg-black/40 border border-sheikah-blue/30 rounded-xl">
+                            <label class="text-xs text-sheikah-blue font-mono tracking-widest block mb-2">画笔粗细 / BRUSH SIZE</label>
+                            <input type="range" id="editAnnBrushSize" min="3" max="100" value="12" class="w-full mb-4" style="accent-color: var(--zonai-teal);">
+                            <div class="flex gap-2">
+                                <button onclick="editAnnUndo()" class="action-mini-btn flex-1">↩️ 撤销</button>
+                                <button onclick="editAnnClear()" class="action-mini-btn flex-1 text-red-400 border-red-400">🗑️ 清空</button>
+                            </div>
+                        </div>
+                        <div class="p-4 bg-black/40 border border-sheikah-blue/30 rounded-xl">
+                            <label class="text-xs text-sheikah-blue font-mono tracking-widest block mb-2">画笔颜色 / INK COLOR</label>
+                            <div class="flex gap-3">
+                                <button onclick="editAnnSetColor('#FF3333')" class="w-8 h-8 rounded-full bg-[#FF3333] border-2 border-white/50 focus:border-white hover:scale-110 transition"></button>
+                                <button onclick="editAnnSetColor('#000000')" class="w-8 h-8 rounded-full bg-black border-2 border-white/50 focus:border-white hover:scale-110 transition"></button>
+                                <button onclick="editAnnSetColor('#00FFC5')" class="w-8 h-8 rounded-full bg-zonai-teal border-2 border-white/50 focus:border-white hover:scale-110 transition"></button>
+                                <button onclick="editAnnSetColor('#FFFFFF')" class="w-8 h-8 rounded-full bg-white border-2 border-white/50 focus:border-white hover:scale-110 transition"></button>
+                            </div>
+                        </div>
+                        <div class="p-4 bg-black/40 border border-white/15 rounded-xl text-[11px] text-white/50 font-['PingFang SC'] leading-relaxed flex-grow custom-scrollbar overflow-y-auto">
+                            圈注会<strong class="text-white/80">直接合成进这张图</strong>一起发给模型。<br><br>自己写指令时记得说明圈注含义（例如「红圈处是要修改的位置」），并要求成图去除笔迹；<strong class="text-white/80">产品替换预设已自带这条规则</strong>，直接圈就行。<br><br>📏 <strong class="text-zonai-yellow/90">改产品大小的经典用法</strong>：红笔圈住产品主体，再用青绿色笔画一个目标大小的圈，保存后在指令区点「📏 大小修正」——AI 会把产品缩放到青绿色圈大小，其他全部不动。
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-btn-group mt-2">
+                    <button onclick="editAnnCancel()" class="modal-btn modal-btn-cancel">取消</button>
+                    <button onclick="editAnnSave()" class="modal-btn modal-btn-confirm">✅ 保存圈注</button>
+                </div>
+            </div>
+        </div>
+
+            <section id="view-edit-studio" class="hidden h-full flex flex-col edit-view gap-4 overflow-hidden relative">
+                <div class="z-10 shrink-0">
+                    <div class="flex items-center gap-5 flex-wrap">
+                        <h2 class="text-4xl text-zonai-yellow italic game-title tracking-wider">🔄 编辑模式</h2>
+                        <div class="flex gap-2">
+                            <button id="editTabReplace" onclick="setEditStudioMode('replace')" class="px-4 py-2 rounded-xl border text-xs font-bold tracking-wider transition-all border-zonai-yellow text-zonai-yellow bg-zonai-yellow/10">🔁 产品替换</button>
+                            <button id="editTabFree" onclick="setEditStudioMode('free')" class="px-4 py-2 rounded-xl border text-xs font-bold tracking-wider transition-all border-white/20 text-white/40">🎨 自由编辑</button>
+                            <button id="editTabMobile" onclick="setEditStudioMode('mobile')" class="px-4 py-2 rounded-xl border text-xs font-bold tracking-wider transition-all border-white/20 text-white/40">📱 快速手机版 A+</button>
+                        </div>
+                    </div>
+                    <p id="editModeDesc" class="text-xs text-white/50 mt-2 font-['PingFang SC'] leading-relaxed">风格、排版都满意，但产品画错/漂移了？把那张图放这里当底图，再喂正确的产品素材图——<strong class="text-white">只换产品，其他全保留</strong>。📏 <strong class="text-white">只是大小不对？</strong>点「🖊️ 圈注底图」：红笔圈产品、青绿色笔画目标大小的圈，再点指令区「📏 大小修正」。想随便扔图自由生成？切「🎨 自由编辑」。每次生成 3 点，失败自动退回。</p>
+                </div>
+                <div id="editMainRow" class="flex-grow flex gap-8 min-h-0 z-10">
+                <!-- 左：底图（仅产品替换模式） -->
+                <div id="editReplaceCol" class="edit-base-col flex flex-col gap-4">
+                    <div>
+                    </div>
+                    <div class="relative flex-grow bg-black/50 border border-zonai-yellow/30 rounded-xl overflow-hidden flex justify-center items-center min-h-0">
+                        <img id="editBaseImg" src="" class="max-w-full max-h-full object-contain hidden">
+                        <div id="editBasePlaceholder" class="text-center text-white/40 text-xs font-['PingFang SC'] leading-loose px-8">
+                            还没有底图（<strong class="text-white">底图可选</strong>）。<br>① 在生成结果里点 <strong class="text-white">INPAINT → 🔄 送入编辑模式</strong>，把满意的那张图带过来；<br>② 或直接在下方上传 / 粘贴图片链接；<br>③ 不放底图也行——右侧只传产品素材图 + 自己写提示词，即为<strong class="text-white">自由生成</strong>。
+                        </div>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="document.getElementById('editBaseInput').click()" class="action-mini-btn flex-1 py-2">📁 上传底图</button>
+                        <button onclick="editSetBaseFromUrl()" class="action-mini-btn flex-1 py-2">🔗 粘贴图片链接</button>
+                        <button onclick="editAnnOpen({type:'base'})" class="action-mini-btn flex-1 py-2 text-zonai-yellow border-zonai-yellow" title="用彩笔在底图上画圈标记要改的位置，保存后随图一起发给模型">🖊️ 圈注底图</button>
+                    </div>
+                    <input type="file" id="editBaseInput" accept="image/*" class="hidden" onchange="editHandleBaseFile(this.files)">
+                </div>
+
+                <!-- 右：素材 + 指令 + 结果 -->
+                <div class="flex-grow flex flex-col gap-4 z-10 overflow-y-auto custom-scrollbar pr-2">
+                    <div class="p-4 bg-black/40 border border-zonai-yellow/40 rounded-xl">
+                        <label id="editMatLabel" class="text-xs text-zonai-yellow font-mono tracking-widest block mb-2">① 产品素材图 / MATERIALS <span class="text-white/40">(最多4张，产品替换必备)</span></label>
+                        <div id="editMatList" class="flex flex-wrap gap-2 mb-2"></div>
+                        <button id="editMatAddBtn" onclick="document.getElementById('editMatInput').click()" class="action-mini-btn w-full py-2">📎 添加正确的产品素材图（多角度更稳）</button>
+                        <input type="file" id="editMatInput" accept="image/*" multiple class="hidden" onchange="editHandleMaterials(this.files)">
+                    </div>
+
+                    <div class="p-4 bg-black/40 border border-sheikah-blue/30 rounded-xl flex flex-col">
+                        <div class="flex items-center justify-between mb-2">
+                            <label class="text-xs text-sheikah-blue font-mono tracking-widest">② 编辑指令 / DIRECTIVE</label>
+                            <div class="flex gap-2">
+                                <button id="editPresetBtn" onclick="editFillReplacePreset()" class="action-mini-btn text-zonai-yellow border-zonai-yellow text-[10px]">🔄 产品替换预设</button>
+                                <button onclick="fillSizeFixPrompt('editPrompt')" class="action-mini-btn text-sheikah-blue border-sheikah-blue text-[10px]" title="先圈注：红笔圈住产品、青绿色笔画目标大小的圈，再点我填入修正指令">📏 大小修正</button>
+                                <button onclick="document.getElementById('editPrompt').value=''" class="action-mini-btn text-[10px]">清空</button>
+                            </div>
+                        </div>
+                        <textarea id="editPrompt" rows="6" class="sheikah-input resize-none text-sm custom-scrollbar" placeholder="点右上「🔄 产品替换预设」自动填入替换指令；也可以完全自己写：有底图 = 在底图上改；只有素材图 = 按你的提示词自由生成。"></textarea>
+                    </div>
+
+                    <div class="p-4 bg-black/40 border border-white/20 rounded-xl">
+                        <label class="text-xs text-white/70 font-mono tracking-widest block mb-2">③ 生成参数 / IMAGE2 PARAMS</label>
+                        <div class="flex gap-2 flex-wrap">
+                            <select id="editChannel" class="sheikah-input text-xs font-mono flex-1 min-w-[220px] custom-scrollbar" style="background-color:rgba(0,0,0,0.8);">
+                                <option value="flyfus" selected>🛰️ 通道：备用通道（GPT Image 2.5 Sunburst · 现行编辑引擎）</option>
+                                <option value="kie">🛰️ 通道：默认通道（nano-banana-2）</option>
+                            </select>
+                            <select id="editAspect" class="sheikah-input text-xs font-mono flex-1 min-w-[180px] custom-scrollbar" style="background-color:rgba(0,0,0,0.8);">
+                                <option value="auto" selected>📐 比例：自动（跟随底图/素材）</option>
+                                <option value="1:1">📐 比例：1:1 方图</option>
+                                <option value="4:3">📐 比例：4:3</option>
+                                <option value="3:4">📐 比例：3:4</option>
+                                <option value="16:9">📐 比例：16:9（老版A+）</option>
+                                <option value="21:9">📐 比例：21:9（高级A+）</option>
+                                <option value="9:16">📐 比例：9:16 竖屏</option>
+                                <option value="3:2">📐 比例：3:2</option>
+                                <option value="2:3">📐 比例：2:3</option>
+                            </select>
+                        </div>
+                        <p class="text-[10px] text-white/40 mt-2 font-['PingFang SC'] leading-relaxed">当前使用图片生成服务；耗时和费用以实际服务响应为准。</p>
+                    </div>
+
+                    <button id="editRunBtn" onclick="editRunGeneration()" class="w-full py-3 rounded-xl font-black tracking-widest uppercase text-sm border border-zonai-yellow text-zonai-yellow hover:bg-zonai-yellow/20 transition-all">⚡ 开始编辑生成</button>
+                    <div id="editStatus" class="text-xs font-mono text-white/50 text-center hidden"></div>
+
+                    <div id="editResultPanel" class="p-4 bg-black/40 border border-zonai-teal/40 rounded-xl hidden">
+                        <label class="text-xs text-zonai-teal font-mono tracking-widest block mb-2">④ 生成结果 / RESULT</label>
+                        <div class="bg-black/50 rounded-xl overflow-hidden flex justify-center items-center mb-3" style="max-height: 50vh;">
+                            <img id="editResultImg" src="" class="max-w-full object-contain cursor-zoom-in" style="max-height: 50vh;" onclick="openSampleLightbox(this.src)">
+                        </div>
+                        <div id="editHistoryStrip" class="flex flex-wrap gap-2 mb-3"></div>
+                        <div class="flex gap-2">
+                            <button id="editUseResultBtn" onclick="editUseResultAsBase()" class="action-mini-btn flex-1 py-2">⤴️ 设为底图继续改</button>
+                            <button onclick="editDownloadResult()" class="action-mini-btn flex-1 py-2 text-zonai-teal border-zonai-teal">💾 下载这张</button>
+                        </div>
+                    </div>
+                </div>
+                </div>
+                <!-- 📱 快速生成手机版 A+（2026-09-24）：一次拖入多张 A+ 图，一个任务批量生成每张对应的 1200×900 手机版 -->
+                <div id="editMobileCol" class="hidden flex-grow flex flex-col gap-4 min-h-0 z-10 overflow-y-auto custom-scrollbar pr-2">
+                    <div id="qmDrop" class="p-6 bg-black/40 border-2 border-dashed border-zonai-teal/40 rounded-xl text-center cursor-pointer transition-all"
+                         onclick="document.getElementById('qmInput').click()"
+                         ondragover="preventDefaults(event); this.classList.add('bg-zonai-teal/10')"
+                         ondragleave="this.classList.remove('bg-zonai-teal/10')"
+                         ondrop="preventDefaults(event); this.classList.remove('bg-zonai-teal/10'); qmAddFiles(event.dataTransfer.files)">
+                        <div class="text-zonai-teal text-sm font-bold font-['PingFang SC']">📥 把要改成手机版的 A+ 图全部拖进来（或点击选择，可多选）</div>
+                        <div class="text-[11px] text-white/40 mt-2 font-['PingFang SC']">每张图生成一张对应的 1200×900 手机版，一次最多 20 张；图拖进来就会先上传，刷新页面也不会丢</div>
+                    </div>
+                    <input type="file" id="qmInput" accept="image/*" multiple class="hidden" onchange="qmAddFiles(this.files); this.value=''">
+                    <div class="flex gap-2 flex-wrap">
+                        <button onclick="qmImportCurrent()" class="action-mini-btn flex-1 py-2" title="把当前生成结果里的高级 A+ 图一键加入列表">⤵️ 导入本次任务的高级 A+ 图</button>
+                        <button onclick="qmClearAll()" class="action-mini-btn flex-1 py-2">🗑️ 清空列表</button>
+                    </div>
+                    <div id="qmList" class="grid gap-3" style="grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));"></div>
+                    <button id="qmRunBtn" onclick="qmRun()" class="w-full py-3 rounded-xl font-black tracking-widest text-sm border border-zonai-teal text-zonai-teal hover:bg-zonai-teal/10 transition-all">📱 一键生成全部手机版</button>
+                    <div id="qmStatus" class="text-xs font-mono text-white/60 text-center font-['PingFang SC']"></div>
+                    <button id="qmZipBtn" onclick="qmDownloadAll()" class="hidden w-full py-2 rounded-xl text-xs font-bold border border-zonai-yellow text-zonai-yellow hover:bg-zonai-yellow/10 transition-all">📦 打包下载全部手机版（1200×900）</button>
+                </div>
+            </section>
+
+            <!-- ════════ 合作产品 / 广告位 展示页 ════════ -->
+            <section id="view-partners" class="hidden partners-view">
+                <div class="partners-head">
+                    <div>
+                        <div class="partners-title">更多好产品</div>
+                        <div class="partners-sub">我们自己在用的工具，和值得一试的同行产品</div>
+                    </div>
+                    <div class="partner-tabs" id="partnerTabs"></div>
+                </div>
+                <div id="partnerBody"></div>
+            </section>
+        </div>
+    </div>
+
+    <!-- 视频灯箱 -->
+    <div id="videoLightbox" class="hidden" onclick="if(event.target===this)closeVideoLightbox()">
+        <div class="vlb-close" onclick="closeVideoLightbox()">✕</div>
+        <div class="vlb-nav prev" onclick="stepVideoLightbox(-1)">‹</div>
+        <div class="vlb-nav next" onclick="stepVideoLightbox(1)">›</div>
+        <div class="vlb-stage"><video id="vlbVideo" controls playsinline preload="metadata"></video></div>
+        <div class="vlb-cap" id="vlbCap"></div>
+    </div>
+
+    <script src="/original/original-01.js"></script>
+
+
+
+<!-- 极速飙车警告弹窗 -->
+<div id="ultraFastWarningModal" class="rc-overlay" style="z-index:999999;">
+    <div class="rc-box" style="max-width:520px;">
+        <div style="text-align:center;margin-bottom:1rem;">
+            <div style="font-size:2.6rem;">⚡</div>
+            <h3 class="rc-title" style="margin-top:0.5rem;">极速飙车模式 · 铺货专用</h3>
+        </div>
+        <div class="msm-ultra-warn" style="margin-bottom:1rem;">这个模式<strong>只适合完全不追求质量的极速铺货</strong>。如果这批图要长期用、要拿去打广告，请回去选快速或大师模式。</div>
+        <p style="color:var(--text-2);font-size:0.92rem;line-height:1.85;margin-bottom:1.6rem;">
+            它<strong style="color:#fff;">跳过「一键构思」和 4 位视觉专家直接出图</strong>，一次生成拿到整套，成本只算一次；代价是风格粗犷、细节和跨图一致性明显打折，而且<strong style="color:#fff;">跟产品本身关系很大</strong>——有的产品能用，有的完全不吃这套。<br><br>真要用：多跑几轮挑最满意的一版，逐张核对成品细节；同一个产品连着几轮都不理想，<strong style="color:#fff;">换模式比继续重试划算</strong>。
+        </p>
+        <div style="display:flex;gap:0.8rem;">
+            <button onclick="document.getElementById('ultraFastWarningModal').style.display='none'" class="modal-btn modal-btn-confirm" style="flex:1.4;">回去选快速 / 大师</button>
+            <button onclick="document.getElementById('ultraFastWarningModal').style.display='none';selectModeFromModal('ultra_fast')" class="modal-btn modal-btn-cancel" style="flex:1;">我只是铺货，继续</button>
+        </div>
+    </div>
+</div>
+
+<script src="/original/original-02.js"></script>
+
+<!-- ========== 新手引导（driver.js v1） ========== -->
+<!-- hyrule-tour 样式已并入顶部 Aqua Glass 主题 -->
+
+<script src="/original/original-03.js"></script>
+<!-- ========== 壁纸系统（Aqua Glass 主题） ========== -->
+<script src="/original/original-04.js"></script>
+
+
+<!-- ========== 玻璃下拉菜单（替代原生 select 弹层，原 select 保留供逻辑读值） ========== -->
+<script src="/original/original-05.js"></script>
+
+
+<!-- ========== 大字段弹窗编辑器 ========== -->
+<!-- 📸 看样片：什么样的输入图能出好结果（纯 SVG 图示，无外链、不会失效）-->
+<div id="sampleGuideOverlay">
+  <div id="sampleGuideBox">
+    <div class="sg-head">
+      <div class="sg-title">📸 什么样的图能出好结果</div>
+      <button type="button" class="sg-x" onclick="closeSampleGuide()">✕</button>
+    </div>
+    <div class="sg-body">
+
+      <div class="sg-sec">① 产品主体图 —— 最关键的一张，决定产品像不像</div>
+      <div class="sg-grid">
+        <div class="sg-card ok">
+          <svg viewBox="0 0 120 90"><rect class="bg-ok" x="0" y="0" width="120" height="90"/><rect class="prod" x="38" y="20" width="44" height="52" rx="6"/><rect class="prod2" x="46" y="28" width="28" height="10" rx="3"/><path class="hi" d="M44 26 L44 66"/></svg>
+          <div class="sg-tag ok">✅ 正确</div>
+          <div class="sg-desc">背景干净、产品占画面 <b>60–80%</b>、对焦清晰、光线均匀</div>
+        </div>
+        <div class="sg-card no">
+          <svg viewBox="0 0 120 90"><rect class="bg-no" x="0" y="0" width="120" height="90"/><rect class="prod" x="52" y="38" width="18" height="20" rx="3"/><circle class="junk" cx="18" cy="20" r="9"/><rect class="junk" x="88" y="14" width="22" height="16" rx="3"/><rect class="junk" x="12" y="62" width="26" height="14" rx="3"/><circle class="junk" cx="96" cy="70" r="8"/></svg>
+          <div class="sg-tag no">❌ 背景杂乱 + 产品太小</div>
+          <div class="sg-desc">AI 分不清哪个是你的产品，容易把杂物一起画进去</div>
+        </div>
+        <div class="sg-card no">
+          <svg viewBox="0 0 120 90"><rect class="bg-ok" x="0" y="0" width="120" height="90"/><g filter="url(#sgblur)"><rect class="prod" x="38" y="20" width="44" height="52" rx="6"/><rect class="prod2" x="46" y="28" width="28" height="10" rx="3"/></g><defs><filter id="sgblur"><feGaussianBlur stdDeviation="3.2"/></filter></defs></svg>
+          <div class="sg-tag no">❌ 糊 / 细节看不清</div>
+          <div class="sg-desc">可以不高级，但<b>细节必须看得清</b>——拍糊了 AI 只能瞎猜</div>
+        </div>
+        <div class="sg-card no">
+          <svg viewBox="0 0 120 90"><rect class="bg-ok" x="0" y="0" width="120" height="90"/><rect class="prod" x="38" y="20" width="44" height="52" rx="6"/><rect class="wm" x="10" y="8" width="46" height="12" rx="2"/><rect class="wm" x="62" y="70" width="48" height="12" rx="2"/><text class="wmt" x="14" y="17">SALE 50%</text><text class="wmt" x="66" y="79">@shop</text></svg>
+          <div class="sg-tag no">❌ 带水印 / 促销文字</div>
+          <div class="sg-desc">这些字会被 AI 学进去，出现在成品图上</div>
+        </div>
+      </div>
+
+      <div class="sg-sec">② 主体图<b style="color:#FFD60A;">只传 1 张</b>（很多人会搞错）</div>
+      <div class="sg-row">
+        <div class="sg-mini"><svg viewBox="0 0 60 50"><rect class="bg-ok" width="60" height="50"/><rect class="prod" x="20" y="10" width="20" height="30" rx="4"/><rect class="prod2" x="24" y="14" width="12" height="6" rx="2"/></svg><span style="color:#00FFC5;">✅ 正面主视角</span></div>
+        <div class="sg-mini" style="opacity:.5;"><svg viewBox="0 0 60 50"><rect class="bg-ok" width="60" height="50"/><ellipse class="prod" cx="30" cy="25" rx="14" ry="10"/><ellipse class="prod2" cx="30" cy="25" rx="7" ry="5"/></svg><span style="color:#FF6B60;">❌ 别用俯视当主体图</span></div>
+        <div class="sg-note"><b>为什么？</b>系统只会取<b>第 1 张</b>产品主体图作「保真锚点」，全程用它防止产品被画走样。<br>
+        你要是传了正面+侧面+俯视，<b>被选中的可能正好是信息最少的俯视图</b>，产品反而更容易画歪，还白占 8 张配额。<br>
+        <span style="color:#FFD60A;">想展示其他角度/细节？</span>放到「功能展示图」「材质细节图」等对应分类——那些会被智能分配给对应的卖点图。</div>
+      </div>
+
+      <div class="sg-sec">③ 各分类该放什么（<b style="color:#FFD60A;">传对分类很重要</b>）</div>
+      <table class="sg-tbl">
+        <tr><td class="c"><span class="cat-dot" style="background:#30D158;"></span>产品主体图</td><td>干净背景的整体外观，<b>系统会拿它当保真锚点</b>，防止产品被画走样。最重要，必传。</td></tr>
+        <tr><td class="c"><span class="cat-dot" style="background:#0A84FF;"></span>功能展示图</td><td>某个功能/结构的特写，如按键、开合方式、内部结构。</td></tr>
+        <tr><td class="c"><span class="cat-dot" style="background:#BF5AF2;"></span>材质细节图</td><td>表面纹理、编织、涂层的微距。让 AI 知道摸上去是什么感觉。</td></tr>
+        <tr><td class="c"><span class="cat-dot" style="background:#E5E5EA;"></span>尺寸图</td><td>旁边有手/常见物做对比最好，AI 才有大小概念。</td></tr>
+        <tr><td class="c"><span class="cat-dot" style="background:#FFD60A;"></span>互动图</td><td>人在真实环境里使用产品的画面。</td></tr>
+        <tr><td class="c"><span class="cat-dot" style="background:#FF9F0A;"></span>配件图</td><td>随附的配件、包装内容物。</td></tr>
+        <tr><td class="c"><span class="cat-dot" style="background:#FF375F;"></span>参数说明图</td><td>已有的参数图、说明卡（AI 会读上面的数字）。</td></tr>
+      </table>
+
+      <div class="sg-rules">
+        <div class="sg-sec" style="margin-top:0;">④ 三条硬规则</div>
+        <div class="sg-rule"><b>1.</b> 最多 <b>8 张</b>，大小不限——系统会自动压缩到最适合 AI 识别的尺寸，直接传原图即可。</div>
+        <div class="sg-rule"><b>2.</b> 必须至少 <b>1 张产品主体图</b>，否则无法生成。</div>
+        <div class="sg-rule"><b>3.</b> <b>传对分类</b>：你点哪个框上传就打哪个标签，系统靠标签做保真锚定和素材智能匹配，传错会导致匹配错乱、出图变差。</div>
+      </div>
+
+    </div>
+    <button type="button" class="sg-done" onclick="closeSampleGuide()">知道了，去上传</button>
+  </div>
+</div>
+<script src="/original/original-06.js"></script>
+
+<!-- 💡 技巧提示：居中面板（挂在 body 层，避免被玻璃窗 overflow:hidden 裁切）-->
+<div id="tipCenterOverlay">
+    <div id="tipCenterBox">
+        <div id="tipCenterContent"></div>
+        <button id="tipCenterClose" type="button">知道了</button>
+    </div>
+</div>
+<script src="/original/original-07.js"></script>
+
+<div id="fieldEditorModal" class="fe-overlay">
+    <div class="fe-box" id="feBox">
+        <div class="fe-title" id="feTitle"></div>
+        <div class="fe-hint" id="feHint"></div>
+        <textarea id="feTextarea" class="fe-textarea custom-scrollbar"></textarea>
+        <div class="fe-count" id="feCount"></div>
+        <div class="modal-btn-group">
+            <button onclick="closeFieldEditor()" class="modal-btn modal-btn-cancel">取消</button>
+            <button onclick="confirmFieldEditor()" class="modal-btn modal-btn-confirm">确认填入</button>
+        </div>
+    </div>
+</div>
+<script src="/original/original-08.js"></script>
+
+
+<!-- ========== v5：Dock 恢复胶囊 / 通知横幅 / Quick Look / 窗口系统 ========== -->
+<div id="aquaNotifyStack"></div>
+<div id="qlOverlay" class="ql-overlay">
+    <div class="ql-backdrop" onclick="qlClose()"></div>
+    <img id="qlImg" class="ql-img" draggable="false" referrerpolicy="no-referrer">
+    <div class="ql-chrome"><div class="ql-counter" id="qlCounter"></div><div class="ql-label" id="qlLabel"></div></div>
+    <button class="ql-nav ql-prev" id="qlPrev" onclick="qlNav(-1)">‹</button>
+    <button class="ql-nav ql-next" id="qlNext" onclick="qlNav(1)">›</button>
+    <button class="ql-close" onclick="qlClose()">✕</button>
+</div>
+<script src="/original/original-09.js"></script>
+
+
+<!-- ========== 聚光灯（鼠标光源） ========== -->
+<div id="spotlightLayer"></div>
+<script src="/original/original-10.js"></script>
+
+
+<!-- ========== v8 交互动效：揭幕显影 / 3D 微倾 / 磁吸上传 / SOP 打字机 ========== -->
+<script src="/original/original-11.js"></script>
+
+
+<!-- ========== 拖放吸收特效 ========== -->
+<script src="/original/original-12.js"></script>
+
+
+<!-- ========== 壁纸引导提示 ========== -->
+<script src="/original/original-13.js"></script>
+
+
+<!-- ========== 聚光灯引导提示 ========== -->
+<script src="/original/original-14.js"></script>
+
+<!-- ========== v10：全局快捷键 + 提示 ========== -->
+<script src="/original/original-15.js"></script>
+
+<script src="/local/visual-style.js"></script>
+<script src="/local/workbench.js"></script>
+</body>
+</html>
+

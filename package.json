@@ -1,0 +1,13 @@
+{
+  "name": "ec-visual-workbench-local",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {"node": ">=22"},
+  "scripts": {
+    "start": "node src/server.mjs",
+    "dev": "node --watch src/server.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "check": "node tools/check-source.mjs"
+  }
+}

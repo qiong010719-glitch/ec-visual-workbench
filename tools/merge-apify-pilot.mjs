@@ -1,0 +1,27 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {ReferenceLibrary} from '../src/reference-library.mjs';
+const root=path.dirname(path.dirname(fileURLToPath(import.meta.url))),directory=path.join(root,'data/research/apify-powerbanks-pilot-20261101');
+const pilot=JSON.parse(fs.readFileSync(path.join(directory,'references.json'),'utf8'));
+const job=pilot.campaigns['us-powerbanks-pilot-20261101'];
+if(job.analysisStatus!=='completed')throw new Error('首轮选中图片尚未全部分析');
+const library=new ReferenceLibrary(path.join(root,'data/research'),path.join(root,'data/media'));
+const source=library.state.storeImports['store-audit-2026-10-28'];
+if(source.productIds.some(id=>library.state.products[id].analysis?.status!=='completed'))throw new Error('全店分析尚未结束，不能合并并发写入');
+const ids=[...new Set(job.categories.flatMap(c=>c.selectedProductIds))];
+for(const id of ids)library.upsert(pilot.products[id]);
+library.state.imageAnalyses={...pilot.imageAnalyses,...library.state.imageAnalyses};
+library.state.campaigns[job.id]=job;
+library.state.pilotImport={id:job.id,productIds:ids,sourceDirectory:directory,importedAt:new Date().toISOString(),analysisUsage:pilot.analysisUsage};library.save();
+const cost=job.runs.reduce((sum,r)=>sum+(r.usageTotalUsd || 0),0);
+const selection=job.categories[0].selection;
+const brandRows=selection.brands.map(b=>`| ${b.brand} | ${b.products.length} / 5 | ${b.missing} |`).join('\n');
+const productRows=selection.brands.flatMap(b=>b.products.map(id=>{
+  const p=pilot.products[id];return `| ${p.brand} | [${p.asin}](${p.url}) | ${p.rank} | ${p.rankBasis==='category_bsr'?'详情类目 BSR':'类目榜单'} | ${p.assets.length} | ${p.analysis.status} |`;
+})).join('\n');
+const unique=new Set(ids.flatMap(id=>pilot.products[id].assets.map(a=>a.sha256))).size;
+const report={jobId:job.id,status:job.status,analysisStatus:job.analysisStatus,budgetUsd:job.input.budgetUsd,apifyReportedUsd:cost,brands:selection.brands,products:ids.length,uniqueImages:unique,runs:job.runs.map(r=>({actor:r.actor,runId:r.runId,datasetId:r.datasetId,status:r.status,cost:r.usageTotalUsd})),warnings:job.warnings,rankingCoverage:'首轮榜单 100 条原始记录、80 个独立商品；品牌补充样本只接受同类目 BSR',updatedAt:new Date().toISOString()};
+fs.writeFileSync(path.join(directory,'pilot-report.json'),JSON.stringify(report,null,2));
+const markdown=`# Amazon US 充电宝首轮采集与学习\n\n采集日期：2026-11-01。用户授权 Apify 总上限 **5 美元**，三个已结束运行合计报告 **${cost.toFixed(3)} 美元**。这是本轮 Apify 采集费用，视觉模型另外计费；没有发起生图。\n\n已筛选 ${selection.brands.length} 个品牌、${ids.length} 款商品，${unique} 张独立图片完成视觉分析并合入工作台。\n\n## 品牌样本\n\n| 品牌 | 已验证不同款式 | 距目标缺口 |\n|---|---:|---:|\n${brandRows}\n\n品牌按类目榜单样本的排名倒数之和推算，颜色变体合并。该名单不是 Amazon 官方品牌排行榜。补充搜索只发现商品，排名依据来自同类目的详情 BSR。\n\n## 商品链接与证据\n\n| 品牌 | 商品 ASIN | 类目排名 | 排名来源 | 图像记录数 | 视觉分析 |\n|---|---|---:|---|---:|---|\n${productRows}\n\n图像记录数包括主图、副图、A+、品牌故事；不同商品之间可以共用图片。\n\n## 已知缺口\n\n${job.warnings.map(w=>'- '+w).join('\n')}\n- 已选品牌中仍有 ${selection.brands.reduce((s,b)=>s+b.missing,0)} 款缺口；未用颜色变体、无排名的搜索结果或其他品牌凑足 25 款。\n- 当前仅做了美国站充电宝首轮验证，其他 3C 类目尚未采集，不能称为全 3C 覆盖。\n- 采集质量验证通过的部分是图片与 A+ 可取得、品牌和排名证据可保存、参考库能实际分析；完整榜单和每品牌 5 款的目标仍是部分完成。\n\n## 远端运行\n\n${job.runs.map(r=>`- [${r.actor} · ${r.stage}](https://console.apify.com/actors/runs/${r.runId})：${r.status}，报告费用 $${Number(r.usageTotalUsd||0).toFixed(3)}；数据集 ${r.datasetId}。`).join('\n')}\n\n原始数据及本批报告保存在 \`data/research/apify-powerbanks-pilot-20261101/\`。只将选中的已分析样本加入主参考库，候选商品原始记录继续保留用于追溯。\n`;
+const document=path.join(root,'docs/美国站充电宝首轮采集-20261101.md');fs.writeFileSync(document,markdown);console.log(JSON.stringify({document,cost,selectedProducts:ids.length,uniqueImages:unique,library:library.stats()}));

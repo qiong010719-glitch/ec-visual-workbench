@@ -1,0 +1,12 @@
+data/
+.env
+.env.*
+!.env.example
+*.log
+tests/results/
+node_modules/
+
+# Local captures, generated verification evidence and machine-specific launchers.
+/reference/
+/runs/
+/打开本次构建.cmd
