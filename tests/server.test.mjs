@@ -32,7 +32,7 @@ test('stale scene plans require replanning before image charges or provider call
   let calls=0;
   const app=await fixture(t,{provider:async()=>{calls++;return png;}});
   const payload={product_name:'Sunglasses',product_desc:'Black frame',design_scope:'main_only',visual_style:'scene_advertising'};
-  const old=buildPlan(payload);old.visualStyle.version=1;
+  const old=buildPlan(payload);old.visualStyle.version=2;
   app.store.task('agent_tasks/old_scene',{status:'completed',payload,plan:old});
   const before=app.store.state.balance;
   for(const endpoint of ['/api/generate','/api/ultra_generate']){
@@ -53,7 +53,7 @@ test('saved original plans remain usable and new scene evidence reaches the prov
     assert.match(captured.at(-1).prompt,/USER_EDIT_KEEP/);
     if(style==='scene_advertising'){
       assert.ok(captured.at(-1).prompt.includes(agent.plan.sections[6].storyboard.informationIncrement));
-      assert.equal(task.visualStyle.version,2);assert.equal(task.promptVersion,'per-slot-v4');
+      assert.equal(task.visualStyle.version,3);assert.equal(task.promptVersion,'per-slot-v5');
     }else assert.doesNotMatch(captured.at(-1).prompt,/本图叙事约定/);
   }
 });
@@ -63,6 +63,24 @@ test('source interface is served and original service keys are absent',async t=>
   const source=await(await fetch(app.base+'/original/original-01.js')).text();
   assert.doesNotMatch(source,/sb_publishable_|sapient-hub-485206|vxlwmeonxrvntwwdqcew|6d70ba77dad1fd3e/);
 });
+test('one-image requirements reach one assigned provider prompt while all-image requirements stay shared',async t=>{
+  const captured=[];
+  const app=await fixture(t,{provider:async p=>{captured.push(p);return png;}});
+  const strict_requirements='要有一张图是针对痛点人群，每张图都要有logo';
+  const payload={agent_task_id:'scoped_requirements',product_name:'胶原蛋白粉',product_desc:'白色粉末；每份8,500 mg',generation_mode:'master',custom_layout:{main:1,sub:2,aplus:0},strict_requirements};
+  await app.call('/api/agent',payload);
+  const agent=await app.settled('agent_tasks/scoped_requirements');
+  const tasks=[0,1,2].map(slot=>({slot,taskId:'requirement_image_'+slot}));
+  const result=await app.call('/api/generate',{agent_task_id:payload.agent_task_id,sop_text:agent.result,strict_requirements,firebase_tasks:tasks});
+  assert.equal(result.response.status,202);
+  for(const task of tasks)assert.equal((await app.settled('hyrule_tasks/'+task.taskId)).status,'completed');
+  assert.equal(captured.filter(p=>p.prompt.includes('要有一张图是针对痛点人群')).length,1);
+  assert.doesNotMatch(captured[0].prompt,/痛点人群/);
+  assert.ok(captured.every(p=>p.prompt.includes('每张图都要有logo')));
+  assert.equal(captured[1].prompt.split('要有一张图是针对痛点人群').length-1,1);
+  assert.ok(agent.plan.text.includes('8,500 mg'),'commas in numeric facts must remain intact');
+});
+
 test('uploads preserve original bytes and reject executable content',async t=>{
   const app=await fixture(t);
   const response=await fetch(app.base+'/api/media/up',{method:'POST',headers:{'Content-Type':'image/png','X-Workbench-Token':app.token},body:png});

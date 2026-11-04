@@ -128,7 +128,7 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
       if(ordinary&&!section)throw fail(400,'找不到图片槽位的独立设计要求');
       const prompt=[payload.mobile_reformat?`将这张 A+ 图片重新排版为适合手机阅读的 4:3 单张图。保留产品和所有已提供的文案，文字清晰，版面简洁，不添加新卖点。标题：${task.title || ''}`:
         ordinary?promptForSlot(payload,section,design):kind==='ultra'?[payload.prompt || payload.sop_text,design.styleGuide,section?.detail || design.text].filter(Boolean).join('\n\n'):payload.prompt || payload.sop_text || design.text,
-        payload.strict_requirements || '',directive?JSON.stringify(directive):''].filter(Boolean).join('\n');
+        ordinary?'':payload.strict_requirements || '',directive?JSON.stringify(directive):''].filter(Boolean).join('\n');
       const names=directive?.ref_images?.length?directive.ref_images:ordinary?section?.ref_images:[];
       const selected=names?.length?(merged.categorized_images || []).filter(m=>names.includes(m.filename)).map(m=>m.url):references(merged);
       if(directive?.ref_images?.length && selected.length!==new Set(directive.ref_images).size)throw fail(400,'逐张要求引用了不存在的产品参考图');
@@ -139,7 +139,7 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
     createCharge(requestId, tasks.map(t => t.taskId), payload.mobile_reformat ? 1 : 2);
     for (const {task,section,prompt,refs} of prepared) {
       const key = 'hyrule_tasks/' + task.taskId;
-      store.task(key, {status:'pending', phase:'queued', taskId:task.taskId, slot:task.slot, requestId, model, prompt,referenceImages:refs.filter(r=>!r.startsWith('data:')),designReferences:design.references || [],visualStyle:design.visualStyle || null,generationMode:design.generationMode || null,promptVersion:design.visualStyle?.id==='scene_advertising'&&design.visualStyle.version===SCENE_STYLE_VERSION?'per-slot-v4':design.visualStyle?'per-slot-v3':'per-slot-v2',createdAt:new Date().toISOString()});
+      store.task(key, {status:'pending', phase:'queued', taskId:task.taskId, slot:task.slot, requestId, model, prompt,referenceImages:refs.filter(r=>!r.startsWith('data:')),designReferences:design.references || [],visualStyle:design.visualStyle || null,generationMode:design.generationMode || null,promptVersion:design.visualStyle?.id==='scene_advertising'&&design.visualStyle.version===SCENE_STYLE_VERSION?'per-slot-v5':design.visualStyle?'per-slot-v3':'per-slot-v2',createdAt:new Date().toISOString()});
       enqueue(async () => {
         store.task(key, {status:'running',phase:'generating'});
         try {

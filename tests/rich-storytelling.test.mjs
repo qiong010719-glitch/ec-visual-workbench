@@ -7,6 +7,53 @@ const base={generation_mode:'master',visual_style:'scene_advertising',design_sco
 const eyewear={...base,product_name:'Black rectangular sunglasses',product_desc:'Black full-rim frame; dark gray lenses; gold-tone temple accent. Only visible appearance is confirmed.'};
 const soap={...base,product_name:'Softsoap Antibacterial Hand Soap Refill, White Tea & Berry Scent, 50 fl oz, for Bathroom & Kitchen',product_desc:'Liquid; White Tea & Berry Scent; 50 fl oz refill; Paraben-Free; Phthalate-Free; Washes Away Germs; Gentle on Hands; Daily Handwashing for Bathroom & Kitchen'};
 
+test('a full supplement set mixes scenes, camera distances and people-free product explanations',()=>{
+  const plan=buildPlan({...base,product_name:'胶原蛋白粉',product_desc:'白色粉末，在水中呈透明状态；每份8,500 mg，其中5,000 mg为Verisol®胶原蛋白肽'});
+  const boards=plan.sections.slice(1).map(s=>s.storyboard);
+  assert.ok(new Set(boards.map(b=>b.scene)).size>=6,'the set must not reuse one household counter');
+  assert.ok(new Set(boards.map(b=>b.camera)).size>=5,'the set must mix wide shots, macro, overhead and graphic views');
+  assert.ok(boards.filter(b=>b.humanPresence==='none').length>=4,'not every selling point needs a person');
+  assert.ok(boards.filter(b=>b.humanPresence==='person').length<=3,'full portraits must not dominate the set');
+  for(const section of plan.sections.slice(1))assert.ok(promptForSlot({},section,plan).includes(section.storyboard.camera));
+});
+
+test('low scene intensity removes lifestyle scene and camera instructions together',()=>{
+  const plan=buildPlan({...base,product_name:'Vitamin C gummies',product_desc:'Gummy format',generation_mode:'fast',scene_intensity:'low'});
+  const board=plan.sections[1].storyboard;
+  assert.equal(board.sceneType,'studio_detail');assert.equal(board.humanPresence,'none');
+  assert.doesNotMatch(board.scene,/明确交代人物与环境/);
+  assert.doesNotMatch(board.camera,/人物和空间为主/);
+  assert.match(board.scene,/静物|摄影背景/);
+});
+
+test('an edited SOP can move its one-image theme without reinserting it in the default slot',()=>{
+  const requirement='要有一张图是针对痛点人群';
+  const payload={...base,product_name:'胶原蛋白粉',product_desc:'白色粉末',custom_layout:{main:1,sub:2},strict_requirements:requirement+'，每张图都有logo'};
+  const plan=buildPlan(payload);
+  const sop_text=plan.text.replace('本图专属要求：'+requirement+'\n','').replace('【卖点图2】\n','【卖点图2】\n本图专属要求：'+requirement+'\n');
+  const prompts=plan.sections.map(section=>promptForSlot({...payload,sop_text},section,plan));
+  assert.equal(prompts.filter(p=>p.includes(requirement)).length,1);
+  assert.ok(prompts[2].includes(requirement));assert.ok(!prompts[1].includes(requirement));
+});
+
+test('one-image continuations remain scoped until an explicit shared requirement starts',()=>{
+  const payload={...base,product_name:'胶原蛋白粉',product_desc:'白色粉末',custom_layout:{main:1,sub:2},strict_requirements:'要有一张图针对痛点人群，展示忙碌上班族的日常需求，每张图有logo，含量标注8,500 mg'};
+  const plan=buildPlan(payload);
+  const prompts=plan.sections.map(section=>promptForSlot({...payload,sop_text:plan.text},section,plan));
+  assert.equal(prompts.filter(p=>p.includes('展示忙碌上班族的日常需求')).length,1);
+  assert.ok(prompts.every(p=>p.includes('每张图有logo')&&p.includes('含量标注8,500 mg')));
+});
+
+test('compatible one-image requests are allowed in THD and single-main output scopes',()=>{
+  for(const options of [{design_scope:'thd_only',custom_layout:null,strict_requirements:'至少一张图展示产品背面'},{custom_layout:{main:1,sub:0,aplus:0},strict_requirements:'一张图展示产品正面'}]){
+    const payload={...base,product_name:'收纳盒',product_desc:'蓝色外壳',...options};
+    const plan=buildPlan(payload);
+    const prompts=plan.sections.map(section=>promptForSlot(payload,section,plan));
+    assert.equal(prompts.filter(p=>p.includes(options.strict_requirements)).length,1);
+    assert.ok(prompts.every(p=>/本图最终约束/.test(p)));
+  }
+});
+
 test('specific use categories take precedence over bottle, kitchen and tea words',()=>{
   for(const [name,category] of [[soap.product_name,'handsoap'],[eyewear.product_name,'eyewear'],['小檗碱 berberine supplement bottle','supplements'],['OLLY Sleep Gummies bottle','supplements'],['保温水杯 bottle','outdoor']])assert.equal(productCategory({product_name:name}),category,name);
 });
