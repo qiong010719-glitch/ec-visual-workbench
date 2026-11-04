@@ -12,6 +12,10 @@ import {generationMode} from './visual-style.mjs';
 import {SCENE_STYLE_VERSION} from './rich-storytelling.mjs';
 import {imageModels,resolveImageModel} from './image-models.mjs';
 import {isTemu,temuFormats,validateTemu,temuPlanSignature,prepareTemuImage,verifyTemuImages} from './temu.mjs';
+import {createMultiSetService,MAX_SETS} from './multisets.mjs';
+import {stylesForPlatform} from './creative-direction.mjs';
+import {TEMU_MAX_SETS} from './temu.mjs';
+import {exportTemuSets} from './temu-export.mjs';
 
 export const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const mimes = {'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json; charset=utf-8','.jpg':'image/jpeg','.png':'image/png','.webp':'image/webp','.svg':'image/svg+xml','.ico':'image/x-icon','.woff2':'font/woff2'};
@@ -19,7 +23,7 @@ const validId = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,120}$/.t
 const uuid = () => crypto.randomUUID();
 const fail = (status, message) => Object.assign(new Error(message), {status});
 
-export function createWorkbench({dataDirectory = path.join(root, 'data'), configuration = process.env, provider, download, planner, researchOptions = {}} = {}) {
+export function createWorkbench({dataDirectory = path.join(root, 'data'), configuration = process.env, provider, download, planner, directionPlanner, researchOptions = {}} = {}) {
   const store = new Store(dataDirectory);
   const mediaDirectory = path.join(dataDirectory, 'media');
   fs.mkdirSync(mediaDirectory, {recursive: true});
@@ -144,7 +148,7 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
       if(ordinary&&!section)throw fail(400,'找不到图片槽位的独立设计要求');
       const prompt=[payload.mobile_reformat?`将这张 A+ 图片重新排版为适合手机阅读的 4:3 单张图。保留产品和所有已提供的文案，文字清晰，版面简洁，不添加新卖点。标题：${task.title || ''}`:
         ordinary?promptForSlot(payload,section,design):kind==='ultra'?[payload.prompt || payload.sop_text,design.styleGuide,section?.detail || design.text].filter(Boolean).join('\n\n'):payload.prompt || payload.sop_text || design.text,
-        payload.strict_requirements || '',directive?JSON.stringify(directive):''].filter(Boolean).join('\n');
+        ordinary?'':payload.strict_requirements || '',directive?JSON.stringify(directive):''].filter(Boolean).join('\n');
       const names=directive?.ref_images?.length?directive.ref_images:ordinary?section?.ref_images:[];
       const selected=names?.length?(merged.categorized_images || []).filter(m=>names.includes(m.filename)).map(m=>m.url):references(merged);
       if(directive?.ref_images?.length && selected.length!==new Set(directive.ref_images).size)throw fail(400,'逐张要求引用了不存在的产品参考图');
@@ -155,7 +159,7 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
     createCharge(requestId, tasks.map(t => t.taskId), payload.mobile_reformat ? 1 : 2);
     for (const {task,section,prompt,refs} of prepared) {
       const key = 'hyrule_tasks/' + task.taskId;
-      store.task(key, {status:'pending', phase:'queued', taskId:task.taskId, slot:task.slot, requestId, model, prompt,...(isTemu(merged)?{platform:'temu',image_ratio:merged.image_ratio}:{}),referenceImages:refs.filter(r=>!r.startsWith('data:')),designReferences:design.references || [],visualStyle:design.visualStyle || null,generationMode:design.generationMode || null,promptVersion:design.visualStyle?.id==='scene_advertising'&&design.visualStyle.version===SCENE_STYLE_VERSION?'per-slot-v4':design.visualStyle?'per-slot-v3':'per-slot-v2',createdAt:new Date().toISOString()});
+      store.task(key, {status:'pending', phase:'queued', taskId:task.taskId, slot:task.slot, requestId, model, prompt,...(isTemu(merged)?{platform:'temu',image_ratio:merged.image_ratio}:{}),referenceImages:refs.filter(r=>!r.startsWith('data:')),designReferences:design.references || [],visualStyle:design.visualStyle || null,generationMode:design.generationMode || null,...(payload.group_id?{groupId:payload.group_id,setId:payload.set_id,creativeDirection:design.creativeDirection}:{}),promptVersion:design.visualStyle?.id==='scene_advertising'&&design.visualStyle.version===SCENE_STYLE_VERSION?'per-slot-v5':design.visualStyle?'per-slot-v3':'per-slot-v2',createdAt:new Date().toISOString()});
       enqueue(async () => {
         store.task(key, {status:'running',phase:'generating'});
         try {
@@ -171,6 +175,28 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
     return requestId;
   }
 
+  function submitPlan(payload){
+    validateTemu(payload);
+    if(!validId(payload.agent_task_id)||!payload.product_name||!payload.product_desc)throw fail(400,'需要产品名称、卖点和有效任务编号');
+    const key='agent_tasks/'+payload.agent_task_id;
+    if(store.state.tasks[key])return store.state.tasks[key].requestId;
+    const requestId=uuid();
+    store.task(key,{status:'pending',payload,requestId,createdAt:new Date().toISOString()});
+    createCharge(requestId,[payload.agent_task_id],0);
+    enqueue(async()=>{
+      store.task(key,{status:'running'});
+      try{const plan=await designPlanner(payload);store.task(key,{status:'completed',result:plan.text,plan});}
+      catch(error){
+        store.task(key,{status:'failed',error:String(error.message).slice(0,500),
+          ...(error.planningDiagnostics?{errorCode:error.code,planningDiagnostics:error.planningDiagnostics}:{}),
+          ...(typeof error.partialPlanText==='string'?{partialPlanText:error.partialPlanText.slice(0,200000)}:{})});
+        refund(requestId,payload.agent_task_id);
+      }
+    });
+    return requestId;
+  }
+  const multisets=createMultiSetService({store,configuration,mediaDirectory,enqueue,submitPlan,submitImages,publicTask,retryDownload,directionPlanner});
+
   const server = http.createServer(async (request, response) => {
     try {
       const host = request.headers.host || '';
@@ -182,8 +208,28 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
       response.setHeader('Referrer-Policy', 'same-origin');
       response.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' data: blob:; font-src 'self' data:; media-src 'self' blob:; frame-src 'self' blob:; frame-ancestors 'none'; object-src 'none'; base-uri 'self'");
       if (pathname === '/api/session' && request.method === 'GET') return json(response,200,{token:csrf,user:{id:'local-owner',email:'local@workbench.local'}});
-      if (pathname === '/api/temu/config' && request.method === 'GET') return json(response,200,{platform:'temu',formats:temuFormats,maxImages:7,detailImages:'same-as-main-images-in-order',fissionEnabled:false,publishEnabled:false});
+      if (pathname === '/api/temu/config' && request.method === 'GET') return json(response,200,{platform:'temu',formats:temuFormats,maxImages:7,maxSets:TEMU_MAX_SETS,detailImages:'same-as-main-images-in-order',fissionEnabled:true,publishEnabled:false});
       if (pathname.startsWith('/api/') && !['GET','HEAD'].includes(request.method) && request.headers['x-workbench-token'] !== csrf) throw fail(403, '本地会话已过期，请刷新页面');
+      if(['/api/multisets/config','/api/temu/multisets/config'].includes(pathname)&&request.method==='GET'){
+        const platform=pathname.includes('/temu/')?'temu':'amazon';
+        return json(response,200,{maxSets:platform==='temu'?TEMU_MAX_SETS:MAX_SETS,styles:stylesForPlatform(platform).map(({id,label})=>({id,label})),aiRecommendations:!!(configuration.PLANNER_BASE_URL&&configuration.PLANNER_API_KEY&&configuration.PLANNER_MODEL)});
+      }
+      const multiRoute=/^\/api\/(temu\/)?multisets(?:\/([a-zA-Z0-9_-]+))?(?:\/(directions|recommend|plan|generate|retry|plan-text|export))?$/.exec(pathname);
+      if(multiRoute){
+        const [,temuPrefix,groupId,action]=multiRoute,platform=temuPrefix?'temu':'amazon';
+        if(groupId&&isTemu(multisets.get(groupId).source)!==!!temuPrefix)throw fail(404,'裂变批次不存在');
+        if(request.method==='GET'&&!action)return json(response,200,groupId?multisets.get(groupId):multisets.list(platform));
+        if(request.method!=='POST')throw fail(405,'不支持该方法');
+        const payload=await body(request,2*1024*1024);
+        if(!groupId){
+          if(isTemu(payload.source)!==!!temuPrefix)throw fail(400,'请使用对应平台的裂变入口');
+          return json(response,202,multisets.create(payload));
+        }
+        if(action==='export'&&temuPrefix)return json(response,200,await exportTemuSets({group:multisets.get(groupId),setId:payload.setId,mediaDirectory,store,current:()=>multisets.get(groupId)}));
+        const operations={directions:'update',recommend:'recommend',plan:'plan',generate:'generate',retry:'retry','plan-text':'editPlan'};
+        if(!operations[action])throw fail(404,'接口不存在');
+        return json(response,['directions','plan-text'].includes(action)?200:202,multisets[operations[action]](groupId,payload));
+      }
       if (pathname === '/api/status') return json(response,200,{mode:'local', isolatedPreview:configuration.WORKBENCH_STYLE_PREVIEW==='true', imageProvider:provider ? 'test-fixture' : 'configured-image-api', imageConfigured:!!provider || !!configuration.SUANZHOU_IMAGE_API_KEY, model:resolveImageModel(undefined,configuration), imageModels, planner:configuration.PLANNER_API_KEY ? 'configured' : 'local-rules', active, queued:queue.length,downloadProxyConfigured:!!configuration.IMAGE_DOWNLOAD_PROXY,downloadRecoveryEnabled:true,recoverableDownloads:Object.values(store.state.tasks).filter(t=>t.resultUrl&&t.status==='failed').length, defaultProductStatus:'draft', paymentEnabled:false, publishEnabled:false});
       if (pathname === '/api/research/status' && request.method === 'GET') return json(response,200,research.status());
       if (pathname === '/api/research/design-patterns' && request.method === 'GET') return json(response,200,designPatterns(research.library.state));
@@ -236,26 +282,10 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
         return json(response,result.accepted?202:200,result.task);
       }
       if (pathname === '/api/agent' && request.method === 'POST') {
-        const payload = await body(request);
-        validateTemu(payload);
-        if (!validId(payload.agent_task_id) || !payload.product_name || !payload.product_desc) throw fail(400,'需要产品名称、卖点和有效任务编号');
-        const key = 'agent_tasks/' + payload.agent_task_id;
-        const prior = store.state.tasks[key];
-        if (prior) return json(response,200,{ok:true,task_id:payload.agent_task_id},{'X-Request-Id':prior.requestId});
-        const requestId = uuid();
-        store.task(key,{status:'pending',payload,requestId,createdAt:new Date().toISOString()});
-        createCharge(requestId,[payload.agent_task_id],0);
-        enqueue(async () => {
-          store.task(key,{status:'running'});
-          try {const plan = await designPlanner(payload); store.task(key,{status:'completed',result:plan.text,plan});}
-          catch(error) {
-            store.task(key,{status:'failed',error:String(error.message).slice(0,500),
-              ...(error.planningDiagnostics?{errorCode:error.code,planningDiagnostics:error.planningDiagnostics}:{}),
-              ...(typeof error.partialPlanText==='string'?{partialPlanText:error.partialPlanText.slice(0,200000)}:{})});
-            refund(requestId,payload.agent_task_id);
-          }
-        });
-        return json(response,202,{ok:true,task_id:payload.agent_task_id},{'X-Request-Id':requestId});
+        const payload=await body(request);
+        const known=store.state.tasks['agent_tasks/'+payload.agent_task_id];
+        const requestId=submitPlan(payload);
+        return json(response,known?200:202,{ok:true,task_id:payload.agent_task_id},{'X-Request-Id':requestId});
       }
       if (['/api/generate','/api/ultra_generate','/api/inpaint'].includes(pathname) && request.method === 'POST') {
         const payload = await body(request);

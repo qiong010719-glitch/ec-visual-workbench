@@ -174,7 +174,7 @@
       const filename=`images/${String(i+1).padStart(2,'0')}.${draft.images[i].split('.').pop()}`;
       zip.file(filename,await response.blob());files.push(filename);
     }
-    const manifest={schemaVersion:1,platform:'temu',title:draft.title,description:draft.description,imageRatio:draft.imageRatio,mainImages:files,detailImages:[...files],skuPreviewPolicy:'preserve-source',skus:draft.skus,status:'draft',published:false};
+    const manifest={schemaVersion:1,platform:'temu',...(draft.groupId?{groupId:draft.groupId,setId:draft.setId,setIndex:draft.setIndex,direction:draft.direction,model:draft.model}:{}),title:draft.title,description:draft.description,imageRatio:draft.imageRatio,mainImages:files,detailImages:[...files],skuPreviewPolicy:'preserve-source',skus:draft.skus,status:'draft',published:false};
     zip.file('listing-manifest.json',JSON.stringify(manifest,null,2));
     zip.file('商品草稿.json',JSON.stringify(draft,null,2));zip.file('设计方案.txt',draft.sop||'');
     zip.file('使用说明.txt','Temu 图片资料包\n主图和详情页使用 images/ 中相同图片、相同顺序，不需要再次生成。\nSKU 预览图保持上架母稿原图，不用新主图替换。\n此包尚未写入店铺或发布商品；价格、库存和类目等由后续上架流程补充。');
@@ -220,5 +220,31 @@
       controls();if(active())schedulePoll();
     } catch(error){notice('连接工作台失败：'+error.message+'。请确认已启动包含 Temu 入口的新版本。',true);}
   }
-  init();
+  window.TemuWorkbench={api,source:payload,imageReady:()=>!!status?.imageConfigured,model:()=>$('imageModel').value,
+    capture:()=>{
+      if(uploading||!token)throw new Error('请等待图片上传和通道初始化完成');
+      const p=payload();
+      if(!p.product_name||!p.product_desc||!p.categorized_images.length)throw new Error('请先填写商品名称、真实资料，并上传商品原图');
+      persist();return structuredClone(p);
+    },
+    exportSets:async(group,sets)=>{
+      const result=await api(`/api/temu/multisets/${group.id}/export`,sets.length===group.sets.length?{}:{setId:sets[0].id});
+      const zip=new JSZip();
+      for(const file of result.manifest.files){
+        const response=await fetch(file.url);if(!response.ok)throw new Error('图片读取失败，未导出不完整资料包');
+        const bytes=await response.arrayBuffer();
+        const digest=[...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(x=>x.toString(16).padStart(2,'0')).join('');
+        if(digest!==file.sha256)throw new Error('图片内容已发生变化，请重新导出');
+        zip.file(file.path,bytes);
+      }
+      zip.file('listing-manifest.json',JSON.stringify(result.manifest,null,2));
+      for(const set of result.manifest.sets){
+        const draft=result.drafts.find(d=>d.setId===set.setId);
+        zip.file(set.folder+'/设计方案.txt',draft.sop);
+        zip.file(set.folder+'/商品草稿.json',JSON.stringify(draft,null,2));
+      }
+      zip.file('使用说明.txt','Temu 多套图片资料包\n每套的 mainImages 与 detailImages 同图同序，路径相对于本包根目录。\n按 groupId + setId 对应商品草稿，setIndex 保留原批次顺序。\nSKU 预览图保持上架母稿原图；商品未发布，价格、库存和类目由后续上架流程补充。');
+      const url=URL.createObjectURL(await zip.generateAsync({type:'blob'})),link=document.createElement('a');
+      link.href=url;link.download=group.source.product_name.replace(/[<>:"/\\|?*\u0000-\u001f]/g,'_')+'-Temu裂变图片包.zip';link.click();setTimeout(()=>URL.revokeObjectURL(url),10000);
+    },ready:init()};
 })();

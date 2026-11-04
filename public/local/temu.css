@@ -3,3 +3,22 @@
 @media(min-width:1450px){.workspace{grid-template-columns:370px minmax(0,1fr)}.brief{padding:28px}.work-area{padding:32px 44px}.image-grid{grid-template-columns:repeat(auto-fill,minmax(245px,1fr))}}
 @media(max-width:1050px){.topbar{padding:12px 20px;gap:18px}.brand b{display:none}.workspace{grid-template-columns:300px minmax(0,1fr)}.brief{padding:20px}.work-area{padding:24px}.work-heading h2{font-size:20px}.format-badge{display:none}.result-heading{align-items:flex-start;flex-direction:column}.image-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:720px){.topbar{gap:12px;flex-wrap:wrap;padding:12px 16px}.brand{font-size:17px}.header-actions{width:100%;justify-content:flex-end}.header-actions button{padding:5px 12px}.topbar nav{margin-left:auto}.workspace{display:block}.brief{border-right:0;border-bottom:1px solid var(--border);padding:22px}.brief>p{margin-bottom:12px}.work-area{padding:24px 16px}.work-heading h2{font-size:20px}.plan-area{padding:16px}.generation-bar{align-items:flex-start;flex-direction:column}.generation-bar>div{text-align:left;width:100%}.generation-bar button{width:100%}.generation-bar label,.generation-bar select{width:100%;max-width:none}.image-grid{gap:10px}.image-card header{padding:10px 8px}.image-card footer{padding:0 8px 10px}.empty-state{min-height:240px;padding:40px 15px}}
+
+/* Shared multi-set workflow, presented in the Temu workspace palette. */
+.temu-multisets{max-width:1800px;margin:auto;height:auto;min-height:calc(100vh - 77px);color:#26334c;padding:28px 32px}
+.temu-multisets .ms-panel,.temu-multisets .ms-set{background:#fff;border-color:var(--border);box-shadow:none}
+.temu-multisets .ms-muted,.temu-multisets .ms-history small,.temu-multisets .ms-placeholder{color:#68758b}
+.temu-multisets label,.temu-multisets summary{color:#33415c}
+.temu-multisets input,.temu-multisets textarea,.temu-multisets select,.temu-multisets select option{background:#fafbfd;color:#26334c;border-color:#cdd5e2}
+.temu-multisets button,.temu-multisets .ms-link{color:#26334c;background:#fff;border-color:#cdd5e2}
+.temu-multisets button:hover,.temu-multisets .ms-link:hover{background:#f2f5fa}
+.temu-multisets .ms-primary,.brief .ms-launch{background:var(--accent)!important;color:#fff!important;border-color:var(--accent)!important}
+.temu-multisets .ms-notice{background:#e8f4ef;color:#215a48}
+.temu-multisets .ms-notice[data-error=true]{background:#fff0ec;color:#933024}
+.temu-multisets .ms-direction,.temu-multisets .ms-image{background:#fafbfd;border-color:var(--border)}
+.temu-multisets .ms-direction h3,.temu-multisets .ms-count{color:#ad3e09}
+.temu-multisets .ms-chip{background:#fff7f1;border-color:#f0d4c4;color:#a44213}
+.temu-multisets .ms-progress{background:#e8edf5}.temu-multisets .ms-progress i{background:var(--accent)}
+.temu-multisets .ms-history button[aria-current=true]{border-color:var(--accent);background:#fff7f1}
+.temu-multisets .ms-error{color:#a62f20}.temu-multisets .ms-images{grid-template-columns:repeat(auto-fill,minmax(200px,1fr))}
+@media(max-width:720px){.temu-multisets{padding:16px}.temu-multisets .ms-images{grid-template-columns:repeat(2,minmax(0,1fr))}.temu-multisets .ms-row{gap:8px}.temu-multisets .ms-top{align-items:start}.temu-multisets .ms-top h1{font-size:23px}}

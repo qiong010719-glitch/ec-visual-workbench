@@ -21,6 +21,16 @@ function reply(res,content=completeText,finishReason='stop'){
   res.end(JSON.stringify({model:'test-planner',choices:[{message:{content},finish_reason:finishReason}],usage:{prompt_tokens:100,completion_tokens:200,total_tokens:300}}));
 }
 
+test('planner sends the selected Sol model with maximum reasoning effort',async t=>{
+  const api=await upstream(t,res=>reply(res));
+  const plan=await planProduct(product,{...api.configuration,PLANNER_MODEL:'gpt-6.1-sol',PLANNER_REASONING_EFFORT:'max'});
+  assert.equal(api.requests.length,1);
+  assert.equal(api.requests[0].model,'gpt-6.1-sol');
+  assert.equal(api.requests[0].reasoning_effort,'max');
+  assert.equal(plan.diagnostics.reasoningEffort,'max');
+  assert.equal(splitPlan(plan.text).blocks.size,12);
+});
+
 test('a complete twelve-image plan survives a response slower than the old three-minute cutoff',async t=>{
   // Scale real signal deadlines so a 2.2-second response represents 220 seconds.
   // Keep enough wall-clock margin for the full suite's parallel HTTP servers.
@@ -30,6 +40,7 @@ test('a complete twelve-image plan survives a response slower than the old three
   const plan=await planProduct(product,api.configuration);
   assert.equal(splitPlan(plan.text).blocks.size,12);
   assert.equal(api.requests.length,1);
+  assert.equal(Object.hasOwn(api.requests[0],'reasoning_effort'),false);
   assert.equal(plan.diagnostics.finishReason,'stop');
   assert.equal(plan.diagnostics.expectedSections,12);
   assert.equal(plan.diagnostics.returnedSections,12);
@@ -48,6 +59,30 @@ test('a configurable planner deadline reports a clear timeout and submits only o
     assert.match(error.message,/构思.*超时/);
     assert.equal(error.planningDiagnostics.timeoutMs,250);
     assert.ok(error.planningDiagnostics.elapsedMs>=200);
+    return true;
+  });
+  assert.equal(api.requests.length,1);
+});
+
+test('planner waits for delayed headers until its own deadline instead of a shorter fetch deadline',async t=>{
+  const nativeFetch=globalThis.fetch;
+  // Scale the observed 300-second fetch header cutoff to 100 ms.
+  t.mock.method(globalThis,'fetch',(url,options)=>nativeFetch(url,{
+    ...options,signal:AbortSignal.any([options.signal,AbortSignal.timeout(100)])
+  }));
+  const api=await upstream(t,res=>{const timer=setTimeout(()=>reply(res),400);res.on('close',()=>clearTimeout(timer));});
+  const plan=await planProduct(product,{...api.configuration,PLANNER_TIMEOUT_MS:'2000'});
+  assert.equal(splitPlan(plan.text).blocks.size,12);
+  assert.equal(api.requests.length,1);
+  assert.ok(plan.diagnostics.elapsedMs>=350);
+  assert.equal(plan.diagnostics.timeoutMs,2000);
+});
+
+test('the total planner deadline also aborts a response stalled after headers',async t=>{
+  const api=await upstream(t,res=>{res.writeHead(200,{'Content-Type':'application/json'});res.flushHeaders();res.write('{');});
+  await assert.rejects(planProduct(product,{...api.configuration,PLANNER_TIMEOUT_MS:'300'}),error=>{
+    assert.equal(error.code,'PLANNER_TIMEOUT');
+    assert.equal(error.planningDiagnostics.httpStatus,200);
     return true;
   });
   assert.equal(api.requests.length,1);

@@ -101,7 +101,7 @@ test('both independent entry points are served',async t=>{
   const app=await fixture(t);
   assert.match(await(await fetch(app.base+'/')).text(),/AUPlus/);
   assert.match(await(await fetch(app.base+'/temu')).text(),/Temu 做图工作台/);
-  const config=await app.call('/api/temu/config');assert.equal(config.data.fissionEnabled,false);assert.equal(config.data.publishEnabled,false);
+  const config=await app.call('/api/temu/config');assert.equal(config.data.fissionEnabled,true);assert.equal(config.data.publishEnabled,false);
 });
 
 test('Temu provider requests exact 3:4 size; Amazon uses its original mapping',async t=>{

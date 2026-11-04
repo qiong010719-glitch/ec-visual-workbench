@@ -1,5 +1,5 @@
 // Visual directions are reusable methods, never additional facts about a SKU.
-export const SCENE_STYLE_VERSION=2;
+export const SCENE_STYLE_VERSION=3;
 
 const topics={
   appearance:/颜色|外观|黑色|白色|镜框|镜片|rim|frame|lens|black|gray|colour|color/i,
@@ -42,6 +42,26 @@ const aplus=[
   card('information','购买前哪些事实需要逐一核对？','decision_guide','supporting','宽幅两到三项购买问题，每项配不同实拍证据和简短答案；不制作无依据的竞品对比','把已有事实组织成选购问答；信息不足时只回答外观和已知用途。',['A FEW THINGS TO KNOW','购买前，了解这几件事']),
   card('use','实际取用过程或物品状态怎样衔接？','action_sequence','in_use','宽幅连续动作照片，以同一人物和同一实物呈现；步骤仅来自资料，否则展示可见状态','增加过程连续性，连接取用前、操作中和使用后；不编造用量或维护指令。',['A MOMENT, STEP BY STEP','看清日常的每个动作']),
   card('appearance','最后如何核对想要的外观与已知特点？','visual_index','supporting','一侧完整生活场景，另一侧三块不同细节照片作信息索引；避免再次出现巨型悬浮产品','以情境和证据索引回顾购买信息，给出可查找的答案而不是重复口号。',['THE DETAILS TO REMEMBER','值得记住的细节'])
+];
+
+export const genericHeadlines=[...gallery,...aplus].flatMap(frame=>frame.headline);
+const shot=(scene,camera,humanPresence,productScale,action,sceneType='studio_detail')=>({scene,camera,humanPresence,productScale,action,sceneType});
+const galleryShots=[
+  shot('与本商品已知需求对应的完整生活空间，明确交代人物与环境，不把包装放大挡住人物','环境中景，35mm视角，人物和空间为主','person','约15–25%，自然放在可识别的位置','一个与已知需求有关的自然动作，不固定为手拿包装面对镜头','lifestyle'),
+  shot('独立摄影台上的可见材质或已确认剂型，背景使用品牌色的深浅层次，画面不出现家居房间','极近微距，100mm视角，细节占画面约70%','none','完整包装只作小比例来源定位','只展示实物纹理、边缘与光影，不加入人物或拿包装的手'),
+  shot('真实操作位置的局部，画面裁切到产品、工具与接触位置，不出现完整人物和完整房间','侧面动作特写，70–85mm视角，接触位置为视觉中心','hands','约20–35%，服从动作关系','仅保留实际操作所需的手部动作，不重复正面持袋或持瓶肖像','lifestyle'),
+  shot('无人物的平面实物关系图，完整包装与标签或可见部位分区排列，不使用居家台面背景','90度正俯拍，平面图谱与定位线组织阅读','none','约15–25%，其余空间用于真实细节对应','实物静置，准确连接整体、局部与已有文字信息'),
+  shot('以品牌色块、留白和真实信息为主体的编辑版面，允许小幅实物摄影，不使用人物、厨房或阅读桌','正面信息版式，数字或事实层级主导，避免假装成实验图表','none','约10–20%，作为信息来源标识','仅排列已有事实、单位与限定词，不用持包装动作充当解释'),
+  shot('与前面不同的日常位置，用物件、前景和背景建立层次，不重复冲调台面与正面人物','高位斜俯拍静物，环境物件与产品形成对角线','hands','约25–40%，完整实物与环境共同构图','仅拍一次拿放或可见状态转换，手部从边缘入镜','lifestyle')
+];
+const aplusShots=[
+  shot('与主图组不同的完整生活环境，人物活动、空间纵深与小幅产品细节共同展开主题','环境广角，24–35mm视角，不重复副图的人物中近景','person','约10–18%，作为环境中的真实物品','人物自然活动，产品不必被拿在手中，避免再次演示开包装','lifestyle'),
+  shot('横向实物与标签关系图，采用独立摄影背景，以不同局部解释已有信息','俯拍全貌结合局部微距，横向三段阅读路径','none','约15–20%，让位于真实局部和信息关系','静物、可核对的局部与简短说明相互对应'),
+  shot('明确不同于厨房操作台的第二生活空间，用当前人群的选购或使用情境展开需求','侧后方环境中景与一个情境局部拼接，人物不看镜头','person','约10–20%，不做巨大包装前景','一个自然的人物情境动作，不重复举包装或搅拌水杯','lifestyle'),
+  shot('并列的实物微距与操作接触位置，两个画面均裁切到物件，不出现完整人物','极近微距与局部动作的双镜头对照','hands','完整包装约10–20%，细节与接触关系为主','连接真实细节和实际使用位置，不重复主图组的整体产品海报'),
+  shot('独立的横向选购指南版面，短问答配不同实物细节，以留白和品牌色划分区域','平面编辑版式，图文问答为主，不使用肩后持包装照片','none','约10–15%，各个实物细节承担不同证据','只核对已知事实，不让人物拿着包装读标签'),
+  shot('同一实物的连续状态，镜头固定在实际操作位置，保留准确的前后关系','固定俯拍或近距离三联，动作顺序承担信息','hands','每格约25–40%，以实际动作关系为准','手部完成不同的可见状态，不编造用量、时间或维护步骤','lifestyle'),
+  shot('整套内容的视觉索引，使用不同实物局部和一处小幅环境照片组成收尾','多尺度编辑拼图，不再使用单幅大人物或大包装','none','约10–20%，仅在索引需要处出现','以已经展开的事实与局部收束，不增加新的使用动作')
 ];
 
 const profiles={
@@ -118,11 +138,22 @@ export function richStoryboard(payload,slot,facts,base,category) {
   const lang=String(payload.target_lang || 'English');
   const headline=/english|^en\b/i.test(lang)?frame.headline[0]:/中文|chinese|^zh\b/i.test(lang)?frame.headline[1]:`将“${frame.headline[0]}”自然翻译为 ${lang}，不可增加产品宣称`;
   const visualProof=supportingFacts.length?`仅依据这些原文事实：${supportingFacts.join('；')}。用实际动作、可见局部或标签位置配对解释；不能直接拍出的性质只作原文说明，不制作实验或效果证明。`:'没有匹配本主题的明确卖点：只展示当前上传素材的可见外观及已知用途关系。没有证据的成分、颜色、剂型、尺寸、技术和性能一律不补写。';
-  const scene=base.sceneType==='lifestyle'&&profile?profile.scene:base.scene;
+  const selected=category==='supplements'||!profile?(isAplus?aplusShots:galleryShots)[index]:null;
+  const staging=selected&&base.sceneType==='studio_detail'&&selected.sceneType==='lifestyle'?{...selected,
+    scene:'与当前商品已知用途对应的静物摄影背景，只展示实物、可见局部和必要道具，不出现完整人物或生活空间全景',
+    camera:selected.humanPresence==='hands'?'局部操作近景，只保留物件与必要手部':'静物中景或斜俯拍，产品与可见细节为主',
+    action:selected.humanPresence==='hands'?'只保留必要的局部手部操作，不出现完整人物':'产品静置，利用实物局部和接触位置解释事实，不安排人物动作',
+    humanPresence:selected.humanPresence==='person'?'none':selected.humanPresence,sceneType:'studio_detail'
+  }:selected;
+  const sceneType=staging?(base.sceneType==='studio_detail'?'studio_detail':staging.sceneType):base.sceneType;
+  const context=staging&&sceneType==='lifestyle'&&category!=='supplements';
+  const scene=staging?staging.scene+(context?'；已知用途环境：'+base.scene:''):(base.sceneType==='lifestyle'&&profile?profile.scene:base.scene);
+  const action=staging?staging.action+(context?'；具体动作遵循：'+base.action:''):(base.sceneType==='lifestyle'&&profile?profile.action:base.action);
   const board={...base,...frame,category,supportingFacts,evidenceMode,claimBoundary:boundary,scene,
-    action:base.sceneType==='lifestyle'&&profile?profile.action:base.action,
+    action,sceneType,
+    ...(staging?{camera:staging.camera,humanPresence:sceneType==='studio_detail'&&staging.humanPresence==='person'?'none':staging.humanPresence,productScale:staging.productScale}:{}),
     visualProof,
-    composition:`${master?'摄影主导':'信息主导'}：${frame.composition}。${base.sceneType==='studio_detail'?'本图选择静物：把人物或环境主画面替换为真实实物、局部、接触位置的静物对应，不擅自增加生活场景。':''}产品职责为 ${frame.productRole}；完整产品的大小服从这项职责，不强制每张巨大居中。`,
+    composition:`${master?'摄影主导':'信息主导'}：${frame.composition}。${sceneType==='studio_detail'?'本图选择静物：把人物或环境主画面替换为真实实物、局部、接触位置的静物对应，不擅自增加生活场景。':''}产品职责为 ${frame.productRole}；完整产品的大小服从这项职责，不强制每张巨大居中。`,
     copy:`建议短标题：${headline}。${base.copy}；正文只可取自本图依据，使用 ${lang}。资料不足时用中性外观标签，不能把问题写成未经支持的答案。设计说明不印入成图。`,
     primaryFact:supportingFacts.join('；') || '当前上传素材的可见外观与已知用途，未提供的规格不得推断'
   };
@@ -138,10 +169,11 @@ export function richStoryboard(payload,slot,facts,base,category) {
 }
 
 export function describeStoryboard(board) {
-  return [`购买问题：${board.buyerQuestion}`,`本图信息增量：${board.informationIncrement}`,`视觉装置：${board.visualDevice}；产品职责：${board.productRole}`,`场景：${board.scene}`,`动作：${board.action}`,`视觉证据：${board.visualProof}`,`本图构图：${board.composition}`,`文字安排：${board.copy}`,`事实边界：${board.claimBoundary}`].join('\n');
+  return [`购买问题：${board.buyerQuestion}`,`本图信息增量：${board.informationIncrement}`,`视觉装置：${board.visualDevice}；产品职责：${board.productRole}`,`场景：${board.scene}`,`动作：${board.action}`,board.camera?`镜头与比例：${board.camera}；产品比例：${board.productScale}；人物出镜：${board.humanPresence==='none'?'不出现人物':board.humanPresence==='hands'?'仅手部，不出现完整人物':'人物作为情境主体'}`:'',`视觉证据：${board.visualProof}`,`本图构图：${board.composition}`,`文字安排：${board.copy}`,`事实边界：${board.claimBoundary}`].filter(Boolean).join('\n');
 }
 
 export function storyboardContract(board) {
   return ['本图叙事约定（与本图方案共同执行）：',`购买问题：${board.buyerQuestion}`,`本图信息增量：${board.informationIncrement}`,`本图证据：${board.visualProof}`,`事实边界：${board.claimBoundary}`,
-    '用户明确编辑的场景、构图、文案优先于自动建议；仍须满足事实边界。只保留本图的一个清楚主题及其视觉证据，不机械堆徽章、不把主图横向拉伸为 A+。'].join('\n');
+    board.camera?`本图默认镜头：${board.camera}；产品比例：${board.productScale}；人物出镜：${board.humanPresence==='none'?'不出现人物':board.humanPresence==='hands'?'仅手部':'人物情境'}。本图方案或用户已明确编辑的安排优先。`:'',
+    '用户明确编辑的场景、构图、文案优先于自动建议；仍须满足事实边界。只保留本图的一个清楚主题及其视觉证据，不机械堆徽章、不把主图横向拉伸为 A+。'].filter(Boolean).join('\n');
 }
