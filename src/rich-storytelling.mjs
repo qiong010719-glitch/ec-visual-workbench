@@ -44,6 +44,7 @@ const aplus=[
   card('appearance','最后如何核对想要的外观与已知特点？','visual_index','supporting','一侧完整生活场景，另一侧三块不同细节照片作信息索引；避免再次出现巨型悬浮产品','以情境和证据索引回顾购买信息，给出可查找的答案而不是重复口号。',['THE DETAILS TO REMEMBER','值得记住的细节'])
 ];
 
+export const genericHeadlines=[...gallery,...aplus].flatMap(frame=>frame.headline);
 const shot=(scene,camera,humanPresence,productScale,action,sceneType='studio_detail')=>({scene,camera,humanPresence,productScale,action,sceneType});
 const galleryShots=[
   shot('与本商品已知需求对应的完整生活空间，明确交代人物与环境，不把包装放大挡住人物','环境中景，35mm视角，人物和空间为主','person','约15–25%，自然放在可识别的位置','一个与已知需求有关的自然动作，不固定为手拿包装面对镜头','lifestyle'),

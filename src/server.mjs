@@ -11,6 +11,8 @@ import {designPatterns} from './design-patterns.mjs';
 import {generationMode} from './visual-style.mjs';
 import {SCENE_STYLE_VERSION} from './rich-storytelling.mjs';
 import {imageModels,resolveImageModel} from './image-models.mjs';
+import {createMultiSetService,MAX_SETS} from './multisets.mjs';
+import {creativeStyles} from './creative-direction.mjs';
 
 export const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const mimes = {'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json; charset=utf-8','.jpg':'image/jpeg','.png':'image/png','.webp':'image/webp','.svg':'image/svg+xml','.ico':'image/x-icon','.woff2':'font/woff2'};
@@ -18,7 +20,7 @@ const validId = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,120}$/.t
 const uuid = () => crypto.randomUUID();
 const fail = (status, message) => Object.assign(new Error(message), {status});
 
-export function createWorkbench({dataDirectory = path.join(root, 'data'), configuration = process.env, provider, download, planner, researchOptions = {}} = {}) {
+export function createWorkbench({dataDirectory = path.join(root, 'data'), configuration = process.env, provider, download, planner, directionPlanner, researchOptions = {}} = {}) {
   const store = new Store(dataDirectory);
   const mediaDirectory = path.join(dataDirectory, 'media');
   fs.mkdirSync(mediaDirectory, {recursive: true});
@@ -139,7 +141,7 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
     createCharge(requestId, tasks.map(t => t.taskId), payload.mobile_reformat ? 1 : 2);
     for (const {task,section,prompt,refs} of prepared) {
       const key = 'hyrule_tasks/' + task.taskId;
-      store.task(key, {status:'pending', phase:'queued', taskId:task.taskId, slot:task.slot, requestId, model, prompt,referenceImages:refs.filter(r=>!r.startsWith('data:')),designReferences:design.references || [],visualStyle:design.visualStyle || null,generationMode:design.generationMode || null,promptVersion:design.visualStyle?.id==='scene_advertising'&&design.visualStyle.version===SCENE_STYLE_VERSION?'per-slot-v5':design.visualStyle?'per-slot-v3':'per-slot-v2',createdAt:new Date().toISOString()});
+      store.task(key, {status:'pending', phase:'queued', taskId:task.taskId, slot:task.slot, requestId, model, prompt,referenceImages:refs.filter(r=>!r.startsWith('data:')),designReferences:design.references || [],visualStyle:design.visualStyle || null,generationMode:design.generationMode || null,...(payload.group_id?{groupId:payload.group_id,setId:payload.set_id,creativeDirection:design.creativeDirection}:{}),promptVersion:design.visualStyle?.id==='scene_advertising'&&design.visualStyle.version===SCENE_STYLE_VERSION?'per-slot-v5':design.visualStyle?'per-slot-v3':'per-slot-v2',createdAt:new Date().toISOString()});
       enqueue(async () => {
         store.task(key, {status:'running',phase:'generating'});
         try {
@@ -155,6 +157,27 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
     return requestId;
   }
 
+  function submitPlan(payload){
+    if(!validId(payload.agent_task_id)||!payload.product_name||!payload.product_desc)throw fail(400,'需要产品名称、卖点和有效任务编号');
+    const key='agent_tasks/'+payload.agent_task_id;
+    if(store.state.tasks[key])return store.state.tasks[key].requestId;
+    const requestId=uuid();
+    store.task(key,{status:'pending',payload,requestId,createdAt:new Date().toISOString()});
+    createCharge(requestId,[payload.agent_task_id],0);
+    enqueue(async()=>{
+      store.task(key,{status:'running'});
+      try{const plan=await designPlanner(payload);store.task(key,{status:'completed',result:plan.text,plan});}
+      catch(error){
+        store.task(key,{status:'failed',error:String(error.message).slice(0,500),
+          ...(error.planningDiagnostics?{errorCode:error.code,planningDiagnostics:error.planningDiagnostics}:{}),
+          ...(typeof error.partialPlanText==='string'?{partialPlanText:error.partialPlanText.slice(0,200000)}:{})});
+        refund(requestId,payload.agent_task_id);
+      }
+    });
+    return requestId;
+  }
+  const multisets=createMultiSetService({store,configuration,mediaDirectory,enqueue,submitPlan,submitImages,publicTask,retryDownload,directionPlanner});
+
   const server = http.createServer(async (request, response) => {
     try {
       const host = request.headers.host || '';
@@ -167,6 +190,18 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
       response.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' data: blob:; font-src 'self' data:; media-src 'self' blob:; frame-src 'self' blob:; frame-ancestors 'none'; object-src 'none'; base-uri 'self'");
       if (pathname === '/api/session' && request.method === 'GET') return json(response,200,{token:csrf,user:{id:'local-owner',email:'local@workbench.local'}});
       if (pathname.startsWith('/api/') && !['GET','HEAD'].includes(request.method) && request.headers['x-workbench-token'] !== csrf) throw fail(403, '本地会话已过期，请刷新页面');
+      if(pathname==='/api/multisets/config'&&request.method==='GET')return json(response,200,{maxSets:MAX_SETS,styles:creativeStyles.map(({id,label})=>({id,label})),aiRecommendations:!!(configuration.PLANNER_BASE_URL&&configuration.PLANNER_API_KEY&&configuration.PLANNER_MODEL)});
+      const multiRoute=/^\/api\/multisets(?:\/([a-zA-Z0-9_-]+))?(?:\/(directions|recommend|plan|generate|retry|plan-text))?$/.exec(pathname);
+      if(multiRoute){
+        const [,groupId,action]=multiRoute;
+        if(request.method==='GET'&&!action)return json(response,200,groupId?multisets.get(groupId):multisets.list());
+        if(request.method!=='POST')throw fail(405,'不支持该方法');
+        const payload=await body(request,2*1024*1024);
+        if(!groupId)return json(response,202,multisets.create(payload));
+        const operations={directions:'update',recommend:'recommend',plan:'plan',generate:'generate',retry:'retry','plan-text':'editPlan'};
+        if(!operations[action])throw fail(404,'接口不存在');
+        return json(response,['directions','plan-text'].includes(action)?200:202,multisets[operations[action]](groupId,payload));
+      }
       if (pathname === '/api/status') return json(response,200,{mode:'local', isolatedPreview:configuration.WORKBENCH_STYLE_PREVIEW==='true', imageProvider:provider ? 'test-fixture' : 'configured-image-api', imageConfigured:!!provider || !!configuration.SUANZHOU_IMAGE_API_KEY, model:resolveImageModel(undefined,configuration), imageModels, planner:configuration.PLANNER_API_KEY ? 'configured' : 'local-rules', active, queued:queue.length,downloadProxyConfigured:!!configuration.IMAGE_DOWNLOAD_PROXY,downloadRecoveryEnabled:true,recoverableDownloads:Object.values(store.state.tasks).filter(t=>t.resultUrl&&t.status==='failed').length, defaultProductStatus:'draft', paymentEnabled:false, publishEnabled:false});
       if (pathname === '/api/research/status' && request.method === 'GET') return json(response,200,research.status());
       if (pathname === '/api/research/design-patterns' && request.method === 'GET') return json(response,200,designPatterns(research.library.state));
@@ -219,25 +254,10 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
         return json(response,result.accepted?202:200,result.task);
       }
       if (pathname === '/api/agent' && request.method === 'POST') {
-        const payload = await body(request);
-        if (!validId(payload.agent_task_id) || !payload.product_name || !payload.product_desc) throw fail(400,'需要产品名称、卖点和有效任务编号');
-        const key = 'agent_tasks/' + payload.agent_task_id;
-        const prior = store.state.tasks[key];
-        if (prior) return json(response,200,{ok:true,task_id:payload.agent_task_id},{'X-Request-Id':prior.requestId});
-        const requestId = uuid();
-        store.task(key,{status:'pending',payload,requestId,createdAt:new Date().toISOString()});
-        createCharge(requestId,[payload.agent_task_id],0);
-        enqueue(async () => {
-          store.task(key,{status:'running'});
-          try {const plan = await designPlanner(payload); store.task(key,{status:'completed',result:plan.text,plan});}
-          catch(error) {
-            store.task(key,{status:'failed',error:String(error.message).slice(0,500),
-              ...(error.planningDiagnostics?{errorCode:error.code,planningDiagnostics:error.planningDiagnostics}:{}),
-              ...(typeof error.partialPlanText==='string'?{partialPlanText:error.partialPlanText.slice(0,200000)}:{})});
-            refund(requestId,payload.agent_task_id);
-          }
-        });
-        return json(response,202,{ok:true,task_id:payload.agent_task_id},{'X-Request-Id':requestId});
+        const payload=await body(request);
+        const known=store.state.tasks['agent_tasks/'+payload.agent_task_id];
+        const requestId=submitPlan(payload);
+        return json(response,known?200:202,{ok:true,task_id:payload.agent_task_id},{'X-Request-Id':requestId});
       }
       if (['/api/generate','/api/ultra_generate','/api/inpaint'].includes(pathname) && request.method === 'POST') {
         const payload = await body(request);

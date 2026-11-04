@@ -1,6 +1,7 @@
 // Reusable design directions, not product facts or competitor artwork.
 import {extractProductFacts} from './product-facts.mjs';
 import {richStoryboard} from './rich-storytelling.mjs';
+import {directStoryboard,creativeSystem} from './creative-direction.mjs';
 export const SCENE_STYLE='scene_advertising';
 export const visualStyleId=payload=>payload.visual_style==='original'?'original':SCENE_STYLE;
 export const generationMode=payload=>payload.generation_mode==='master'?'master':/^ultra/.test(payload.generation_mode || payload.mode || '')?'ultra':'fast';
@@ -42,6 +43,7 @@ function context(payload) {
 export function styleGuideFor(payload) {
   if(visualStyleId(payload)==='original' || /^thd(?:_|$)/.test(payload.design_scope || ''))return '';
   const master=generationMode(payload)==='master';
+  const creative=payload.creative_direction?creativeSystem(payload.creative_direction):null;
   return [
     '场景广告风格：每张图用真实画面解释一个购买问题，整套保持可识别的视觉语言。',
     '丰富来自内容关系：先规划购买问题，再选择可支持的事实、具体情境、人物动作、微距或外观图解。画面有主次，二至三处互相关联的细节比无关装饰更有用；不强制每张用巨大产品、图标和勋章。痛点表现为具体生活需求或选购疑问，不制造恐惧、虚假前后对比或未证实结果。',
@@ -50,8 +52,8 @@ export function styleGuideFor(payload) {
     master
       ? '大师模式：以摄影叙事、光影质感和材质表现组织画面；先设计完整空间、主体动作和镜头，再安排精简标题与必要说明。文字跟随摄影节奏，不套用快速模式的信息密度或场景控制。'
       : `快速设计模式：以卖点信息和清楚演示组织画面；先确定标题、说明和视觉证据，再安排产品与情境。${payload.info_density==='low'?'低信息密度：一个标题与一项解释':payload.info_density==='medium'?'中等信息密度：一个标题、短副标题与两项解释':'中高信息密度：一个大标题、短副标题与二至三组图文说明'}；每组均有明确用途。场景倾向 ${payload.scene_intensity || 'original'}；密度与场景比重分别控制。`,
-    '整套统一字体家族：采用 Inter / Helvetica 风格的现代无衬线字，标题用粗体，正文用常规字重，数字沿用同一家族；图标统一细实线。标题用深墨色或场景所需的高对比反白，强调词只用整套强调色。用清晰平面字体，不逐张换成立体字、泡泡字或描边贴纸。文案使用目标语言，数字及单位完整保留。',
-    '主色从当前产品或包装提取，辅色最多两种，统一中性色底与强调色。未确认颜色时保持产品原色，按当前上传素材确定主色，不照搬竞品包装颜色。',
+    creative?`本套统一字体系统：${creative.type}。遵循这套的字体与排版，不套用其他套的粗体标题模板。文案使用目标语言，数字及单位完整保留。`:'整套统一字体家族：采用 Inter / Helvetica 风格的现代无衬线字，标题用粗体，正文用常规字重，数字沿用同一家族；图标统一细实线。标题用深墨色或场景所需的高对比反白，强调词只用整套强调色。用清晰平面字体，不逐张换成立体字、泡泡字或描边贴纸。文案使用目标语言，数字及单位完整保留。',
+    creative?`本套背景与配色：${creative.palette}。商品原色保持与原始素材一致；变化的是背景和设计语言。`:'主色从当前产品或包装提取，辅色最多两种，统一中性色底与强调色。未确认颜色时保持产品原色，按当前上传素材确定主色，不照搬竞品包装颜色。',
     '真实光源、接触阴影、景深和前中后景；产品应处于可理解的空间中。镜头在全景、动作中景、微距和俯拍间有节奏地变化。',
     '每个卖点都要有视觉证据：动作、接触关系、质地或已知结构；数字不能只放在旁边充当解释。没有测试资料时不画测试结果、医学效果、虚假对比或认证章。',
     '当前商品身份、颜色、数量、结构和配件以上传素材为准。单根线不能变成多根；外部参考只提供设计方法。输入参数与产品可见标识冲突时标记待核实，不拼出互相矛盾的参数。'
@@ -77,7 +79,7 @@ export function storyboardFor(payload,slot,primaryFact) {
     composition:master?`摄影主导：${baseLayout}；主体和光线先建立叙事，文字置于自然留白处，不堆成参数卡片`:`信息主导：${baseLayout}；标题、说明与对应证据一一关联，适配快速模式所选信息密度`,
     copy:master?'一个精简主题标题，必要时加一句依据，文案不遮挡关键动作与质地':'一个明确标题，辅以所选密度的短说明；图标只解释已知事实'
   };
-  return richStoryboard(payload,slot,extractProductFacts(payload.product_desc),base,productCategory(payload));
+  return directStoryboard(richStoryboard(payload,slot,extractProductFacts(payload.product_desc),base,productCategory(payload)),payload.creative_direction,payload,slot);
 }
 
 export const visualTraits=['complete_scene','human_interaction','material_macro','headline_hierarchy','information_graphics','coherent_palette','product_in_use','studio_hero'];

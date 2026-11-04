@@ -1221,7 +1221,7 @@ window.addEventListener('DOMContentLoaded', function () {
 
         function switchView(viewName, el) {
             playZeldaSound('click');
-            const VIEW_MAP = { 'dashboard': 'view-dashboard', 'ultra-log': 'view-ultra-log', 'partners': 'view-partners', 'adventure-log': 'view-adventure-log', 'edit-studio': 'view-edit-studio' };
+            const VIEW_MAP = { 'dashboard': 'view-dashboard', 'ultra-log': 'view-ultra-log', 'partners': 'view-partners', 'adventure-log': 'view-adventure-log', 'edit-studio': 'view-edit-studio', 'multisets': 'view-multisets' };
             Object.values(VIEW_MAP).forEach(id => { const n = document.getElementById(id); if (n) n.classList.add('hidden'); });
             const target = document.getElementById(VIEW_MAP[viewName] || 'view-adventure-log');
             if (target) target.classList.remove('hidden');
