@@ -249,6 +249,7 @@
     const header=$('view-dashboard').querySelector('header');
     const actions=document.createElement('div');actions.className='local-row';
     actions.innerHTML='<span class="local-pill" id="localPlanLabel">本地复刻</span><button class="local-action" id="localDraftButton">草稿箱</button><button class="local-action" id="localReferenceButton">设计参考库</button><button class="local-action" id="localDownloadsButton">恢复下载</button>';
+    actions.insertAdjacentHTML('afterbegin','<a class="local-action" href="/temu" id="temuEntry">Temu 做图入口</a>');
     header?.appendChild(actions);$('localDraftButton').onclick=openDraftList;$('localDownloadsButton').onclick=openDownloadRecovery;
     const referenceScript=document.createElement('script');referenceScript.src='/local/research.js';
     referenceScript.onload=()=>{$('localReferenceButton').onclick=()=>window.openReferenceLibrary();};document.head.appendChild(referenceScript);

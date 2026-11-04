@@ -8,9 +8,11 @@ for(const folder of ['public/original','public/local']) for(const name of fs.rea
   if(!name.endsWith('.js'))continue;
   new vm.Script(fs.readFileSync(path.join(root,folder,name),'utf8'),{filename:name});count++;
 }
-const html=fs.readFileSync(path.join(root,'public/index.html'),'utf8');
+for(const page of ['index.html','temu.html']) {
+const html=fs.readFileSync(path.join(root,'public',page),'utf8');
 for(const match of html.matchAll(/<(?:script|link|img)\b[^>]*(?:src|href)="([^"#]+)"/g)) {
   if(/^(https?:|data:|blob:)/.test(match[1]))continue;
   if(!fs.existsSync(path.join(root,'public',match[1])))throw new Error('Missing asset: '+match[1]);
+}
 }
 console.log(`已检查 ${count} 个页面脚本语法，静态资源引用齐全。`);

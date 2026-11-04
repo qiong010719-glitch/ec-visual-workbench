@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Temu 做图工作台</title>
+  <link rel="stylesheet" href="/local/temu.css">
+  <script src="/vendor/jszip.min.js" defer></script>
+  <script src="/local/temu.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/temu"><span class="brand-icon">T</span><span>Temu <b>做图工作台</b></span></a>
+    <nav aria-label="平台入口"><a href="/">亚马逊</a><a href="/temu" aria-current="page">Temu</a></nav>
+    <div class="header-actions"><button id="draftsButton" type="button">Temu 草稿箱</button><button id="statusButton" type="button">通道状态</button></div>
+  </header>
+  <main class="workspace">
+    <aside class="brief">
+      <div class="section-heading"><h1>商品与图片</h1><button id="newButton" class="text-button" type="button">新建商品</button></div>
+      <p class="muted">生成一组商品图，主图和详情页共用。</p>
+      <form id="productForm">
+        <label for="productName">商品名称</label><input id="productName" required maxlength="160" placeholder="例如：雪夜街景装饰画">
+        <label for="productDesc">真实卖点与商品资料</label><textarea id="productDesc" required rows="5" placeholder="填写实际材质、尺寸、数量、用途等。没有确认的信息不必填写。"></textarea>
+        <label for="materials">商品原图 <span class="muted">最多 8 张</span></label>
+        <label class="upload-zone" for="materials"><strong>＋ 添加商品原图</strong><span>PNG、JPG、WebP，每张不超过 25 MB</span></label>
+        <input id="materials" class="file-input" type="file" accept="image/png,image/jpeg,image/webp" multiple>
+        <div id="materialList" class="materials"></div>
+        <p class="hint">请使用同一商品的主体、细节或使用图，保持商品身份一致。</p>
+        <fieldset><legend>整套图片比例</legend><div class="ratio-options">
+          <label><input type="radio" name="ratio" value="1:1" checked><span class="ratio-shape square"></span><strong>1:1</strong><small>1024 × 1024</small></label>
+          <label><input type="radio" name="ratio" value="3:4"><span class="ratio-shape portrait"></span><strong>3:4</strong><small>1152 × 1536</small></label>
+        </div></fieldset>
+        <div class="form-row"><div><label for="imageCount">每套图片张数</label><select id="imageCount"><option value="1">1 张</option><option value="2">2 张</option><option value="3">3 张</option><option value="4">4 张</option><option value="5">5 张</option><option value="6">6 张</option><option value="7" selected>7 张</option></select></div><div><label for="generationMode">设计模式</label><select id="generationMode"><option value="fast">快速设计</option><option value="master">大师设计</option></select></div></div>
+        <div class="form-row"><div><label for="targetMarket">目标市场</label><input id="targetMarket" value="加拿大"></div><div><label for="targetLang">图片文案语言</label><select id="targetLang"><option>English</option><option>Français</option><option>Deutsch</option><option>Español</option><option>中文</option></select></div></div>
+        <label for="visualStyle">图片风格</label><select id="visualStyle"><option value="scene_advertising">场景广告风格</option><option value="original">简洁商品展示</option></select>
+        <div id="fastControls" class="form-row"><div><label for="infoDensity">信息密度</label><select id="infoDensity"><option value="low">少字</option><option value="medium" selected>适中</option><option value="high">丰富</option></select></div><div><label for="sceneIntensity">场景比重</label><select id="sceneIntensity"><option value="low">较少</option><option value="medium" selected>适中</option><option value="high">较多</option></select></div></div>
+        <label for="requirements">补充要求 <span class="muted">选填</span></label><textarea id="requirements" rows="2" placeholder="例如：不出现人物，保留完整画框"></textarea>
+        <button id="planButton" class="primary full-width" type="submit">生成设计方案</button>
+        <p id="plannerHint" class="hint">先确认方案，再开始生成图片。</p>
+      </form>
+    </aside>
+    <section class="work-area">
+      <div class="work-heading"><div><h2>从商品原图到可用的一套图</h2><p class="muted">首图展示商品，其他图片解释卖点、细节和使用场景。</p></div><span id="formatBadge" class="format-badge">1:1 · 7 张</span></div>
+      <section class="plan-area" aria-labelledby="planHeading">
+        <div class="section-heading"><h2 id="planHeading">设计方案</h2><span id="planState" class="muted">等待商品资料</span></div>
+        <textarea id="planText" aria-label="可编辑的设计方案" rows="9" placeholder="填写左侧资料并上传原图后，点击「生成设计方案」。每张图片的方案都可以在这里修改。" disabled></textarea>
+        <div class="generation-bar"><label for="imageModel">生图模型<select id="imageModel" disabled><option>正在读取…</option></select></label><div><button id="generateButton" class="primary" type="button" disabled>生成整套图片</button><p class="hint">点击后调用图片服务，按实际调用计费。</p></div></div>
+      </section>
+      <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+      <section aria-labelledby="resultHeading">
+        <div class="section-heading result-heading"><div><h2 id="resultHeading">本套图片</h2><p id="resultSummary" class="muted">生成后可逐张查看、重新生成和下载。</p></div><button id="exportButton" type="button" disabled>保存并导出上架资料包</button></div>
+        <div id="imageGrid" class="image-grid"></div>
+        <div id="emptyState" class="empty-state"><div class="empty-frames" aria-hidden="true"><span></span><span></span><span></span></div><h3>图片将按上架顺序排列</h3><p>主图与详情页使用相同图片和顺序，无需重复生成。</p></div>
+      </section>
+    </section>
+  </main>
+  <dialog id="dialog"><div class="section-heading"><h2 id="dialogTitle"></h2><button id="closeDialog" type="button" aria-label="关闭">关闭</button></div><div id="dialogContent"></div></dialog>
+</body>
+</html>

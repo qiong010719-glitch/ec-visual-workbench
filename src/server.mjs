@@ -11,6 +11,7 @@ import {designPatterns} from './design-patterns.mjs';
 import {generationMode} from './visual-style.mjs';
 import {SCENE_STYLE_VERSION} from './rich-storytelling.mjs';
 import {imageModels,resolveImageModel} from './image-models.mjs';
+import {isTemu,temuFormats,validateTemu,temuPlanSignature,prepareTemuImage,verifyTemuImages} from './temu.mjs';
 
 export const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const mimes = {'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json; charset=utf-8','.jpg':'image/jpeg','.png':'image/png','.webp':'image/webp','.svg':'image/svg+xml','.ico':'image/x-icon','.woff2':'font/woff2'};
@@ -34,6 +35,11 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
     const name = uuid() + extension;
     fs.writeFileSync(path.join(mediaDirectory, name), bytes);
     return '/media/' + name;
+  };
+  const saveResult = async (bytes, task) => {
+    if (!isTemu(task)) return {imageUrl:saveImage(bytes)};
+    const prepared=await prepareTemuImage(bytes,task.image_ratio);
+    return {imageUrl:saveImage(prepared.bytes),dimensions:prepared.dimensions,sourceDimensions:prepared.sourceDimensions,fitted:prepared.fitted};
   };
   const runNext = () => {
     while (queue.length && active < concurrency) {
@@ -59,7 +65,7 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
       store.task(key,{status:'running',phase:'downloading'});
       try {
         const bytes=await imageDownloader(task.resultUrl,{onAttempt:attempt=>store.task(key,{downloadAttempt:attempt})});
-        store.task(key,{status:'completed',phase:'completed',imageUrl:saveImage(bytes),error:null,downloadRecoveredAt:new Date().toISOString()});
+        store.task(key,{status:'completed',phase:'completed',...await saveResult(bytes,task),error:null,downloadRecoveredAt:new Date().toISOString()});
       } catch(error) {store.task(key,{status:'failed',phase:'download_failed',error:String(error.message).slice(0,500)});}
     });
     return {task:publicTask(store.state.tasks[key]),accepted:true};
@@ -116,10 +122,20 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
     const requestId = uuid();
     const agent = store.state.tasks['agent_tasks/' + payload.agent_task_id];
     const merged = {...agent?.payload,...payload};
+    if (isTemu(merged)) {
+      validateTemu(merged,{editing:kind==='inpaint'});
+      if(kind==='ultra')throw fail(400,'Temu 当前只支持逐张主图生成');
+      if(kind==='generate') {
+        if(!agent?.plan || agent.status!=='completed' || !isTemu(agent.payload))throw fail(409,'请先完成 Temu 构思再生成图片');
+        if(temuPlanSignature(merged)!==temuPlanSignature(agent.payload))throw fail(409,'商品资料、比例或张数已改变，请重新构思');
+        if(tasks.some(t=>t.slot<0 || t.slot>=merged.image_count) || new Set(tasks.map(t=>t.slot)).size!==tasks.length)throw fail(400,'Temu 图片槽位无效或重复');
+      }
+      if(tasks.some(t=>t.aspect_ratio && t.aspect_ratio!==merged.image_ratio))throw fail(400,'所有 Temu 图片必须使用本套选定的比例');
+    }
     if(['generate','ultra'].includes(kind)&&!payload.mobile_reformat&&agent?.plan?.visualStyle?.id==='scene_advertising'&&agent.plan.visualStyle.version!==SCENE_STYLE_VERSION)throw fail(409,'场景广告风格已更新，请重新构思后再生成图片；原方案和已生成图片已保留。');
     if(kind==='generate'&&!payload.mobile_reformat&&agent?.plan?.visualStyle &&
       ((payload.generation_mode&&generationMode(payload)!==agent.plan.generationMode)||(payload.visual_style&&payload.visual_style!==agent.plan.visualStyle.id)))throw fail(409,'设计模式或风格已经改变，请重新构思后再生成图片。');
-    const design = agent?.plan || buildPlan(merged,research.library.retrieve(merged));
+    const design = agent?.plan || (isTemu(merged) && kind==='inpaint'?{sections:[],text:payload.prompt,references:[]}:buildPlan(merged,research.library.retrieve(merged)));
     const plan = design.sections || slotPlan(merged);
     const prepared = tasks.map(task=>{
       const section=plan.find(s=>s.slot===task.slot);
@@ -139,12 +155,12 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
     createCharge(requestId, tasks.map(t => t.taskId), payload.mobile_reformat ? 1 : 2);
     for (const {task,section,prompt,refs} of prepared) {
       const key = 'hyrule_tasks/' + task.taskId;
-      store.task(key, {status:'pending', phase:'queued', taskId:task.taskId, slot:task.slot, requestId, model, prompt,referenceImages:refs.filter(r=>!r.startsWith('data:')),designReferences:design.references || [],visualStyle:design.visualStyle || null,generationMode:design.generationMode || null,promptVersion:design.visualStyle?.id==='scene_advertising'&&design.visualStyle.version===SCENE_STYLE_VERSION?'per-slot-v4':design.visualStyle?'per-slot-v3':'per-slot-v2',createdAt:new Date().toISOString()});
+      store.task(key, {status:'pending', phase:'queued', taskId:task.taskId, slot:task.slot, requestId, model, prompt,...(isTemu(merged)?{platform:'temu',image_ratio:merged.image_ratio}:{}),referenceImages:refs.filter(r=>!r.startsWith('data:')),designReferences:design.references || [],visualStyle:design.visualStyle || null,generationMode:design.generationMode || null,promptVersion:design.visualStyle?.id==='scene_advertising'&&design.visualStyle.version===SCENE_STYLE_VERSION?'per-slot-v4':design.visualStyle?'per-slot-v3':'per-slot-v2',createdAt:new Date().toISOString()});
       enqueue(async () => {
         store.task(key, {status:'running',phase:'generating'});
         try {
-          const bytes = await imageProvider({prompt, references:refs, ratio:task.aspect_ratio || section?.ratio || '1:1', model, kind,onProgress:patch=>store.task(key,patch)});
-          store.task(key, {status:'completed',phase:'completed', imageUrl:saveImage(bytes), provider:provider ? 'test-provider' : 'suanzhou', model});
+          const bytes = await imageProvider({prompt, references:refs, ratio:isTemu(merged)?merged.image_ratio:task.aspect_ratio || section?.ratio || '1:1', ...(isTemu(merged)?{platform:'temu'}:{}), model, kind,onProgress:patch=>store.task(key,patch)});
+          store.task(key, {status:'completed',phase:'completed', ...await saveResult(bytes,store.state.tasks[key]), provider:provider ? 'test-provider' : 'suanzhou', model});
         } catch (error) {
           store.task(key, {status:'failed',phase:store.state.tasks[key].resultUrl?'download_failed':'generation_failed', error: String(error.message).slice(0,500)});
           refund(requestId, task.taskId);
@@ -166,6 +182,7 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
       response.setHeader('Referrer-Policy', 'same-origin');
       response.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' data: blob:; font-src 'self' data:; media-src 'self' blob:; frame-src 'self' blob:; frame-ancestors 'none'; object-src 'none'; base-uri 'self'");
       if (pathname === '/api/session' && request.method === 'GET') return json(response,200,{token:csrf,user:{id:'local-owner',email:'local@workbench.local'}});
+      if (pathname === '/api/temu/config' && request.method === 'GET') return json(response,200,{platform:'temu',formats:temuFormats,maxImages:7,detailImages:'same-as-main-images-in-order',fissionEnabled:false,publishEnabled:false});
       if (pathname.startsWith('/api/') && !['GET','HEAD'].includes(request.method) && request.headers['x-workbench-token'] !== csrf) throw fail(403, '本地会话已过期，请刷新页面');
       if (pathname === '/api/status') return json(response,200,{mode:'local', isolatedPreview:configuration.WORKBENCH_STYLE_PREVIEW==='true', imageProvider:provider ? 'test-fixture' : 'configured-image-api', imageConfigured:!!provider || !!configuration.SUANZHOU_IMAGE_API_KEY, model:resolveImageModel(undefined,configuration), imageModels, planner:configuration.PLANNER_API_KEY ? 'configured' : 'local-rules', active, queued:queue.length,downloadProxyConfigured:!!configuration.IMAGE_DOWNLOAD_PROXY,downloadRecoveryEnabled:true,recoverableDownloads:Object.values(store.state.tasks).filter(t=>t.resultUrl&&t.status==='failed').length, defaultProductStatus:'draft', paymentEnabled:false, publishEnabled:false});
       if (pathname === '/api/research/status' && request.method === 'GET') return json(response,200,research.status());
@@ -220,6 +237,7 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
       }
       if (pathname === '/api/agent' && request.method === 'POST') {
         const payload = await body(request);
+        validateTemu(payload);
         if (!validId(payload.agent_task_id) || !payload.product_name || !payload.product_desc) throw fail(400,'需要产品名称、卖点和有效任务编号');
         const key = 'agent_tasks/' + payload.agent_task_id;
         const prior = store.state.tasks[key];
@@ -254,7 +272,7 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
         store.state.feedback.push({...payload,id:uuid(),createdAt:new Date().toISOString(),destination:'local-only'}); store.save();
         return json(response,200,{ok:true,savedLocally:true});
       }
-      if (pathname === '/api/drafts' && request.method === 'GET') return json(response,200,store.state.drafts);
+      if (pathname === '/api/drafts' && request.method === 'GET') return json(response,200,store.state.drafts.filter(d=>url.searchParams.get('platform')==='temu'?isTemu(d):!isTemu(d)));
       if (pathname === '/api/drafts' && request.method === 'POST') {
         const payload = await body(request);
         if (!payload.title?.trim()) throw fail(400,'请填写商品标题');
@@ -265,14 +283,17 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
         if (media.some(x => !/^\/media\/[a-f0-9-]+\.(png|jpg|webp)$/.test(x) || !fs.existsSync(path.join(mediaDirectory,path.basename(x))))) throw fail(400,'草稿引用了不存在的本地图片');
         const existing = payload.id ? store.state.drafts.find(d => d.id === payload.id) : null;
         if (payload.id && !existing) throw fail(404,'草稿不存在');
+        if(existing && isTemu(existing)!==isTemu(payload))throw fail(400,'不能跨平台覆盖商品草稿');
+        if(isTemu(payload))await verifyTemuImages(media.map(x=>path.join(mediaDirectory,path.basename(x))),payload.image_ratio);
         const draft = {id:existing?.id || uuid(),title:payload.title.trim(),description:payload.description || '',platform:payload.platform || '通用',skus:payload.skus,images:media,sop:payload.sop || '',status:'draft',published:false,createdAt:existing?.createdAt || new Date().toISOString(),updatedAt:new Date().toISOString()};
+        if(isTemu(payload))Object.assign(draft,{imageRatio:payload.image_ratio,mainImages:[...media],detailImages:[...media],skuPreviewPolicy:'preserve-source',imageRules:{detailImages:'same-as-main-images-in-order',skuPreview:'preserve-source'}});
         if (existing) Object.assign(existing,draft); else store.state.drafts.unshift(draft);
         store.save(); return json(response,200,draft);
       }
       if (pathname.startsWith('/api/')) throw fail(404,'接口不存在');
       if (!['GET','HEAD'].includes(request.method)) throw fail(405,'不支持该方法');
       const base = pathname.startsWith('/media/') ? mediaDirectory : path.join(root,'public');
-      const relative = pathname.startsWith('/media/') ? pathname.slice(7) : pathname === '/' ? 'index.html' : pathname.slice(1);
+      const relative = pathname.startsWith('/media/') ? pathname.slice(7) : pathname === '/' ? 'index.html' : ['/temu','/temu/'].includes(pathname)?'temu.html':pathname.slice(1);
       const file = path.resolve(base,relative);
       if (!file.startsWith(path.resolve(base) + path.sep)) throw fail(403,'路径不可访问');
       if (!fs.existsSync(file) || !fs.statSync(file).isFile()) throw fail(404,'文件不存在');

@@ -4,6 +4,7 @@ import https from 'node:https';
 import dns from 'node:dns/promises';
 import net from 'node:net';
 import {resolveImageModel} from './image-models.mjs';
+import {temuFormats} from './temu.mjs';
 
 export function imageType(bytes) {
   if (bytes.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10]))) return ['image/png', '.png'];
@@ -118,13 +119,14 @@ export async function resolveImage(source, mediaDirectory) {
 }
 
 export function createImageProvider(configuration, mediaDirectory, {download=createImageDownloader(configuration)} = {}) {
-  return async ({prompt, references = [], ratio = '1:1', model:requestedModel, onProgress}) => {
+  return async ({prompt, references = [], ratio = '1:1', platform, model:requestedModel, onProgress}) => {
     const key = configuration.SUANZHOU_IMAGE_API_KEY;
     if (!key) throw new Error('未配置专用图片密钥；没有提交生图请求。');
     const base = (configuration.SUANZHOU_IMAGE_BASE_URL || 'https://api.suanzhou.vip/v1').replace(/\/$/, '');
     const model = resolveImageModel(requestedModel,configuration);
     const preferInline = configuration.SUANZHOU_IMAGE_RESPONSE_FORMAT === 'b64_json';
-    const size = ratio === '1:1' ? '1024x1024' : ['3:4','2:3','9:16'].includes(ratio) ? '1024x1536' : '1536x1024';
+    if(platform==='temu' && !Object.hasOwn(temuFormats,ratio))throw new Error('Temu 图片比例无效');
+    const size = platform==='temu'?temuFormats[ratio].size:ratio === '1:1' ? '1024x1024' : ['3:4','2:3','9:16'].includes(ratio) ? '1024x1536' : '1536x1024';
     const completePrompt = `${prompt}\n输出画幅目标：${ratio}。保持提供的产品外形、颜色、结构、品牌标识一致；不得凭空增加产品信息。`;
     const headers = {Authorization: `Bearer ${key}`};
     let body, endpoint;
