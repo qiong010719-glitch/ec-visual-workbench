@@ -53,7 +53,7 @@
         <p>已复刻原站的公开页面和交互。任务、素材、评价与草稿保存在这台电脑。</p>
         <div class="local-card"><div>图片通道：<b>${escape($('modelChoice')?.selectedOptions[0]?.textContent?.replace(/^模型 · /,'') || status.model)}</b></div><div>专用图片密钥：${status.imageConfigured?'已配置':'未配置'}</div><div>图片下载：${status.downloadProxyConfigured?'已配置代理':'直接连接'}</div><div>待恢复下载：${status.recoverableDownloads || 0} 张</div><div>构思：${status.planner==='local-rules'?'本地规则方案，可手动修改':'已配置的文本模型'}</div><div>任务：${status.active} 个运行中 · ${status.queued} 个排队中</div></div>
         <p class="local-muted" style="margin-top:15px">点击生图会使用图片服务额度。页面测试点数仅用于记录流程；本地版不充值。原站的私有模型工作流与付费账户未复制。</p>
-        <p class="local-muted">图片生成 / 编辑接口已接线，实际图片质量与比例取决于服务商。商品保存为本地草稿，可导出资料包供上架流程使用。</p>`);
+        <p class="local-muted">图片生成 / 编辑接口已接线，实际图片质量与比例取决于服务商。商品保存为本地草稿，不是淘宝草稿箱，也没有发布到淘宝。</p>`);
       closeButton(dialog);
     } catch(error) {notify(error.message,true);}
   };
@@ -181,14 +181,14 @@
     currentDraft=draft || null;
     const images=draft?.images || currentImages();
     const dialog=modal('localDraftEditor',`<div class="local-head"><h2>${draft?'编辑':'保存'}商品草稿</h2><button data-close>关闭</button></div>
-      <p class="local-muted">保存到本机；资料包可交给店铺上架流程。平台必填字段仍需按实际类目匹配。</p>
+      <p class="local-muted">保存到本机草稿，不是淘宝草稿箱，也没有发布到淘宝。资料包可交给人工上架；平台必填字段仍需按实际类目匹配。</p>
       <form id="draftForm"><label>商品标题<input id="draftTitle" required maxlength="160" value="${escape(draft?.title || $('prodName').value)}"></label>
       <div class="local-grid"><label>目标平台<select id="draftPlatform"><option>通用</option><option>淘宝</option><option>抖店</option><option>Amazon</option></select></label><label>状态<input value="草稿 · 未发布" readonly></label></div>
       <label>商品说明<textarea id="draftDescription" rows="3">${escape(draft?.description || $('prodDesc').value)}</textarea></label>
       <h3>SKU</h3><div id="draftSkus"></div><button type="button" id="draftAddSku">＋ 添加 SKU</button>
       <h3>图片 · ${images.length} 张</h3><div class="local-row">${images.map(u=>`<img class="local-thumb" src="${escape(u)}" alt="草稿图片">`).join('') || '<span class="local-muted">暂无已生成图片，可以先保存资料。</span>'}</div>
       <output id="draftError"></output><div class="local-row" style="margin-top:22px"><button class="primary" type="submit">保存草稿</button><button type="button" id="draftExport">导出资料包 ZIP</button><button type="button" id="draftList">草稿箱</button></div></form>`);
-    closeButton(dialog);$('draftPlatform').value=draft?.platform || '通用';
+    closeButton(dialog);$('draftPlatform').value=draft?.platform || '淘宝';
     for(const sku of draft?.skus || []) $('draftSkus').appendChild(skuRow(sku));
     $('draftAddSku').onclick=()=>$('draftSkus').appendChild(skuRow());
     const read = () => {
@@ -213,7 +213,7 @@
     const zip=new JSZip();
     zip.file('商品草稿.json',JSON.stringify(draft,null,2));
     zip.file('设计方案.txt',draft.sop || '');
-    zip.file('说明.txt','状态：本地草稿，未发布。平台字段、SKU 和图片请按实际类目审核后交给店铺草稿流程。');
+    zip.file('说明.txt','状态：本地草稿，未发布。不是淘宝草稿箱，未调用淘宝发布接口。平台字段、SKU 和图片请按实际类目审核后交给人工上架流程。');
     const csvCell=v=>'"'+String(v??'').replaceAll('"','""')+'"';
     zip.file('SKU.csv','\uFEFF'+[['编码','名称','价格','库存'],...draft.skus.map(s=>[s.code,s.name,s.price,s.stock])].map(row=>row.map(csvCell).join(',')).join('\r\n'));
     for(let i=0;i<draft.images.length;i++) {
