@@ -9,8 +9,6 @@
     if (window.aquaNotify) aquaNotify(error ? '淘宝壳' : '淘宝壳', text, error ? '⚠️' : '✓');
     else if (typeof _showSimpleToast === 'function') _showSimpleToast(text, error ? '#ff6b6b' : '#00ffc5');
   };
-  const LEGACY_SCOPES = ['main_6_old_aplus','main_6_premium_aplus','old_aplus_only','premium_aplus_only','thd_only','ultra_old_aplus_4','ultra_premium_aplus_5'];
-
   const style = document.createElement('style');
   style.textContent = `
     #taobaoShell{margin:0 0 12px;padding:12px;border:1px solid rgba(0,255,197,.35);border-radius:14px;background:rgba(0,255,197,.06)}
@@ -21,8 +19,9 @@
     #taobaoShell input[type="number"],#taobaoShell select{width:118px;background:#00000088;color:#fff;border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:6px}
     #taobaoShell .tb-row{display:flex;flex-wrap:wrap;gap:8px 12px;margin-top:8px;color:#d5deee;font-size:12px}
     #taobaoShell button{border:1px solid rgba(0,255,197,.45);background:rgba(0,255,197,.12);color:#eafff8;border-radius:8px;padding:7px 10px;cursor:pointer}
-    .taobao-legacy{margin:6px 0;color:#8b95a8;font-size:11px}
-    .taobao-legacy summary{cursor:pointer}
+    .taobao-legacy{margin:0;padding:0;border:0}
+    .taobao-legacy summary{display:none}
+    #designScope option[hidden],#targetMarket option[hidden],#targetMarket optgroup[hidden]{display:none !important}
     .taobao-deemphasize{opacity:.55}
     .taobao-slot-label{font-size:11px;font-weight:700;letter-spacing:.04em;color:#9fffea;padding:6px 8px 0}
     .taobao-redraw{width:100%;margin-top:4px;border:1px solid #ffd36a;color:#ffd36a;background:transparent;border-radius:8px;padding:6px;font-size:12px;font-weight:700;cursor:pointer}
@@ -64,13 +63,29 @@
     const status = $('tbStatus');
     if (status) status.textContent = currentSpec() ? '淘宝壳已套用到当前出图范围。本地草稿，不是淘宝草稿，也未发布。' : '改数量或尺寸后会套用到淘宝主图 / SKU图 / 详情。尚未覆盖当前旧范围。';
   }
-  function preferChinaMarket() {
+  function syncGselLabel(select) {
+    if (!select) return;
+    const label = document.querySelector(`[data-gsel-for="${select.id}"] .gsel-label`);
+    const chosen = select.selectedOptions?.[0] || select.options[select.selectedIndex];
+    if (label && chosen) label.textContent = chosen.textContent;
+  }
+  function lockCustomerMarket() {
     const sel = $('targetMarket');
     if (!sel) return;
-    const china = [...sel.options].find(option => option.textContent.includes('中国大陆'));
+    const china = [...sel.options].find(option => {
+      try { return JSON.parse(option.value).market === '中国大陆'; }
+      catch { return option.textContent.includes('中国大陆'); }
+    });
     if (!china) return;
-    if (sel.selectedIndex <= 0) sel.value = china.value;
+    if (china.parentElement && china.parentElement !== sel) sel.appendChild(china);
+    china.hidden = false;
+    china.disabled = false;
+    for (const option of [...sel.options]) if (option !== china) option.hidden = true;
+    for (const group of [...sel.querySelectorAll('optgroup')]) group.hidden = true;
+    if (sel.value !== china.value) sel.value = china.value;
+    syncGselLabel(sel);
   }
+  function preferChinaMarket() { lockCustomerMarket(); }
   function applySpec(spec, {market} = {}) {
     const normalized = layout.normalize(spec);
     const previous = window.__customLayout?.directives || {};
@@ -81,6 +96,7 @@
     const edit = $('customEditBtn');
     if (edit) edit.style.display = '';
     if (market) preferChinaMarket();
+    syncGselLabel(scope);
     if (typeof buildGalleryLayout === 'function') buildGalleryLayout();
     if (typeof imageSlots !== 'undefined' && typeof renderSlot === 'function') imageSlots.forEach((img, index) => { if (img) renderSlot(index); });
     syncPanel(normalized);
@@ -141,17 +157,22 @@
     const scope = $('designScope');
     if (!scope || scope.dataset.taobaoHiding === '1') return;
     scope.dataset.taobaoHiding = '1';
-    for (const option of scope.options) {
-      if (!LEGACY_SCOPES.includes(option.value)) continue;
-      option.hidden = true;
-      if (!option.textContent.startsWith('内部保留')) option.textContent = '内部保留 · ' + option.textContent;
+    let custom = [...scope.options].find(option => option.value === 'custom');
+    if (!custom) {
+      custom = document.createElement('option');
+      custom.value = 'custom';
+      scope.appendChild(custom);
     }
-    const plain = [...scope.options].find(option => option.value === 'main_and_6');
-    if (plain && !plain.textContent.startsWith('内部保留')) plain.textContent = '内部保留 · 主幅图7张';
-    const custom = [...scope.options].find(option => option.value === 'custom');
-    if (custom && custom.textContent !== '淘宝壳 · 主图 / SKU图 / 详情') custom.textContent = '淘宝壳 · 主图 / SKU图 / 详情';
-    const ultra = [...scope.options].find(option => option.value === 'ultra_main_8');
-    if (ultra && !ultra.textContent.startsWith('内部保留')) ultra.textContent = '内部保留 · 极速合图';
+    custom.hidden = false;
+    custom.disabled = false;
+    custom.textContent = '淘宝壳 · 主图 / SKU图 / 详情';
+    for (const option of [...scope.options]) {
+      if (option === custom || !option.value) continue;
+      option.hidden = true;
+      if (option.textContent.startsWith('内部保留')) continue;
+      const label = option.value === 'ultra_main_8' ? '极速合图' : option.value === 'main_and_6' ? '主幅图7张' : option.textContent;
+      option.textContent = '内部保留 · ' + label;
+    }
     scope.dataset.taobaoHiding = '';
     const typeLabel = $('clAplusType')?.closest('label');
     if (typeLabel) typeLabel.classList.add('taobao-deemphasize');
@@ -170,7 +191,7 @@
     const details = document.createElement('details');
     details.id = 'taobaoLegacyScope';
     details.className = 'taobao-legacy';
-    details.innerHTML = '<summary>旧范围 · 亚马逊主副图 / A+ / THD（已弱化，代码仍保留）</summary>';
+    details.innerHTML = '<summary hidden></summary>';
     scope.before(details);
     details.appendChild(scope);
     const edit = $('customEditBtn');
@@ -294,6 +315,8 @@
     const originalLoad = __loadAppStateFrom;
     window.__loadAppStateFrom = function (...args) {
       const result = originalLoad.apply(this, args);
+      hideLegacyOptions();
+      lockCustomerMarket();
       maybeApplyPreset();
       return result;
     };
@@ -310,8 +333,10 @@
     parkLegacyScope();
     watchScope();
     hideLegacyOptions();
+    lockCustomerMarket();
     $('generationMode')?.addEventListener('change', event => {
       hideLegacyOptions();
+      syncGselLabel($('designScope'));
       if (!(event.detail && event.detail.isRestore) && !$('designScope')?.value && typeof buildGalleryLayout === 'function') buildGalleryLayout();
       syncPanel(window.__customLayout?.taobao || readPanel());
     });
