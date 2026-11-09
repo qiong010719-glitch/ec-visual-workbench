@@ -2,6 +2,9 @@
     const SELS = Array.from(document.querySelectorAll('select.sheikah-input')).filter(s => !s.classList.contains('hidden'));
     let openPop = null, openTrig = null;
 
+    function optionShown(node) {
+        return node && node.tagName === 'OPTION' && !node.disabled && !node.hidden;
+    }
     function optionLabel(sel) {
         const o = sel.options[sel.selectedIndex];
         return o ? o.text : '请选择…';
@@ -29,11 +32,13 @@
         const walk = (parent) => {
             Array.from(parent.children).forEach(node => {
                 if (node.tagName === 'OPTGROUP') {
+                    if (node.hidden || node.disabled) return;
+                    if (!Array.from(node.children).some(optionShown)) return;
                     const g = document.createElement('div');
                     g.className = 'gsel-group'; g.textContent = node.label;
                     pop.appendChild(g); walk(node);
                 } else if (node.tagName === 'OPTION') {
-                    if (node.disabled) return;
+                    if (!optionShown(node)) return;
                     const it = document.createElement('div');
                     it.className = 'gsel-item' + (node.selected ? ' sel' : '');
                     const check = document.createElement('span'); check.className = 'gsel-check'; check.textContent = '✓';
@@ -57,6 +62,7 @@
         const trig = document.createElement('button');
         trig.type = 'button';
         trig.className = 'gsel-trigger';
+        trig.dataset.gselFor = sel.id;
         const lab = document.createElement('span');
         lab.className = 'gsel-label'; lab.textContent = optionLabel(sel);
         trig.appendChild(lab);
