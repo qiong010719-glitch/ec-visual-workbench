@@ -7,10 +7,19 @@
     {id:'landscape', ratio:'16:9', label:'工作台可选尺寸 · 横图', pixels:'1536×1024'},
     {id:'portrait', ratio:'3:4', label:'工作台可选尺寸 · 竖图', pixels:'1024×1536'}
   ];
+  const SET_STYLES = [
+    {id:'off', label:'不强制', note:''},
+    {id:'scene', label:'场景广告', note:'整套风格：场景广告。主图、SKU图和详情都放进能看懂用途的使用场景，用同一套光色和字体讲购买理由，不要拆成互不相干的棚拍。'},
+    {id:'white_studio', label:'纯白棚拍', note:'整套风格：纯白棚拍。主图、SKU图和详情都以干净浅色背景为主，产品完整、光线均匀，少放生活杂物。这是出图方向，不是实拍承诺。'},
+    {id:'minimal', label:'极简留白', note:'整套风格：极简留白。主图、SKU图和详情都留出大块空白，主体少而清楚，文字短，不要堆满图标和装饰。'},
+    {id:'lifestyle', label:'生活方式', note:'整套风格：生活方式。主图、SKU图和详情都放进与商品用途相符的日常空间，手部或人物动作自然，整套地点和光线互相呼应。'},
+    {id:'guochao', label:'国潮质感', note:'整套风格：国潮质感。主图、SKU图和详情共用一套中式纹样、墨色和强调色的版式，产品仍是主体，不改商品结构和已确认事实。'},
+    {id:'keep', label:'原有风格', note:'整套风格：原有风格。主图、SKU图和详情都贴近当前素材的配色、摆放和包装气质，不另换成场景广告、棚拍或国潮装饰。'}
+  ];
   const DEFAULTS = {
     mainCount:5, skuCount:1, detailCount:3,
     sizes:{main:'square', sku:'square', detail:'portrait'},
-    detailWhitespace:true, background:'off'
+    detailWhitespace:true, background:'off', setStyle:'off'
   };
   function clampInt(value, min, max) {
     const n = Number.parseInt(value, 10);
@@ -41,8 +50,15 @@
       ...counts,
       sizes: sizesOf(spec || DEFAULTS),
       detailWhitespace: !!(spec && Object.prototype.hasOwnProperty.call(spec, 'detailWhitespace') ? spec.detailWhitespace : DEFAULTS.detailWhitespace),
-      background: spec?.background === 'white' || spec?.background === 'transparent' ? spec.background : 'off'
+      background: spec?.background === 'white' || spec?.background === 'transparent' ? spec.background : 'off',
+      setStyle: styleOf(spec).id
     };
+  }
+  function styleOf(spec) {
+    return SET_STYLES.find(item => item.id === spec?.setStyle) || SET_STYLES[0];
+  }
+  function styleNote(spec) {
+    return styleOf(spec).note || '';
   }
   function activeSlots(spec) {
     const c = normalize(spec);
@@ -116,12 +132,14 @@
   }
   function annotateDirectives(dirs, spec, oneShot) {
     let used = false;
+    const style = styleNote(spec);
     const directives = (dirs || []).map(item => {
       const zone = zoneForSlot(item.slot, spec)?.zone;
       const notes = [];
       const zoneNote = directiveNote(zone, spec);
       if (zoneNote) notes.push(zoneNote);
       if (oneShot && oneShot.slot === item.slot && oneShot.note) { notes.push(oneShot.note); used = true; }
+      if (zone && style) notes.push(style);
       if (!notes.length) return item;
       return {...item, requirement:[item.requirement, ...notes].filter(Boolean).join('；')};
     });
@@ -132,8 +150,8 @@
     return (slots.find(item => item.zone === 'sku') || slots.find(item => item.zone === 'main') || slots.find(item => item.zone === 'detail'))?.slot ?? null;
   }
   root.TaobaoLayout = {
-    SIZE_CHOICES, DEFAULTS, clampLayout, normalize, activeSlots, zoneForSlot, customerLabel,
+    SIZE_CHOICES, SET_STYLES, DEFAULTS, clampLayout, normalize, activeSlots, zoneForSlot, customerLabel,
     toCustomLayout, countsMatch, ratioForZone, slotFromTitle, ratioForTitle, backgroundNote,
-    directiveNote, annotateDirectives, backgroundSlot
+    directiveNote, styleOf, styleNote, annotateDirectives, backgroundSlot
   };
 })(typeof window !== 'undefined' ? window : globalThis);
