@@ -17,6 +17,8 @@
     #taobaoShell .tb-grid{display:grid;grid-template-columns:1.2fr .7fr;gap:8px;align-items:center}
     #taobaoShell label{display:flex;justify-content:space-between;gap:8px;align-items:center;color:#d5deee;font-size:12px}
     #taobaoShell input[type="number"],#taobaoShell select{width:118px;background:#00000088;color:#fff;border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:6px}
+    #taobaoShell label.tb-style{grid-column:1 / -1}
+    #taobaoShell label.tb-style select{width:min(100%,240px)}
     #taobaoShell .tb-row{display:flex;flex-wrap:wrap;gap:8px 12px;margin-top:8px;color:#d5deee;font-size:12px}
     #taobaoShell button{border:1px solid rgba(0,255,197,.45);background:rgba(0,255,197,.12);color:#eafff8;border-radius:8px;padding:7px 10px;cursor:pointer}
     .taobao-legacy{margin:0;padding:0;border:0}
@@ -43,8 +45,17 @@
       detailCount:$('tbDetailCount')?.value,
       sizes:{main:$('tbMainSize')?.value, sku:$('tbSkuSize')?.value, detail:$('tbDetailSize')?.value},
       detailWhitespace:!!$('tbWhitespace')?.checked,
-      background:document.querySelector('input[name="tbBg"]:checked')?.value || 'off'
+      background:document.querySelector('input[name="tbBg"]:checked')?.value || 'off',
+      setStyle:$('tbSetStyle')?.value
     });
+  }
+  function styleOptions(selected) {
+    return layout.SET_STYLES.map(choice => `<option value="${choice.id}" ${choice.id === selected ? 'selected' : ''}>${escapeHtml(choice.label)}</option>`).join('');
+  }
+  function styleHint(spec) {
+    const choice = layout.styleOf(spec);
+    if (choice.id === 'off') return '不强制：主图、SKU图、详情仍按现在的生图规则，不额外改风格。';
+    return `已选「${choice.label}」。主图、SKU图、详情整套共用这一条风格说明，仍走现在的生图。不承诺成图质量。`;
   }
   function sizeOptions(selected) {
     return layout.SIZE_CHOICES.map(choice => `<option value="${choice.id}" ${choice.id === selected ? 'selected' : ''}>${escapeHtml(choice.label)}</option>`).join('');
@@ -58,8 +69,11 @@
     if ($('tbSkuSize')) $('tbSkuSize').value = value.sizes.sku;
     if ($('tbDetailSize')) $('tbDetailSize').value = value.sizes.detail;
     if ($('tbWhitespace')) $('tbWhitespace').checked = value.detailWhitespace;
+    if ($('tbSetStyle')) $('tbSetStyle').value = value.setStyle;
     const radio = document.querySelector(`input[name="tbBg"][value="${value.background}"]`);
     if (radio) radio.checked = true;
+    const hint = $('tbStyleHint');
+    if (hint) hint.textContent = styleHint(value);
     const status = $('tbStatus');
     if (status) status.textContent = currentSpec() ? '淘宝壳已套用到当前出图范围。本地草稿，不是淘宝草稿，也未发布。' : '改数量或尺寸后会套用到淘宝主图 / SKU图 / 详情。尚未覆盖当前旧范围。';
   }
@@ -123,7 +137,9 @@
         <label>SKU尺寸 <select id="tbSkuSize">${sizeOptions(defaults.sizes.sku)}</select></label>
         <label>详情张数 <input id="tbDetailCount" type="number" min="0" max="7" value="${defaults.detailCount}"></label>
         <label>详情尺寸 <select id="tbDetailSize">${sizeOptions(defaults.sizes.detail)}</select></label>
+        <label class="tb-style">整套风格 <select id="tbSetStyle">${styleOptions(defaults.setStyle)}</select></label>
       </div>
+      <p id="tbStyleHint" class="local-muted">${escapeHtml(styleHint(defaults))}</p>
       <div class="tb-row">
         <label><input id="tbWhitespace" type="checkbox" checked> 详情底部留白</label>
         <label><input type="radio" name="tbBg" value="off" checked> 不附加白底/透明</label>
@@ -135,7 +151,7 @@
       </div>
       <p id="tbStatus" class="local-muted"></p>`;
     $('designScope').before(panel);
-    for (const id of ['tbMainCount','tbSkuCount','tbDetailCount','tbMainSize','tbSkuSize','tbDetailSize']) $(id).addEventListener('change', () => applySpec(readPanel()));
+    for (const id of ['tbMainCount','tbSkuCount','tbDetailCount','tbMainSize','tbSkuSize','tbDetailSize','tbSetStyle']) $(id).addEventListener('change', () => applySpec(readPanel()));
     $('tbWhitespace').addEventListener('change', () => applySpec(readPanel()));
     document.querySelectorAll('input[name="tbBg"]').forEach(input => input.addEventListener('change', () => applySpec(readPanel())));
     $('tbBgEntry').addEventListener('click', redrawBackground);

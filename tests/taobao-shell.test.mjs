@@ -70,6 +70,52 @@ test('detail whitespace and white or transparent notes attach to one zone, and b
   assert.equal(annotated.used, true);
 });
 
+test('whole-set style notes land on every active Taobao slot and stay off by default', () => {
+  const labels = ['不强制','场景广告','纯白棚拍','极简留白','生活方式','国潮质感','原有风格','轻奢高级','清新日系','莫兰迪低饱和','暖色氛围','冷色极简','影棚光感','胶片质感','通透阳光','暗调质感','高对比撞色'];
+  assert.equal(JSON.stringify(layout.SET_STYLES.map(item => item.label)), JSON.stringify(labels));
+  assert.equal(new Set(layout.SET_STYLES.map(item => item.id)).size, labels.length);
+  assert.equal(layout.normalize({}).setStyle, 'off');
+  assert.equal(layout.normalize({setStyle:'not-a-style'}).setStyle, 'off');
+  assert.equal(layout.normalize({setStyle:''}).setStyle, 'off');
+  assert.equal(layout.styleNote({setStyle:'missing'}), '');
+  assert.equal(layout.styleNote(layout.DEFAULTS), '');
+  for (const choice of layout.SET_STYLES) {
+    assert.doesNotMatch(choice.label + choice.note, /摄影级|保证成图|官方像素|实拍成品|母婴|美食|家居/);
+    if (choice.id !== 'off') assert.match(choice.note, new RegExp('整套风格：' + choice.label));
+  }
+  for (const choice of layout.SET_STYLES.filter(item => ['light_luxury','fresh_japanese','morandi','warm_mood','cool_minimal','studio_light','film_look','sunlit','dark_tone','high_contrast'].includes(item.id))) {
+    assert.match(choice.note, /主图、SKU图和详情/);
+    assert.match(choice.note, /不改商品结构/);
+    assert.match(choice.note, /不是实拍承诺/);
+    assert.match(choice.note, /不绑定某一品类/);
+    const stamped = layout.annotateDirectives([{slot:0, requirement:'主图要求'}, {slot:1, requirement:null}, {slot:7, requirement:'详情'}], {mainCount:1, skuCount:1, detailCount:1, setStyle:choice.id});
+    assert.equal(stamped.directives.length, 3);
+    for (const item of stamped.directives) assert.match(item.requirement, new RegExp('整套风格：' + choice.label));
+  }
+  const plain = layout.annotateDirectives([{slot:0, requirement:'主图要求'}, {slot:7, requirement:'详情要求'}], layout.DEFAULTS);
+  assert.equal(plain.directives[0].requirement, '主图要求');
+  assert.match(plain.directives[1].requirement, /留白/);
+  assert.doesNotMatch(plain.directives.map(item => item.requirement).join('\n'), /整套风格/);
+  const spec = layout.normalize({...layout.DEFAULTS, setStyle:'lifestyle', detailWhitespace:true, background:'white'});
+  const dirs = layout.activeSlots(spec).map(item => ({slot:item.slot, requirement:item.zone === 'main' && item.index === 1 ? '主图要求' : null}));
+  dirs.push({slot:6, requirement:'闲置槽'});
+  const note = layout.styleNote(spec);
+  assert.match(note, /整套风格：生活方式/);
+  const annotated = layout.annotateDirectives(dirs, spec, {slot:5, note:'只重绘这一张白底'});
+  const active = annotated.directives.filter(item => item.slot !== 6);
+  assert.equal(active.length, layout.activeSlots(spec).length);
+  for (const item of active) assert.match(item.requirement, /整套风格：生活方式/);
+  assert.equal(annotated.directives.find(item => item.slot === 6).requirement, '闲置槽');
+  assert.match(annotated.directives.find(item => item.slot === 0).requirement, /^主图要求；整套风格：生活方式/);
+  assert.match(annotated.directives.find(item => item.slot === 5).requirement, /白底图/);
+  assert.match(annotated.directives.find(item => item.slot === 5).requirement, /只重绘这一张白底/);
+  assert.match(annotated.directives.find(item => item.slot === 7).requirement, /留白/);
+  assert.equal(annotated.used, true);
+  const stored = layout.toCustomLayout(spec, {3:{req:'保留'}});
+  assert.equal(stored.taobao.setStyle, 'lifestyle');
+  assert.equal(stored.directives[3].req, '保留');
+});
+
 test('provider contract and Taobao publish claims stay out of this slice', () => {
   const provider = fs.readFileSync(path.join(root, 'src/provider.mjs'), 'utf8');
   assert.match(provider, /SUANZHOU_IMAGE_API_KEY/);
@@ -79,6 +125,8 @@ test('provider contract and Taobao publish claims stay out of this slice', () =>
   assert.match(shell, /淘宝主图/);
   assert.match(shell, /SKU图/);
   assert.match(shell, /详情底部留白/);
+  assert.match(shell, /整套风格/);
+  assert.match(shell, /tbSetStyle/);
   assert.match(shell, /重绘这一张/);
   assert.match(shell, /不是淘宝草稿/);
   assert.doesNotMatch(shell, /SUANZHOU_IMAGE_API_KEY|images\/generations|已发布到淘宝|taobao\.com\/publish/);
@@ -132,6 +180,7 @@ test('one detail slot can be sent alone at a workbench portrait size', async t =
   assert.equal(captured.length, 1);
   assert.equal(captured[0].ratio, '3:4');
   assert.match(captured[0].prompt, /详情图底部留出一条干净留白/);
+  assert.doesNotMatch(captured[0].prompt, /整套风格/);
 });
 
 test('everyday menus offer only the Taobao shell and CN, while hidden ids stay selectable in code', () => {
@@ -372,6 +421,28 @@ test('everyday menus offer only the Taobao shell and CN, while hidden ids stay s
   assert.equal(sandbox.__customLayout.taobao.detailWhitespace, false);
   assert.equal(sandbox.__customLayout.taobao.background, 'white');
   assert.equal(sandbox.__customLayout.taobao.mainCount, 5);
+  const style = document.getElementById('tbSetStyle');
+  const styleLabels = [...style.options].map(option => option.textContent);
+  assert.equal(styleLabels[0], '不强制');
+  assert.equal(styleLabels.filter(label => label !== '不强制').length > 2, true);
+  for (const name of ['场景广告', '纯白棚拍', '极简留白', '生活方式', '国潮质感', '原有风格', '轻奢高级', '清新日系', '莫兰迪低饱和', '暖色氛围', '冷色极简', '影棚光感', '胶片质感', '通透阳光', '暗调质感', '高对比撞色']) assert.equal(styleLabels.includes(name), true, name);
+  assert.equal(JSON.stringify(styleLabels), JSON.stringify(layout.SET_STYLES.map(item => item.label)));
+  assert.equal(style.value, 'off');
+  assert.match(document.getElementById('tbStyleHint').textContent, /不强制/);
+  sandbox.saveAppState = () => { sandbox.persistedLayout = JSON.parse(JSON.stringify(sandbox.__customLayout)); };
+  style.value = 'guochao';
+  style.dispatchEvent({type: 'change'});
+  assert.equal(sandbox.__customLayout.taobao.setStyle, 'guochao');
+  assert.equal(sandbox.persistedLayout.taobao.setStyle, 'guochao');
+  assert.equal(sandbox.persistedLayout.taobao.detailCount, 2);
+  assert.equal(sandbox.persistedLayout.taobao.detailWhitespace, false);
+  assert.equal(sandbox.persistedLayout.taobao.background, 'white');
+  assert.match(document.getElementById('tbStyleHint').textContent, /国潮质感/);
+  assert.match(document.getElementById('tbStyleHint').textContent, /不承诺成图质量/);
+  style.value = 'off';
+  sandbox.__customLayout = JSON.parse(JSON.stringify(sandbox.persistedLayout));
+  document.getElementById('generationMode').dispatchEvent({type: 'change', detail: {isRestore: true}});
+  assert.equal(style.value, 'guochao');
   document.getElementById('tbBgEntry').dispatchEvent({type: 'click'});
   assert.match(sandbox.__taobaoOneShot.note, /白底图/);
   sandbox.__loadAppStateFrom(JSON.stringify({targetMarket: '{"market":"美国", "lang":"English"}', designScope: 'main_and_6'}));
@@ -389,4 +460,63 @@ test('everyday menus offer only the Taobao shell and CN, while hidden ids stay s
   const rewritten = open('designScope');
   assert.equal(rewritten.items.some(item => /THD|A\+|主副图|内部保留/.test(item)), false);
   assert.equal(rewritten.items.some(item => item.includes('淘宝壳')), true);
+});
+
+test('chosen set style is copied into every active slot prompt, including a one-slot redraw', async t => {
+  const captured = [];
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ec-taobao-style-'));
+  const app = createWorkbench({dataDirectory:directory, configuration:{}, provider:async request => { captured.push(request); return png; }});
+  await new Promise(resolve => app.server.listen(0, '127.0.0.1', resolve));
+  t.after(async () => { await new Promise(resolve => app.server.close(resolve)); fs.rmSync(directory, {recursive:true, force:true}); });
+  const base = 'http://127.0.0.1:' + app.server.address().port;
+  const {token} = await (await fetch(base + '/api/session')).json();
+  const call = async (url, payload) => {
+    const response = await fetch(base + url, {method:'POST', headers:{'Content-Type':'application/json', 'X-Workbench-Token':token}, body:JSON.stringify(payload)});
+    return {response, data:await response.json()};
+  };
+  const wait = async (kind, id) => {
+    let task;
+    for (let i = 0; i < 50; i++) {
+      task = await (await fetch(base + '/api/tasks/' + kind + '/' + id)).json();
+      if (task.status === 'completed' || task.status === 'failed') return task;
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    return task;
+  };
+  const spec = layout.normalize({mainCount:1, skuCount:1, detailCount:1, sizes:{main:'square', sku:'square', detail:'portrait'}, detailWhitespace:true, background:'off', setStyle:'white_studio'});
+  const custom = layout.toCustomLayout(spec, {});
+  const layoutPayload = {main:custom.main, sub:custom.sub, aplus:custom.aplus, aplus_type:custom.aplusType};
+  await call('/api/agent', {agent_task_id:'tb_style', product_name:'杯子', product_desc:'白色杯身', design_scope:'custom', custom_layout:layoutPayload});
+  const agent = await wait('agent_tasks', 'tb_style');
+  assert.equal(agent.status, 'completed');
+  const dirs = layout.annotateDirectives([
+    {slot:0, title:'【主图】', requirement:'主图要求', ref_images:[]},
+    {slot:1, title:'【卖点图1】', requirement:null, ref_images:[]},
+    {slot:7, title:'【高级A+模块1】', requirement:'详情要求', ref_images:[]}
+  ], spec).directives;
+  const sent = await call('/api/generate', {
+    agent_task_id:'tb_style', sop_text:agent.result, design_scope:'custom', custom_layout:layoutPayload,
+    firebase_tasks:dirs.map(item => ({slot:item.slot, taskId:'tb_style_' + item.slot, aspect_ratio:layout.ratioForZone(layout.zoneForSlot(item.slot, spec).zone, spec)})),
+    slot_directives:dirs
+  });
+  assert.equal(sent.response.status, 202);
+  for (const item of dirs) {
+    const task = await wait('hyrule_tasks', 'tb_style_' + item.slot);
+    assert.equal(task.status, 'completed');
+    assert.match(task.prompt, /整套风格：纯白棚拍/);
+  }
+  assert.match((await wait('hyrule_tasks', 'tb_style_0')).prompt, /主图要求/);
+  assert.match((await wait('hyrule_tasks', 'tb_style_7')).prompt, /详情图底部留出一条干净留白/);
+  assert.equal(captured.length, 3);
+  const redraw = await call('/api/generate', {
+    agent_task_id:'tb_style', sop_text:agent.result, design_scope:'custom', custom_layout:layoutPayload,
+    firebase_tasks:[{slot:1, taskId:'tb_style_redraw', aspect_ratio:'1:1'}],
+    slot_directives:dirs
+  });
+  assert.equal(redraw.response.status, 202);
+  const redrawTask = await wait('hyrule_tasks', 'tb_style_redraw');
+  assert.equal(redrawTask.status, 'completed');
+  assert.match(redrawTask.prompt, /整套风格：纯白棚拍/);
+  assert.equal(captured.length, 4);
+  assert.equal(captured.filter(item => /整套风格：纯白棚拍/.test(item.prompt)).length, 4);
 });

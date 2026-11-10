@@ -7,10 +7,29 @@
     {id:'landscape', ratio:'16:9', label:'工作台可选尺寸 · 横图', pixels:'1536×1024'},
     {id:'portrait', ratio:'3:4', label:'工作台可选尺寸 · 竖图', pixels:'1024×1536'}
   ];
+  const SET_STYLES = [
+    {id:'off', label:'不强制', note:''},
+    {id:'scene', label:'场景广告', note:'整套风格：场景广告。主图、SKU图和详情都放进能看懂用途的使用场景，用同一套光色和字体讲购买理由，不要拆成互不相干的棚拍。'},
+    {id:'white_studio', label:'纯白棚拍', note:'整套风格：纯白棚拍。主图、SKU图和详情都以干净浅色背景为主，产品完整、光线均匀，少放生活杂物。这是出图方向，不是实拍承诺。'},
+    {id:'minimal', label:'极简留白', note:'整套风格：极简留白。主图、SKU图和详情都留出大块空白，主体少而清楚，文字短，不要堆满图标和装饰。'},
+    {id:'lifestyle', label:'生活方式', note:'整套风格：生活方式。主图、SKU图和详情都放进与商品用途相符的日常空间，手部或人物动作自然，整套地点和光线互相呼应。'},
+    {id:'guochao', label:'国潮质感', note:'整套风格：国潮质感。主图、SKU图和详情共用一套中式纹样、墨色和强调色的版式，产品仍是主体，不改商品结构和已确认事实。'},
+    {id:'keep', label:'原有风格', note:'整套风格：原有风格。主图、SKU图和详情都贴近当前素材的配色、摆放和包装气质，不另换成场景广告、棚拍或国潮装饰。'},
+    {id:'light_luxury', label:'轻奢高级', note:'整套风格：轻奢高级。主图、SKU图和详情共用克制的金属高光、深浅中性色和少量精致空白，产品仍是主体，不改商品结构和已确认事实。这是出图方向，不是实拍承诺，也不绑定某一品类。'},
+    {id:'fresh_japanese', label:'清新日系', note:'整套风格：清新日系。主图、SKU图和详情用浅色、柔光和干净空白，杂物少，产品仍是主体，不改商品结构和已确认事实。这是出图方向，不是实拍承诺，也不绑定某一品类。'},
+    {id:'morandi', label:'莫兰迪低饱和', note:'整套风格：莫兰迪低饱和。主图、SKU图和详情用灰调低饱和配色，对比收着，不改产品已确认的颜色事实，也不改商品结构。这是出图方向，不是实拍承诺，也不绑定某一品类。'},
+    {id:'warm_mood', label:'暖色氛围', note:'整套风格：暖色氛围。主图、SKU图和详情用同一套暖色光和柔和背景，气氛统一，产品仍是主体，不改商品结构和已确认事实。这是出图方向，不是实拍承诺，也不绑定某一品类。'},
+    {id:'cool_minimal', label:'冷色极简', note:'整套风格：冷色极简。主图、SKU图和详情用冷色、少装饰和大块空白，主体清楚，产品仍是主体，不改商品结构和已确认事实。这是出图方向，不是实拍承诺，也不绑定某一品类。'},
+    {id:'studio_light', label:'影棚光感', note:'整套风格：影棚光感。主图、SKU图和详情用可控的主光和轮廓光，背景干净，产品完整入镜。这是光线方向，不是实拍承诺，不改商品结构和已确认事实，也不绑定某一品类。'},
+    {id:'film_look', label:'胶片质感', note:'整套风格：胶片质感。主图、SKU图和详情用偏胶片的柔和色彩和轻微颗粒，整套统一，产品仍是主体，不改商品结构和已确认事实。这是出图方向，不是实拍承诺，也不绑定某一品类。'},
+    {id:'sunlit', label:'通透阳光', note:'整套风格：通透阳光。主图、SKU图和详情用明亮通透的自然光，阴影轻，产品仍是主体，不改商品结构和已确认事实。这是出图方向，不是实拍承诺，也不绑定某一品类。'},
+    {id:'dark_tone', label:'暗调质感', note:'整套风格：暗调质感。主图、SKU图和详情用深色背景和集中的主体光，四周收暗，产品仍看得清，不改商品结构和已确认事实。这是出图方向，不是实拍承诺，也不绑定某一品类。'},
+    {id:'high_contrast', label:'高对比撞色', note:'整套风格：高对比撞色。主图、SKU图和详情用同一套高对比色块，颜色少而明确，产品仍是主体，不改商品结构和已确认事实。这是出图方向，不是实拍承诺，也不绑定某一品类。'}
+  ];
   const DEFAULTS = {
     mainCount:5, skuCount:1, detailCount:3,
     sizes:{main:'square', sku:'square', detail:'portrait'},
-    detailWhitespace:true, background:'off'
+    detailWhitespace:true, background:'off', setStyle:'off'
   };
   function clampInt(value, min, max) {
     const n = Number.parseInt(value, 10);
@@ -41,8 +60,15 @@
       ...counts,
       sizes: sizesOf(spec || DEFAULTS),
       detailWhitespace: !!(spec && Object.prototype.hasOwnProperty.call(spec, 'detailWhitespace') ? spec.detailWhitespace : DEFAULTS.detailWhitespace),
-      background: spec?.background === 'white' || spec?.background === 'transparent' ? spec.background : 'off'
+      background: spec?.background === 'white' || spec?.background === 'transparent' ? spec.background : 'off',
+      setStyle: styleOf(spec).id
     };
+  }
+  function styleOf(spec) {
+    return SET_STYLES.find(item => item.id === spec?.setStyle) || SET_STYLES[0];
+  }
+  function styleNote(spec) {
+    return styleOf(spec).note || '';
   }
   function activeSlots(spec) {
     const c = normalize(spec);
@@ -116,12 +142,14 @@
   }
   function annotateDirectives(dirs, spec, oneShot) {
     let used = false;
+    const style = styleNote(spec);
     const directives = (dirs || []).map(item => {
       const zone = zoneForSlot(item.slot, spec)?.zone;
       const notes = [];
       const zoneNote = directiveNote(zone, spec);
       if (zoneNote) notes.push(zoneNote);
       if (oneShot && oneShot.slot === item.slot && oneShot.note) { notes.push(oneShot.note); used = true; }
+      if (zone && style) notes.push(style);
       if (!notes.length) return item;
       return {...item, requirement:[item.requirement, ...notes].filter(Boolean).join('；')};
     });
@@ -132,8 +160,8 @@
     return (slots.find(item => item.zone === 'sku') || slots.find(item => item.zone === 'main') || slots.find(item => item.zone === 'detail'))?.slot ?? null;
   }
   root.TaobaoLayout = {
-    SIZE_CHOICES, DEFAULTS, clampLayout, normalize, activeSlots, zoneForSlot, customerLabel,
+    SIZE_CHOICES, SET_STYLES, DEFAULTS, clampLayout, normalize, activeSlots, zoneForSlot, customerLabel,
     toCustomLayout, countsMatch, ratioForZone, slotFromTitle, ratioForTitle, backgroundNote,
-    directiveNote, annotateDirectives, backgroundSlot
+    directiveNote, styleOf, styleNote, annotateDirectives, backgroundSlot
   };
 })(typeof window !== 'undefined' ? window : globalThis);
