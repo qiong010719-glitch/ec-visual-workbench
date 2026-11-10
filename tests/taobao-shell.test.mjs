@@ -71,12 +71,27 @@ test('detail whitespace and white or transparent notes attach to one zone, and b
 });
 
 test('whole-set style notes land on every active Taobao slot and stay off by default', () => {
-  assert.equal(layout.SET_STYLES.length > 3, true);
-  assert.equal(layout.SET_STYLES.filter(item => item.id !== 'off' && item.note).length > 2, true);
+  const labels = ['不强制','场景广告','纯白棚拍','极简留白','生活方式','国潮质感','原有风格','轻奢高级','清新日系','莫兰迪低饱和','暖色氛围','冷色极简','影棚光感','胶片质感','通透阳光','暗调质感','高对比撞色'];
+  assert.equal(JSON.stringify(layout.SET_STYLES.map(item => item.label)), JSON.stringify(labels));
+  assert.equal(new Set(layout.SET_STYLES.map(item => item.id)).size, labels.length);
   assert.equal(layout.normalize({}).setStyle, 'off');
   assert.equal(layout.normalize({setStyle:'not-a-style'}).setStyle, 'off');
+  assert.equal(layout.normalize({setStyle:''}).setStyle, 'off');
+  assert.equal(layout.styleNote({setStyle:'missing'}), '');
   assert.equal(layout.styleNote(layout.DEFAULTS), '');
-  for (const choice of layout.SET_STYLES) assert.doesNotMatch(choice.label + choice.note, /摄影级|保证成图|官方像素|实拍成品/);
+  for (const choice of layout.SET_STYLES) {
+    assert.doesNotMatch(choice.label + choice.note, /摄影级|保证成图|官方像素|实拍成品|母婴|美食|家居/);
+    if (choice.id !== 'off') assert.match(choice.note, new RegExp('整套风格：' + choice.label));
+  }
+  for (const choice of layout.SET_STYLES.filter(item => ['light_luxury','fresh_japanese','morandi','warm_mood','cool_minimal','studio_light','film_look','sunlit','dark_tone','high_contrast'].includes(item.id))) {
+    assert.match(choice.note, /主图、SKU图和详情/);
+    assert.match(choice.note, /不改商品结构/);
+    assert.match(choice.note, /不是实拍承诺/);
+    assert.match(choice.note, /不绑定某一品类/);
+    const stamped = layout.annotateDirectives([{slot:0, requirement:'主图要求'}, {slot:1, requirement:null}, {slot:7, requirement:'详情'}], {mainCount:1, skuCount:1, detailCount:1, setStyle:choice.id});
+    assert.equal(stamped.directives.length, 3);
+    for (const item of stamped.directives) assert.match(item.requirement, new RegExp('整套风格：' + choice.label));
+  }
   const plain = layout.annotateDirectives([{slot:0, requirement:'主图要求'}, {slot:7, requirement:'详情要求'}], layout.DEFAULTS);
   assert.equal(plain.directives[0].requirement, '主图要求');
   assert.match(plain.directives[1].requirement, /留白/);
@@ -410,7 +425,8 @@ test('everyday menus offer only the Taobao shell and CN, while hidden ids stay s
   const styleLabels = [...style.options].map(option => option.textContent);
   assert.equal(styleLabels[0], '不强制');
   assert.equal(styleLabels.filter(label => label !== '不强制').length > 2, true);
-  for (const name of ['场景广告', '纯白棚拍', '极简留白', '生活方式', '国潮质感', '原有风格']) assert.equal(styleLabels.includes(name), true, name);
+  for (const name of ['场景广告', '纯白棚拍', '极简留白', '生活方式', '国潮质感', '原有风格', '轻奢高级', '清新日系', '莫兰迪低饱和', '暖色氛围', '冷色极简', '影棚光感', '胶片质感', '通透阳光', '暗调质感', '高对比撞色']) assert.equal(styleLabels.includes(name), true, name);
+  assert.equal(JSON.stringify(styleLabels), JSON.stringify(layout.SET_STYLES.map(item => item.label)));
   assert.equal(style.value, 'off');
   assert.match(document.getElementById('tbStyleHint').textContent, /不强制/);
   sandbox.saveAppState = () => { sandbox.persistedLayout = JSON.parse(JSON.stringify(sandbox.__customLayout)); };
