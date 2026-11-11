@@ -843,7 +843,8 @@ window.addEventListener('DOMContentLoaded', function () {
     let __lastScopeVal = '';
     let __prevScopeBeforeCustom = '';
     window.__customLayout = null;  // 🎛️ { main, sub, aplus, aplusType, directives: { slotIdx: { req, refs:[materialId] } } }
-        let globalMaterials = []; 
+        let globalMaterials = [];
+        window.__workbenchMaterials = () => globalMaterials; 
         const APP_CHANNEL = 'local';   // 本版本渠道标识(官网版)
         let lastAgentTaskId = null;   // 飞书回写用的稳定任务键
         let _archiveQueue = Promise.resolve();  // 单图归档串行队列

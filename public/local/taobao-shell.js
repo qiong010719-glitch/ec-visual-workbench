@@ -1,5 +1,6 @@
 /* Slice-1 Taobao shell. Relabels existing slots and reuses size mapping plus single-slot redraw.
-   Does not call a Taobao publish API and does not change the image provider. */
+   Does not call a Taobao publish API and does not change the image provider.
+   SKU reference photos go through the existing material library and per-slot ref_images. */
 (() => {
   const layout = window.TaobaoLayout;
   if (!layout) return;
@@ -23,6 +24,15 @@
     #taobaoShell .tb-pair input{width:72px}
     #taobaoShell .tb-row{display:flex;flex-wrap:wrap;gap:8px 12px;margin-top:8px;color:#d5deee;font-size:12px}
     #taobaoShell button{border:1px solid rgba(0,255,197,.45);background:rgba(0,255,197,.12);color:#eafff8;border-radius:8px;padding:7px 10px;cursor:pointer}
+    #taobaoShell .tb-sku-upload{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:0 0 8px}
+    #taobaoShell #tbSkuUpload{font-size:15px;font-weight:800;padding:10px 16px;background:#ffd36a;color:#1a1404;border:1px solid #ffd36a}
+    #taobaoShell #tbSkuUploadCount{font-size:13px;font-weight:700;color:#ffd36a}
+    #taobaoShell .tb-sku-thumbs{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 8px}
+    #taobaoShell .tb-sku-card{margin:0;display:flex;flex-direction:column;align-items:center;gap:2px;width:72px}
+    #taobaoShell .tb-sku-card img{width:64px;height:64px;object-fit:cover;border-radius:8px;border:1px solid rgba(255,211,106,.8);background:#111}
+    #taobaoShell .tb-sku-card figcaption{font-size:10px;color:#ffd36a;text-align:center}
+    #taobaoShell .tb-sku-remove{font-size:10px;padding:2px 6px}
+    #tbSkuFile{position:fixed;left:-120px;top:0;width:1px;height:1px;opacity:0}
     .taobao-legacy{margin:0;padding:0;border:0}
     .taobao-legacy summary{display:none}
     #designScope option[hidden],#targetMarket option[hidden],#targetMarket optgroup[hidden]{display:none !important}
@@ -167,6 +177,13 @@
     panel.id = 'taobaoShell';
     panel.innerHTML = `
       <h3>淘宝壳 · 主图 / SKU图 / 详情</h3>
+      <div class="tb-sku-upload">
+        <button type="button" id="tbSkuUpload">上传 SKU 图</button>
+        <input id="tbSkuFile" type="file" accept="image/*" multiple>
+        <span id="tbSkuUploadCount">还没有 SKU 图</span>
+      </div>
+      <p id="tbSkuUploadHint" class="local-muted">规格或颜色各传一张，按顺序对应 SKU图 1、2、3。照片进现有参考图（最多 8 张）。生成 SKU 图时用对应的这张，不再只按产品主体图。没传则仍走原来的生图。照片比 SKU 槽少时，多出来的槽用最后一张规格图。只在本机工作台使用，不会上传到淘宝。</p>
+      <div id="tbSkuThumbs" class="tb-sku-thumbs"></div>
       <p id="tbDisclaimer" class="local-muted">只生成本机图。本地草稿 ≠ 淘宝草稿，没有淘宝发布接口，也不会写成「已进淘宝草稿 / 已发布」。尺寸是工作台可选尺寸，沿用现有 1024×1024、1536×1024、1024×1536，不是淘宝官方像素。自定义宽高和图上的文字位置都写进现在的生图要求，不另接画字模型。不承诺成图质量。</p>
       <div class="tb-grid">
         <label>淘宝主图张数 <input id="tbMainCount" type="number" min="0" max="5" value="${defaults.mainCount}"></label>
@@ -205,6 +222,86 @@
     $('tbWhitespace').addEventListener('change', () => applySpec(readPanel()));
     document.querySelectorAll('input[name="tbBg"]').forEach(input => input.addEventListener('change', () => applySpec(readPanel())));
     $('tbBgEntry').addEventListener('click', redrawBackground);
+    $('tbSkuUpload').addEventListener('click', () => {
+      const input = $('tbSkuFile');
+      if (input && typeof input.click === 'function') input.click();
+    });
+    $('tbSkuFile').addEventListener('change', onSkuFiles);
+  }
+  const SKU_CATEGORY = 'SKU图';
+  function skuMaterials() {
+    if (typeof window.__workbenchMaterials !== 'function') return [];
+    const list = window.__workbenchMaterials();
+    if (!Array.isArray(list)) return [];
+    return list.filter(item => item && item.category === SKU_CATEGORY && item.filename);
+  }
+  function refreshSkuStrip() {
+    const photos = skuMaterials();
+    const count = $('tbSkuUploadCount');
+    if (count) count.textContent = photos.length ? `已上传 ${photos.length} 张 SKU 图` : '还没有 SKU 图';
+    const box = $('tbSkuThumbs');
+    if (!box) return;
+    box.innerHTML = '';
+    photos.forEach((photo, index) => {
+      const card = document.createElement('figure');
+      card.className = 'tb-sku-card';
+      const src = photo.preview || photo.url || '';
+      if (src) {
+        const img = document.createElement('img');
+        img.src = src;
+        img.alt = `SKU图 ${index + 1}`;
+        card.appendChild(img);
+      }
+      const caption = document.createElement('figcaption');
+      caption.textContent = photo.filename || `SKU图 ${index + 1}`;
+      card.appendChild(caption);
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'tb-sku-remove';
+      remove.textContent = '移除';
+      remove.addEventListener('click', () => {
+        if (typeof removeMaterial === 'function') removeMaterial(photo.id);
+        refreshSkuStrip();
+      });
+      card.appendChild(remove);
+      box.appendChild(card);
+    });
+  }
+  function onSkuFiles() {
+    const input = $('tbSkuFile');
+    const files = input?.files ? Array.from(input.files) : [];
+    if (input) input.value = '';
+    if (!files.length) { refreshSkuStrip(); return; }
+    if (typeof processNewFiles !== 'function') {
+      notify('SKU 图还没接上现有参考图库。', true);
+      return;
+    }
+    processNewFiles(files, SKU_CATEGORY);
+    refreshSkuStrip();
+    setTimeout(refreshSkuStrip, 700);
+  }
+  function hookMaterialChanges() {
+    if (typeof processNewFiles === 'function' && !processNewFiles.__tbSku) {
+      const original = processNewFiles;
+      const wrapped = function (...args) {
+        const result = original.apply(this, args);
+        refreshSkuStrip();
+        setTimeout(refreshSkuStrip, 700);
+        return result;
+      };
+      wrapped.__tbSku = true;
+      window.processNewFiles = wrapped;
+    }
+    if (typeof removeMaterial === 'function' && !removeMaterial.__tbSku) {
+      const original = removeMaterial;
+      const wrapped = function (...args) {
+        const result = original.apply(this, args);
+        refreshSkuStrip();
+        return result;
+      };
+      wrapped.__tbSku = true;
+      window.removeMaterial = wrapped;
+    }
   }
   function bindShortcut(selectId, widthId, heightId) {
     $(selectId).addEventListener('change', () => {
@@ -429,7 +526,7 @@
         window.__taobaoOneShot.used = true;
         window.__taobaoOneShot = null;
       }
-      return annotated.directives;
+      return layout.attachSkuRefs(annotated.directives, spec, skuMaterials()).directives;
     };
   }
   if (typeof triggerGeneration === 'function') {
@@ -467,6 +564,7 @@
       hideLegacyOptions();
       lockCustomerMarket();
       maybeApplyPreset();
+      refreshSkuStrip();
       return result;
     };
   }
@@ -489,6 +587,9 @@
       if (!(event.detail && event.detail.isRestore) && !$('designScope')?.value && typeof buildGalleryLayout === 'function') buildGalleryLayout();
       syncPanel(window.__customLayout?.taobao || readPanel());
     });
+    hookMaterialChanges();
+    refreshSkuStrip();
+    setTimeout(refreshSkuStrip, 1700);
     maybeApplyPreset();
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', setup);
