@@ -17,8 +17,10 @@
     #taobaoShell .tb-grid{display:grid;grid-template-columns:1.2fr .7fr;gap:8px;align-items:center}
     #taobaoShell label{display:flex;justify-content:space-between;gap:8px;align-items:center;color:#d5deee;font-size:12px}
     #taobaoShell input[type="number"],#taobaoShell select{width:118px;background:#00000088;color:#fff;border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:6px}
-    #taobaoShell label.tb-style{grid-column:1 / -1}
+    #taobaoShell label.tb-style,#taobaoShell label.tb-custom{grid-column:1 / -1}
     #taobaoShell label.tb-style select{width:min(100%,240px)}
+    #taobaoShell .tb-pair{display:flex;gap:6px}
+    #taobaoShell .tb-pair input{width:72px}
     #taobaoShell .tb-row{display:flex;flex-wrap:wrap;gap:8px 12px;margin-top:8px;color:#d5deee;font-size:12px}
     #taobaoShell button{border:1px solid rgba(0,255,197,.45);background:rgba(0,255,197,.12);color:#eafff8;border-radius:8px;padding:7px 10px;cursor:pointer}
     .taobao-legacy{margin:0;padding:0;border:0}
@@ -26,6 +28,12 @@
     #designScope option[hidden],#targetMarket option[hidden],#targetMarket optgroup[hidden]{display:none !important}
     .taobao-deemphasize{opacity:.55}
     .taobao-slot-label{font-size:11px;font-weight:700;letter-spacing:.04em;color:#9fffea;padding:6px 8px 0}
+    .taobao-text-stage{position:relative;display:block;width:100%}
+    .taobao-text-stage img{width:100%;height:auto;display:block}
+    .quest-slot:hover .taobao-text-stage img{transform:none}
+    .taobao-text-pin{position:absolute;z-index:61;transform:translate(-50%,-50%);padding:4px 8px;border-radius:999px;border:1px solid #ffd36a;background:rgba(0,0,0,.78);color:#ffd36a;font-size:11px;font-weight:700;cursor:grab;touch-action:none;user-select:none}
+    .taobao-text-shortcuts{position:absolute;z-index:62;top:6px;left:6px;display:flex;gap:4px}
+    .taobao-text-preset{border:1px solid rgba(255,211,106,.7);background:rgba(0,0,0,.72);color:#ffd36a;border-radius:6px;font-size:10px;font-weight:700;padding:3px 6px;cursor:pointer}
     .taobao-redraw{width:100%;margin-top:4px;border:1px solid #ffd36a;color:#ffd36a;background:transparent;border-radius:8px;padding:6px;font-size:12px;font-weight:700;cursor:pointer}
     #galleryContainer.taobao-whitespace [data-taobao-zone="detail"]{box-shadow:inset 0 -36px 0 #f7f7f7}
     #galleryContainer.taobao-whitespace [data-taobao-zone="detail"] .taobao-pad{display:block;margin-top:4px;background:#f7f7f7;color:#666;text-align:center;font-size:10px;line-height:22px;border-radius:0 0 8px 8px}
@@ -39,11 +47,18 @@
     return layout.normalize(shell);
   }
   function readPanel() {
+    const current = window.__customLayout?.taobao || {};
     return layout.normalize({
       mainCount:$('tbMainCount')?.value,
       skuCount:$('tbSkuCount')?.value,
       detailCount:$('tbDetailCount')?.value,
       sizes:{main:$('tbMainSize')?.value, sku:$('tbSkuSize')?.value, detail:$('tbDetailSize')?.value},
+      customSizes:{
+        main:{width:$('tbMainWidth')?.value, height:$('tbMainHeight')?.value},
+        sku:{width:$('tbSkuWidth')?.value, height:$('tbSkuHeight')?.value},
+        detail:{width:$('tbDetailWidth')?.value, height:$('tbDetailHeight')?.value}
+      },
+      textPositions:current.textPositions,
       detailWhitespace:!!$('tbWhitespace')?.checked,
       background:document.querySelector('input[name="tbBg"]:checked')?.value || 'off',
       setStyle:$('tbSetStyle')?.value
@@ -60,6 +75,24 @@
   function sizeOptions(selected) {
     return layout.SIZE_CHOICES.map(choice => `<option value="${choice.id}" ${choice.id === selected ? 'selected' : ''}>${escapeHtml(choice.label)}</option>`).join('');
   }
+  function sizeHint(spec) {
+    const value = layout.normalize(spec || layout.DEFAULTS);
+    const names = {main:'主图', sku:'SKU', detail:'详情'};
+    const parts = ['main','sku','detail'].map(zone => {
+      const custom = value.customSizes[zone];
+      if (custom) return `${names[zone]} ${custom.width}×${custom.height}`;
+      const choice = layout.SIZE_CHOICES.find(item => item.id === value.sizes[zone]);
+      return `${names[zone]} ${choice?.ratio || ''}`;
+    });
+    return `当前：${parts.join('，')}。宽和高都填上（${layout.CUSTOM_MIN}–${layout.CUSTOM_MAX}）才用自定义尺寸，并写进这一组现有的生图要求。竖图若不是通道已有的 3:4、2:3、9:16，会就近选一档，避免被收成横图。改快捷尺寸会清掉这一组的自定义数字。`;
+  }
+  function syncCustom(widthId, heightId, size) {
+    const width = $(widthId);
+    const height = $(heightId);
+    if (!width || !height) return;
+    if (size) { width.value = String(size.width); height.value = String(size.height); return; }
+    if (layout.parseCustomSize({width:width.value, height:height.value})) { width.value = ''; height.value = ''; }
+  }
   function syncPanel(spec) {
     const value = layout.normalize(spec || layout.DEFAULTS);
     if ($('tbMainCount')) $('tbMainCount').value = value.mainCount;
@@ -68,6 +101,11 @@
     if ($('tbMainSize')) $('tbMainSize').value = value.sizes.main;
     if ($('tbSkuSize')) $('tbSkuSize').value = value.sizes.sku;
     if ($('tbDetailSize')) $('tbDetailSize').value = value.sizes.detail;
+    syncCustom('tbMainWidth', 'tbMainHeight', value.customSizes.main);
+    syncCustom('tbSkuWidth', 'tbSkuHeight', value.customSizes.sku);
+    syncCustom('tbDetailWidth', 'tbDetailHeight', value.customSizes.detail);
+    const sizeLine = $('tbSizeHint');
+    if (sizeLine) sizeLine.textContent = sizeHint(value);
     if ($('tbWhitespace')) $('tbWhitespace').checked = value.detailWhitespace;
     if ($('tbSetStyle')) $('tbSetStyle').value = value.setStyle;
     const radio = document.querySelector(`input[name="tbBg"][value="${value.background}"]`);
@@ -129,16 +167,21 @@
     panel.id = 'taobaoShell';
     panel.innerHTML = `
       <h3>淘宝壳 · 主图 / SKU图 / 详情</h3>
-      <p id="tbDisclaimer" class="local-muted">只生成本机图。本地草稿 ≠ 淘宝草稿，没有淘宝发布接口，也不会写成「已进淘宝草稿 / 已发布」。尺寸是工作台可选尺寸，沿用现有 1024×1024、1536×1024、1024×1536，不是淘宝官方像素。不承诺成图质量。</p>
+      <p id="tbDisclaimer" class="local-muted">只生成本机图。本地草稿 ≠ 淘宝草稿，没有淘宝发布接口，也不会写成「已进淘宝草稿 / 已发布」。尺寸是工作台可选尺寸，沿用现有 1024×1024、1536×1024、1024×1536，不是淘宝官方像素。自定义宽高和图上的文字位置都写进现在的生图要求，不另接画字模型。不承诺成图质量。</p>
       <div class="tb-grid">
         <label>淘宝主图张数 <input id="tbMainCount" type="number" min="0" max="5" value="${defaults.mainCount}"></label>
         <label>主图尺寸 <select id="tbMainSize">${sizeOptions(defaults.sizes.main)}</select></label>
+        <label class="tb-custom">主图自定义宽 × 高 <span class="tb-pair"><input id="tbMainWidth" type="number" min="${layout.CUSTOM_MIN}" max="${layout.CUSTOM_MAX}" placeholder="宽"><input id="tbMainHeight" type="number" min="${layout.CUSTOM_MIN}" max="${layout.CUSTOM_MAX}" placeholder="高"></span></label>
         <label>SKU图张数 <input id="tbSkuCount" type="number" min="0" max="6" value="${defaults.skuCount}"></label>
         <label>SKU尺寸 <select id="tbSkuSize">${sizeOptions(defaults.sizes.sku)}</select></label>
+        <label class="tb-custom">SKU自定义宽 × 高 <span class="tb-pair"><input id="tbSkuWidth" type="number" min="${layout.CUSTOM_MIN}" max="${layout.CUSTOM_MAX}" placeholder="宽"><input id="tbSkuHeight" type="number" min="${layout.CUSTOM_MIN}" max="${layout.CUSTOM_MAX}" placeholder="高"></span></label>
         <label>详情张数 <input id="tbDetailCount" type="number" min="0" max="7" value="${defaults.detailCount}"></label>
         <label>详情尺寸 <select id="tbDetailSize">${sizeOptions(defaults.sizes.detail)}</select></label>
+        <label class="tb-custom">详情自定义宽 × 高 <span class="tb-pair"><input id="tbDetailWidth" type="number" min="${layout.CUSTOM_MIN}" max="${layout.CUSTOM_MAX}" placeholder="宽"><input id="tbDetailHeight" type="number" min="${layout.CUSTOM_MIN}" max="${layout.CUSTOM_MAX}" placeholder="高"></span></label>
         <label class="tb-style">整套风格 <select id="tbSetStyle">${styleOptions(defaults.setStyle)}</select></label>
       </div>
+      <p id="tbSizeHint" class="local-muted">${escapeHtml(sizeHint(defaults))}</p>
+      <p id="tbPlaceHint" class="local-muted">图生成之后，每张图上的「文字」可以拖到画面任意位置。靠上、居中、靠下只是快捷，不是限制。拖完再点「重绘这一张」，文案内容不变，位置写进现有生图要求。</p>
       <p id="tbStyleHint" class="local-muted">${escapeHtml(styleHint(defaults))}</p>
       <div class="tb-row">
         <label><input id="tbWhitespace" type="checkbox" checked> 详情底部留白</label>
@@ -151,10 +194,99 @@
       </div>
       <p id="tbStatus" class="local-muted"></p>`;
     $('designScope').before(panel);
-    for (const id of ['tbMainCount','tbSkuCount','tbDetailCount','tbMainSize','tbSkuSize','tbDetailSize','tbSetStyle']) $(id).addEventListener('change', () => applySpec(readPanel()));
+    for (const id of ['tbMainCount','tbSkuCount','tbDetailCount','tbSetStyle']) $(id).addEventListener('change', () => applySpec(readPanel()));
+    bindShortcut('tbMainSize', 'tbMainWidth', 'tbMainHeight');
+    bindShortcut('tbSkuSize', 'tbSkuWidth', 'tbSkuHeight');
+    bindShortcut('tbDetailSize', 'tbDetailWidth', 'tbDetailHeight');
+    for (const id of ['tbMainWidth','tbMainHeight','tbSkuWidth','tbSkuHeight','tbDetailWidth','tbDetailHeight']) {
+      $(id).addEventListener('input', () => applySpec(readPanel()));
+      $(id).addEventListener('change', () => applySpec(readPanel()));
+    }
     $('tbWhitespace').addEventListener('change', () => applySpec(readPanel()));
     document.querySelectorAll('input[name="tbBg"]').forEach(input => input.addEventListener('change', () => applySpec(readPanel())));
     $('tbBgEntry').addEventListener('click', redrawBackground);
+  }
+  function bindShortcut(selectId, widthId, heightId) {
+    $(selectId).addEventListener('change', () => {
+      if ($(widthId)) $(widthId).value = '';
+      if ($(heightId)) $(heightId).value = '';
+      applySpec(readPanel());
+    });
+  }
+  function rememberTextPosition(index, position) {
+    const shell = window.__customLayout?.taobao;
+    if (!shell?.applied) return;
+    const next = layout.normalize({...shell, textPositions:{...(shell.textPositions || {}), [index]: position}});
+    shell.textPositions = next.textPositions;
+    if (typeof saveAppState === 'function') saveAppState();
+  }
+  function placePin(pin, position, committed) {
+    pin.style.left = position.x + '%';
+    pin.style.top = position.y + '%';
+    pin.textContent = committed ? `${position.x},${position.y}` : '文字';
+    pin.title = committed
+      ? `文字在水平 ${position.x}%、垂直 ${position.y}%。可拖到任意位置，不限于靠上、居中、靠下。`
+      : '拖动文字到画面任意位置。松手后记在这一张上，重绘时写进现有生图要求。';
+  }
+  function mountTextPlacement(slot, index, spec) {
+    const slotImage = typeof imageSlots === 'undefined' ? null : imageSlots?.[index];
+    if (!slotImage?.url) return;
+    const img = slot.querySelector('img');
+    if (!img || slot.querySelector('[data-taobao-text-pin]')) return;
+    const stage = document.createElement('div');
+    stage.className = 'taobao-text-stage';
+    img.parentNode.insertBefore(stage, img);
+    stage.appendChild(img);
+    const pin = document.createElement('button');
+    pin.type = 'button';
+    pin.className = 'taobao-text-pin';
+    pin.dataset.taobaoTextPin = String(index);
+    const stored = spec.textPositions?.[index] || null;
+    placePin(pin, stored || {x:50, y:50}, !!stored);
+    let current = stored;
+    const read = event => layout.textPositionFromPointer(event, stage.getBoundingClientRect?.());
+    const onMove = event => {
+      event.preventDefault?.();
+      const next = read(event);
+      if (!next) return;
+      current = next;
+      placePin(pin, next, true);
+    };
+    const onUp = event => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      onMove(event);
+      if (current) rememberTextPosition(index, current);
+    };
+    pin.addEventListener('pointerdown', event => {
+      if (event.button != null && event.button !== 0) return;
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      onMove(event);
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+    });
+    stage.appendChild(pin);
+    const bar = document.createElement('div');
+    bar.className = 'taobao-text-shortcuts';
+    for (const preset of layout.TEXT_PRESETS) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'taobao-text-preset';
+      button.dataset.taobaoTextPreset = preset.id;
+      button.textContent = preset.label;
+      button.title = `快捷：文字${preset.label}（水平 ${preset.x}%，垂直 ${preset.y}%）。仍可再拖到别的位置。`;
+      button.addEventListener('click', event => {
+        event.preventDefault?.();
+        event.stopPropagation?.();
+        const pos = {x:preset.x, y:preset.y};
+        current = pos;
+        placePin(pin, pos, true);
+        rememberTextPosition(index, pos);
+      });
+      bar.appendChild(button);
+    }
+    stage.appendChild(bar);
   }
   function redrawBackground() {
     const picked = document.querySelector('input[name="tbBg"]:checked')?.value;
@@ -233,6 +365,7 @@
       pad.textContent = '详情底部留白';
       slot.appendChild(pad);
     }
+    mountTextPlacement(slot, index, spec);
     if (!slot.querySelector('[data-taobao-redraw]')) {
       const button = document.createElement('button');
       button.type = 'button';

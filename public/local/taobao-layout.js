@@ -1,6 +1,8 @@
 /* Pure Taobao shell mapping. Customer labels sit on the existing 14 slots.
    Internal titles stay 主图 / 卖点图 / 高级A+ so the planner and single-slot redraw keep working.
-   Sizes stay the workbench trio: 1:1 → 1024², 16:9 → 1536×1024, 3:4 → 1024×1536. */
+   Shortcut sizes stay the workbench trio: 1:1 → 1024², 16:9 → 1536×1024, 3:4 → 1024×1536.
+   Custom width/height and free text coordinates are written into the same slot directive
+   and aspect field the generate path already sends. No second painter. */
 (function (root) {
   const SIZE_CHOICES = [
     {id:'square', ratio:'1:1', label:'工作台可选尺寸 · 方图', pixels:'1024×1024'},
@@ -26,9 +28,19 @@
     {id:'dark_tone', label:'暗调质感', note:'整套风格：暗调质感。主图、SKU图和详情用深色背景和集中的主体光，四周收暗，产品仍看得清，不改商品结构和已确认事实。这是出图方向，不是实拍承诺，也不绑定某一品类。'},
     {id:'high_contrast', label:'高对比撞色', note:'整套风格：高对比撞色。主图、SKU图和详情用同一套高对比色块，颜色少而明确，产品仍是主体，不改商品结构和已确认事实。这是出图方向，不是实拍承诺，也不绑定某一品类。'}
   ];
+  const TEXT_PRESETS = [
+    {id:'top', label:'靠上', x:50, y:12},
+    {id:'middle', label:'居中', x:50, y:50},
+    {id:'bottom', label:'靠下', x:50, y:82}
+  ];
+  const CUSTOM_MIN = 64;
+  const CUSTOM_MAX = 2048;
+  const PORTRAIT_RATIOS = ['3:4', '2:3', '9:16'];
   const DEFAULTS = {
     mainCount:5, skuCount:1, detailCount:3,
     sizes:{main:'square', sku:'square', detail:'portrait'},
+    customSizes:{main:null, sku:null, detail:null},
+    textPositions:{},
     detailWhitespace:true, background:'off', setStyle:'off'
   };
   function clampInt(value, min, max) {
@@ -54,11 +66,63 @@
       detail: known(sizes.detail) ? sizes.detail : DEFAULTS.sizes.detail
     };
   }
+  function parsePixel(value) {
+    const text = String(value ?? '').trim();
+    if (!/^\d+$/.test(text)) return null;
+    const n = Number(text);
+    if (n < CUSTOM_MIN || n > CUSTOM_MAX) return null;
+    return n;
+  }
+  function parseCustomSize(value) {
+    if (!value || typeof value !== 'object') return null;
+    const width = parsePixel(value.width);
+    const height = parsePixel(value.height);
+    if (width == null || height == null) return null;
+    return {width, height};
+  }
+  function customSizesOf(spec) {
+    const raw = spec?.customSizes || {};
+    return {
+      main: parseCustomSize(raw.main),
+      sku: parseCustomSize(raw.sku),
+      detail: parseCustomSize(raw.detail)
+    };
+  }
+  function clampTextPosition(position) {
+    if (!position || typeof position !== 'object') return null;
+    const x = Number(position.x);
+    const y = Number(position.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    const round = value => Math.round(Math.max(0, Math.min(100, value)) * 10) / 10;
+    return {x: round(x), y: round(y)};
+  }
+  function textPositionsOf(spec) {
+    const raw = spec?.textPositions || {};
+    const out = {};
+    for (const [key, value] of Object.entries(raw)) {
+      if (!/^\d+$/.test(key)) continue;
+      const slot = Number(key);
+      if (slot > 13) continue;
+      const pos = clampTextPosition(value);
+      if (pos) out[slot] = pos;
+    }
+    return out;
+  }
+  function textPositionFromPointer(pointer, rect) {
+    const width = Number(rect?.width);
+    const height = Number(rect?.height);
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return null;
+    const x = (Number(pointer?.clientX) - Number(rect.left)) / width * 100;
+    const y = (Number(pointer?.clientY) - Number(rect.top)) / height * 100;
+    return clampTextPosition({x, y});
+  }
   function normalize(spec) {
     const counts = clampLayout(spec || DEFAULTS);
     return {
       ...counts,
       sizes: sizesOf(spec || DEFAULTS),
+      customSizes: customSizesOf(spec || DEFAULTS),
+      textPositions: textPositionsOf(spec || DEFAULTS),
       detailWhitespace: !!(spec && Object.prototype.hasOwnProperty.call(spec, 'detailWhitespace') ? spec.detailWhitespace : DEFAULTS.detailWhitespace),
       background: spec?.background === 'white' || spec?.background === 'transparent' ? spec.background : 'off',
       setStyle: styleOf(spec).id
@@ -105,9 +169,38 @@
     const mapped = toCustomLayout(layout.taobao, {});
     return mapped.main === (layout.main | 0) && mapped.sub === (layout.sub | 0) && mapped.aplus === (layout.aplus | 0);
   }
+  function gcd(a, b) {
+    let x = a, y = b;
+    while (y) { const t = y; y = x % y; x = t; }
+    return x || 1;
+  }
+  function reducedRatio(width, height) {
+    const g = gcd(width, height);
+    return `${width / g}:${height / g}`;
+  }
+  function nearestPortrait(width, height) {
+    const aspect = width / height;
+    let best = PORTRAIT_RATIOS[0];
+    let bestDelta = Infinity;
+    for (const ratio of PORTRAIT_RATIOS) {
+      const [w, h] = ratio.split(':').map(Number);
+      const delta = Math.abs(w / h - aspect);
+      if (delta < bestDelta) { bestDelta = delta; best = ratio; }
+    }
+    return best;
+  }
+  function aspectRatioForPixels(width, height) {
+    const reduced = reducedRatio(width, height);
+    if (reduced === '1:1' || reduced === '16:9' || PORTRAIT_RATIOS.includes(reduced)) return reduced;
+    if (height > width) return nearestPortrait(width, height);
+    if (width === height) return '1:1';
+    return reduced;
+  }
   function ratioForZone(zone, spec) {
-    const sizes = normalize(spec).sizes;
-    const id = sizes[zone] || (zone === 'detail' ? 'portrait' : 'square');
+    const normalized = normalize(spec);
+    const custom = normalized.customSizes[zone];
+    if (custom) return aspectRatioForPixels(custom.width, custom.height);
+    const id = normalized.sizes[zone] || (zone === 'detail' ? 'portrait' : 'square');
     return SIZE_CHOICES.find(choice => choice.id === id)?.ratio || '1:1';
   }
   function slotFromTitle(title) {
@@ -140,6 +233,18 @@
     if (zone === 'sku') return backgroundNote(c.background);
     return '';
   }
+  function sizeNote(zone, spec) {
+    if (zone !== 'main' && zone !== 'sku' && zone !== 'detail') return '';
+    const custom = normalize(spec).customSizes[zone];
+    if (!custom) return '';
+    const ratio = aspectRatioForPixels(custom.width, custom.height);
+    return `本张自定义宽高：宽 ${custom.width} 像素，高 ${custom.height} 像素，画幅 ${ratio}。按这个宽高安排构图，产品完整留在画面里。`;
+  }
+  function positionNote(position) {
+    const pos = clampTextPosition(position);
+    if (!pos) return '';
+    return `文字位置：水平 ${pos.x}%、垂直 ${pos.y}%（相对画面左上角，可落在任意一点，不限于靠上、居中、靠下）。把本张已有文案放到这个位置，不要改文案内容，产品仍完整留在画面里。`;
+  }
   function annotateDirectives(dirs, spec, oneShot) {
     let used = false;
     const style = styleNote(spec);
@@ -150,8 +255,17 @@
       if (zoneNote) notes.push(zoneNote);
       if (oneShot && oneShot.slot === item.slot && oneShot.note) { notes.push(oneShot.note); used = true; }
       if (zone && style) notes.push(style);
+      const size = sizeNote(zone, spec);
+      if (size) notes.push(size);
+      const place = textPositionsOf(spec)[item.slot] || null;
+      const placeNote = positionNote(place);
+      if (placeNote) notes.push(placeNote);
       if (!notes.length) return item;
-      return {...item, requirement:[item.requirement, ...notes].filter(Boolean).join('；')};
+      const next = {...item, requirement:[item.requirement, ...notes].filter(Boolean).join('；')};
+      if (place) next.text_position = {x: place.x, y: place.y};
+      const custom = zone === 'main' || zone === 'sku' || zone === 'detail' ? customSizesOf(spec)[zone] : null;
+      if (custom) next.custom_size = {width: custom.width, height: custom.height};
+      return next;
     });
     return {directives, used};
   }
@@ -160,8 +274,9 @@
     return (slots.find(item => item.zone === 'sku') || slots.find(item => item.zone === 'main') || slots.find(item => item.zone === 'detail'))?.slot ?? null;
   }
   root.TaobaoLayout = {
-    SIZE_CHOICES, SET_STYLES, DEFAULTS, clampLayout, normalize, activeSlots, zoneForSlot, customerLabel,
-    toCustomLayout, countsMatch, ratioForZone, slotFromTitle, ratioForTitle, backgroundNote,
-    directiveNote, styleOf, styleNote, annotateDirectives, backgroundSlot
+    SIZE_CHOICES, SET_STYLES, TEXT_PRESETS, CUSTOM_MIN, CUSTOM_MAX, DEFAULTS, clampLayout, normalize, activeSlots, zoneForSlot, customerLabel,
+    toCustomLayout, countsMatch, ratioForZone, aspectRatioForPixels, parseCustomSize, clampTextPosition, textPositionFromPointer,
+    slotFromTitle, ratioForTitle, backgroundNote,
+    directiveNote, sizeNote, positionNote, styleOf, styleNote, annotateDirectives, backgroundSlot
   };
 })(typeof window !== 'undefined' ? window : globalThis);
