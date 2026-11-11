@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {Store} from './store.mjs';
 import {planProduct, buildPlan, slotPlan, promptForSlot} from './planner.mjs';
-import {createImageProvider, createImageDownloader, imageType, resolveImage} from './provider.mjs';
+import {createImageProvider, createImageDownloader, imageType, resolveImage, editMask} from './provider.mjs';
 import {ResearchService} from './research.mjs';
 import {designPatterns} from './design-patterns.mjs';
 import {generationMode} from './visual-style.mjs';
@@ -107,6 +107,14 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
     const maximumTasks = payload.mobile_reformat ? 20 : 14;
     if (!Array.isArray(tasks) || !tasks.length || tasks.length > maximumTasks || tasks.some(t => !validId(t.taskId) || !Number.isInteger(t.slot) || t.slot < -1 || t.slot >= maximumTasks) || new Set(tasks.map(t => t.taskId)).size !== tasks.length) throw fail(400, '无效的图片任务列表');
     if (!payload.prompt && !payload.sop_text && !payload.product_name && !payload.mobile_reformat) throw fail(400, '请填写生成要求');
+    const textMove = kind === 'inpaint' && payload.text_move === true;
+    let textMoveBase = '';
+    if (textMove) {
+      textMoveBase = [payload.base_image_b64, payload.image_url, payload.source_image_url].find(value => typeof value === 'string' && value.trim()) || '';
+      if (!textMoveBase) throw fail(400, '局部改字需要已生成的原图，没有改成整张重绘。');
+      if (!Array.isArray(payload.mask_regions) || payload.mask_regions.length < 1 || payload.mask_regions.length > 2) throw fail(400, '局部改字需要遮罩，没有改成整张重绘。');
+      if (payload.mask_regions.some(region => !region || [region.x, region.y, region.w, region.h].some(value => !Number.isFinite(Number(value))))) throw fail(400, '局部改字遮罩无效，没有改成整张重绘。');
+    }
     if (!provider && !configuration.SUANZHOU_IMAGE_API_KEY) throw fail(503, '缺少专用图片密钥；请求未提交，也未扣点');
     const known = tasks.map(t => store.state.tasks['hyrule_tasks/' + t.taskId]);
     if (known.every(Boolean)) return known[0].requestId;
@@ -128,11 +136,12 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
       if(ordinary&&!section)throw fail(400,'找不到图片槽位的独立设计要求');
       const prompt=[payload.mobile_reformat?`将这张 A+ 图片重新排版为适合手机阅读的 4:3 单张图。保留产品和所有已提供的文案，文字清晰，版面简洁，不添加新卖点。标题：${task.title || ''}`:
         ordinary?promptForSlot(payload,section,design):kind==='ultra'?[payload.prompt || payload.sop_text,design.styleGuide,section?.detail || design.text].filter(Boolean).join('\n\n'):payload.prompt || payload.sop_text || design.text,
-        ordinary?'':payload.strict_requirements || '',directive?JSON.stringify(directive):''].filter(Boolean).join('\n');
+        ordinary?'':payload.strict_requirements || '',directive?JSON.stringify(directive):'',
+        textMove?'只修改遮罩中完全透明的区域。保持原来的文案句子、产品和房间不变，不要重构遮罩以外的整张图。':''].filter(Boolean).join('\n');
       const names=directive?.ref_images?.length?directive.ref_images:ordinary?section?.ref_images:[];
       const selected=names?.length?(merged.categorized_images || []).filter(m=>names.includes(m.filename)).map(m=>m.url):references(merged);
       if(directive?.ref_images?.length && selected.length!==new Set(directive.ref_images).size)throw fail(400,'逐张要求引用了不存在的产品参考图');
-      const refs=payload.mobile_reformat?[task.source_image_url]:selected.length?selected:references(merged);
+      const refs=textMoveBase?[textMoveBase]:payload.mobile_reformat?[task.source_image_url]:selected.length?selected:references(merged);
       if(refs.some(r=>typeof r!=='string' || !r.trim()))throw fail(400,'图片参考地址无效，未提交生成任务');
       return {task,section,prompt,refs};
     });
@@ -143,7 +152,12 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
       enqueue(async () => {
         store.task(key, {status:'running',phase:'generating'});
         try {
-          const bytes = await imageProvider({prompt, references:refs, ratio:task.aspect_ratio || section?.ratio || '1:1', model, kind,onProgress:patch=>store.task(key,patch)});
+          let mask;
+          if (textMove) {
+            const baseBytes = await resolveImage(refs[0], mediaDirectory);
+            mask = editMask(baseBytes, payload.mask_regions);
+          }
+          const bytes = await imageProvider({prompt, references:refs, ratio:task.aspect_ratio || section?.ratio || '1:1', model, kind, ...(mask ? {mask} : {}), onProgress:patch=>store.task(key,patch)});
           store.task(key, {status:'completed',phase:'completed', imageUrl:saveImage(bytes), provider:provider ? 'test-provider' : 'suanzhou', model});
         } catch (error) {
           store.task(key, {status:'failed',phase:store.state.tasks[key].resultUrl?'download_failed':'generation_failed', error: String(error.message).slice(0,500)});

@@ -5,7 +5,9 @@ import os from 'node:os';
 import path from 'node:path';
 import vm from 'node:vm';
 import {fileURLToPath} from 'node:url';
+import http from 'node:http';
 import {createWorkbench} from '../src/server.mjs';
+import {createImageProvider, editMask, encodeRgbaPng, pngAlpha} from '../src/provider.mjs';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const layoutSource = fs.readFileSync(path.join(root, 'public/local/taobao-layout.js'), 'utf8');
@@ -826,7 +828,7 @@ test('SKU slot generate uses uploaded SKU photos and keeps the main-product path
   assert.match(captured.at(-1).prompt, /SKU图_1/);
 });
 
-test('the shell drag handle stores a non-preset point, and typed width height overrides shortcuts until a shortcut is chosen', () => {
+test('the shell drag handle stores a non-preset point, and typed width height overrides shortcuts until a shortcut is chosen', async () => {
   const ids = new Map();
   const all = [];
   const windowListeners = new Map();
@@ -1173,4 +1175,144 @@ test('the shell drag handle stores a non-preset point, and typed width height ov
   assert.match(sandbox.buildSlotDirectives().find(item => item.slot === 0).requirement, /^主图要求：标题保持原句/);
   assert.match(sandbox.buildSlotDirectives().find(item => item.slot === 0).requirement, /水平 12%/);
   assert.equal(sandbox._aspectForTitle('【卖点图5】'), '5:4');
+  sandbox.calls = [];
+  sandbox.fetch = (url, init) => {
+    sandbox.calls.push({url, body: JSON.parse(init.body)});
+    return Promise.resolve({ok:true, status:202, headers:{get() { return 'req'; }}, json:async () => ({ok:true})});
+  };
+  let generated = 0;
+  sandbox.triggerGeneration = () => { generated += 1; };
+  sandbox.activeKieTasks = [];
+  sandbox.resumeKieListener = (slot, taskId, isInpaint) => { sandbox.listened = {slot, taskId, isInpaint}; };
+  sandbox.getCurrentSlotTitles = () => ['【主图】'];
+  const sop = document.createElement('textarea');
+  sop.id = 'sopText';
+  sop.value = '【主图】\n文案：轻便耐用';
+  document.body.appendChild(sop);
+  const redraw = document.querySelector('[data-taobao-redraw]');
+  sandbox.__customLayout.taobao.textAnchors = {0:{x:12, y:91}};
+  redraw.dispatchEvent({type:'click', preventDefault() {}, stopPropagation() {}});
+  assert.equal(generated, 1);
+  assert.equal(sandbox.calls.length, 0);
+  sandbox.__customLayout.taobao.textAnchors = {0:{x:50, y:12}};
+  redraw.dispatchEvent({type:'click', preventDefault() {}, stopPropagation() {}});
+  await sandbox.__taobaoTextMove;
+  assert.equal(generated, 1);
+  assert.equal(sandbox.calls.length, 1);
+  assert.equal(sandbox.calls[0].url, '/api/inpaint');
+  const body = sandbox.calls[0].body;
+  assert.equal(body.text_move, true);
+  assert.equal(body.image_url, '/media/main.png');
+  assert.equal(body.base_image_b64, undefined);
+  assert.equal(body.slot_idx, 0);
+  assert.equal(body.mask_regions.length, 2);
+  assert.equal(body.mask_regions[0].role, 'erase');
+  assert.equal(body.mask_regions[1].role, 'paint');
+  assert.ok(body.mask_regions[0].y < body.mask_regions[1].y);
+  assert.match(body.prompt, /原文：轻便耐用/);
+  assert.match(body.prompt, /产品/);
+  assert.match(body.prompt, /房间/);
+  assert.match(body.prompt, /不要重构整张图/);
+  assert.equal(body.firebase_tasks, undefined);
+  assert.equal(sandbox.listened.isInpaint, true);
+  assert.equal(sandbox.listened.slot, 0);
+});
+
+test('text move keeps the original sentence and describes both masked regions', () => {
+  const old = {x:20, y:20};
+  const next = {x:80, y:80};
+  const regions = layout.textMoveRegions(old, next);
+  assert.equal(regions.length, 2);
+  assert.equal(regions[0].role, 'erase');
+  assert.equal(regions[1].role, 'paint');
+  assert.equal(layout.textMoveRegions(null, next).length, 1);
+  assert.equal(layout.textMoveNeeded({textPositions:{0:next}, textAnchors:{0:old}}, 0), true);
+  assert.equal(layout.textMoveNeeded({textPositions:{0:next}, textAnchors:{0:next}}, 0), false);
+  assert.equal(layout.textMoveNeeded({textPositions:{0:next}, textAnchors:{}}, 0), false);
+  assert.equal(layout.textMoveNeeded({textPositions:{0:next}, textAnchors:{0:null}}, 0), true);
+  const sentence = layout.plannedSentence({
+    requirement:'主图要求：标题保持原句；整套风格：莫兰迪低饱和；文字位置：水平 12%、垂直 91%。把本张已有文案放到这个位置',
+    sop:'【主图】\n文案：轻便耐用\n【卖点图1】\n文案：另一句',
+    title:'【主图】',
+    prompt:'本图重点资料：不要用这句。'
+  });
+  assert.equal(sentence, '轻便耐用');
+  const prompt = layout.textMovePrompt({sentence, old, next});
+  assert.match(prompt, /原文：轻便耐用/);
+  assert.match(prompt, /水平 20%/);
+  assert.match(prompt, /垂直 80%/);
+  assert.match(prompt, /产品/);
+  assert.match(prompt, /房间/);
+  assert.match(prompt, /不要重构整张图/);
+  assert.match(prompt, /不要改字/);
+  const fallback = layout.plannedSentence({requirement:'SKU卖点原文；整套风格：胶片质感；本张 SKU 图以已上传的规格图「SKU图_1」为参考。'});
+  assert.equal(fallback, 'SKU卖点原文');
+});
+
+test('applying a text move sends a mask to the existing edits endpoint and does not redraw', async t => {
+  const captured = [];
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ec-taobao-text-move-'));
+  const app = createWorkbench({dataDirectory:directory, configuration:{}, provider:async request => { captured.push(request); if (!request.mask) throw new Error('missing mask'); return png; }});
+  await new Promise(resolve => app.server.listen(0, '127.0.0.1', resolve));
+  t.after(async () => { await new Promise(resolve => app.server.close(resolve)); fs.rmSync(directory, {recursive:true, force:true}); });
+  const base = 'http://127.0.0.1:' + app.server.address().port;
+  const {token} = await (await fetch(base + '/api/session')).json();
+  const call = async (url, payload) => {
+    const response = await fetch(base + url, {method:'POST', headers:{'Content-Type':'application/json', 'X-Workbench-Token':token}, body:JSON.stringify(payload)});
+    return {response, data:await response.json()};
+  };
+  const wait = async id => {
+    let task;
+    for (let i = 0; i < 50; i++) {
+      task = await (await fetch(base + '/api/tasks/hyrule_tasks/' + id)).json();
+      if (task.status === 'completed' || task.status === 'failed') return task;
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    return task;
+  };
+  const picture = encodeRgbaPng(100, 80, Buffer.alloc(100 * 80 * 4, 255));
+  const imageUrl = app.saveImage(picture);
+  const old = {x:20, y:20};
+  const next = {x:80, y:80};
+  const regions = layout.textMoveRegions(old, next);
+  const prompt = layout.textMovePrompt({sentence:'轻便耐用', old, next});
+  const missing = await call('/api/inpaint', {text_move:true, task_id:'text_move_missing', slot_idx:0, prompt, image_url:imageUrl});
+  assert.equal(missing.response.status, 400);
+  assert.match(missing.data.error, /遮罩/);
+  assert.equal(captured.length, 0);
+  const sent = await call('/api/inpaint', {text_move:true, task_id:'text_move_ok', slot_idx:1, prompt, aspect_ratio:'1:1', image_url:imageUrl, mask_regions:regions, categorized_images:[{filename:'产品主体图_1', url:'/media/other.png'}]});
+  assert.equal(sent.response.status, 202);
+  const task = await wait('text_move_ok');
+  assert.equal(task.status, 'completed');
+  assert.equal(captured.length, 1);
+  assert.equal(captured[0].kind, 'inpaint');
+  assert.deepEqual(captured[0].references, [imageUrl]);
+  assert.match(captured[0].prompt, /原文：轻便耐用/);
+  assert.match(captured[0].prompt, /不要重构整张图/);
+  assert.match(captured[0].prompt, /产品和房间/);
+  assert.equal(pngAlpha(captured[0].mask, 28, 16), 0);
+  assert.equal(pngAlpha(captured[0].mask, 60, 60), 0);
+  assert.equal(pngAlpha(captured[0].mask, 0, 79), 255);
+  const upstream = [];
+  const server = http.createServer(async (req, res) => {
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    upstream.push({path:req.url, body:Buffer.concat(chunks).toString('utf8')});
+    res.writeHead(200, {'Content-Type':'application/json'});
+    res.end(JSON.stringify({data:[{b64_json:png.toString('base64')}]}));
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  const provider = createImageProvider({SUANZHOU_IMAGE_API_KEY:'dedicated-test-key', SUANZHOU_IMAGE_BASE_URL:'http://127.0.0.1:' + server.address().port}, directory);
+  const mask = editMask(picture, regions);
+  await provider({prompt, references:['data:image/png;base64,' + picture.toString('base64')], mask, ratio:'1:1'});
+  assert.equal(upstream.length, 1);
+  assert.equal(upstream[0].path, '/images/edits');
+  assert.match(upstream[0].body, /name="mask"/);
+  assert.match(upstream[0].body, /name="image\[\]"/);
+  assert.match(upstream[0].body, /不要重构整张图/);
+  assert.match(upstream[0].body, /轻便耐用/);
+  assert.doesNotMatch(upstream.map(item => item.path).join(','), /images\/generations/);
+  await assert.rejects(provider({prompt:'no base', mask, references:[]}), /没有改成整张重绘/);
+  assert.equal(upstream.length, 1);
 });

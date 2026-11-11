@@ -1,6 +1,6 @@
-/* Slice-1 Taobao shell. Relabels existing slots and reuses size mapping plus single-slot redraw.
-   Does not call a Taobao publish API and does not change the image provider.
-   SKU reference photos go through the existing material library and per-slot ref_images. */
+/* Taobao shell. Relabels existing slots and reuses size mapping.
+   Does not call a Taobao publish API. Moving text on an existing picture uses the
+   current image edit endpoint with a mask. SKU photos stay on the material library. */
 (() => {
   const layout = window.TaobaoLayout;
   if (!layout) return;
@@ -69,6 +69,7 @@
         detail:{width:$('tbDetailWidth')?.value, height:$('tbDetailHeight')?.value}
       },
       textPositions:current.textPositions,
+      textAnchors:current.textAnchors,
       detailWhitespace:!!$('tbWhitespace')?.checked,
       background:document.querySelector('input[name="tbBg"]:checked')?.value || 'off',
       setStyle:$('tbSetStyle')?.value
@@ -184,7 +185,7 @@
       </div>
       <p id="tbSkuUploadHint" class="local-muted">规格或颜色各传一张，按顺序对应 SKU图 1、2、3。照片进现有参考图（最多 8 张）。生成 SKU 图时用对应的这张，不再只按产品主体图。没传则仍走原来的生图。照片比 SKU 槽少时，多出来的槽用最后一张规格图。只在本机工作台使用，不会上传到淘宝。</p>
       <div id="tbSkuThumbs" class="tb-sku-thumbs"></div>
-      <p id="tbDisclaimer" class="local-muted">只生成本机图。本地草稿 ≠ 淘宝草稿，没有淘宝发布接口，也不会写成「已进淘宝草稿 / 已发布」。尺寸是工作台可选尺寸，沿用现有 1024×1024、1536×1024、1024×1536，不是淘宝官方像素。自定义宽高和图上的文字位置都写进现在的生图要求，不另接画字模型。不承诺成图质量。</p>
+      <p id="tbDisclaimer" class="local-muted">只生成本机图。本地草稿 ≠ 淘宝草稿，没有淘宝发布接口，也不会写成「已进淘宝草稿 / 已发布」。尺寸是工作台可选尺寸，沿用现有 1024×1024、1536×1024、1024×1536，不是淘宝官方像素。自定义宽高仍写进现有生图要求。成图之后拖动文字再应用，改为在原图上做遮罩局部修改，字形仍由原来的图像模型绘制。不承诺成图质量。</p>
       <div class="tb-grid">
         <label>淘宝主图张数 <input id="tbMainCount" type="number" min="0" max="5" value="${defaults.mainCount}"></label>
         <label>主图尺寸 <select id="tbMainSize">${sizeOptions(defaults.sizes.main)}</select></label>
@@ -198,7 +199,7 @@
         <label class="tb-style">整套风格 <select id="tbSetStyle">${styleOptions(defaults.setStyle)}</select></label>
       </div>
       <p id="tbSizeHint" class="local-muted">${escapeHtml(sizeHint(defaults))}</p>
-      <p id="tbPlaceHint" class="local-muted">图生成之后，每张图上的「文字」可以拖到画面任意位置。靠上、居中、靠下只是快捷，不是限制。拖完再点「重绘这一张」，文案内容不变，位置写进现有生图要求。</p>
+      <p id="tbPlaceHint" class="local-muted">图生成之后，每张图上的「文字」可以拖到画面任意位置。靠上、居中、靠下只是快捷，不是限制。拖完再点「重绘这一张」：已有成图按遮罩只改旧文字区域和新位置，原文不变，不整张重绘。</p>
       <p id="tbStyleHint" class="local-muted">${escapeHtml(styleHint(defaults))}</p>
       <div class="tb-row">
         <label><input id="tbWhitespace" type="checkbox" checked> 详情底部留白</label>
@@ -317,13 +318,117 @@
     shell.textPositions = next.textPositions;
     if (typeof saveAppState === 'function') saveAppState();
   }
+  const paintedUrl = new Map();
+  let paintTicket = null;
+  function hasAnchor(shell, index) {
+    const anchors = shell?.textAnchors || {};
+    return Object.prototype.hasOwnProperty.call(anchors, index) || Object.prototype.hasOwnProperty.call(anchors, String(index));
+  }
+  function setAnchor(index, position) {
+    const shell = window.__customLayout?.taobao;
+    if (!shell?.applied) return;
+    const next = layout.normalize({...shell, textAnchors:{...(shell.textAnchors || {}), [index]: position || null}});
+    shell.textAnchors = next.textAnchors;
+    if (typeof saveAppState === 'function') saveAppState();
+  }
+  function ensureAnchor(index) {
+    const shell = window.__customLayout?.taobao;
+    if (!shell?.applied || hasAnchor(shell, index)) return;
+    setAnchor(index, shell.textPositions?.[index] || null);
+  }
+  function notePaintedImage(index) {
+    const url = typeof imageSlots === 'undefined' ? '' : (imageSlots?.[index]?.url || '');
+    if (!url) return;
+    const previous = paintedUrl.get(index);
+    if (previous === url) return;
+    paintedUrl.set(index, url);
+    const shell = window.__customLayout?.taobao;
+    if (!shell?.applied) return;
+    if (previous) {
+      const to = paintTicket && paintTicket.index === index && url !== paintTicket.url ? paintTicket.to : (shell.textPositions?.[index] || null);
+      if (paintTicket?.index === index) paintTicket = null;
+      setAnchor(index, to);
+      return;
+    }
+    if (!hasAnchor(shell, index)) setAnchor(index, shell.textPositions?.[index] || null);
+  }
+  function slotTitle(index) {
+    if (typeof getCurrentSlotTitles === 'function') {
+      const titles = getCurrentSlotTitles();
+      if (titles?.[index]) return titles[index];
+    }
+    return '';
+  }
+  function slotCopy(index) {
+    const image = typeof imageSlots === 'undefined' ? null : imageSlots?.[index];
+    return layout.plannedSentence({
+      requirement: window.__customLayout?.directives?.[index]?.req || '',
+      sop: $('sopText')?.value || '',
+      title: slotTitle(index),
+      prompt: image?.finalPrompt || '',
+      productDesc: $('prodDesc')?.value || ''
+    });
+  }
+  async function applyTextMove(index) {
+    const spec = currentSpec();
+    const image = typeof imageSlots === 'undefined' ? null : imageSlots?.[index];
+    const next = spec?.textPositions?.[index];
+    const old = spec?.textAnchors?.[index] || null;
+    const sentence = slotCopy(index);
+    const regions = layout.textMoveRegions(old, next);
+    if (!image?.url || !next || !sentence || !regions.length) {
+      notify('这一张没有可沿用的原文或成图，没有改成整张重绘。', true);
+      return;
+    }
+    const title = slotTitle(index);
+    const ratio = typeof _aspectForTitle === 'function' ? _aspectForTitle(title) : '1:1';
+    const taskId = `textmove_${Date.now()}_${index}`;
+    const payload = {
+      text_move: true,
+      task_id: taskId,
+      slot_idx: index,
+      prompt: layout.textMovePrompt({sentence, old, next}),
+      aspect_ratio: ratio,
+      mask_regions: regions,
+      ...(image.url.startsWith('data:') ? {base_image_b64: image.url} : {image_url: image.url})
+    };
+    const model = $('modelChoice')?.value;
+    if (model) payload.model = model;
+    paintTicket = {index, url: image.url, to: next};
+    let response;
+    try {
+      response = await fetch('/api/inpaint', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+    } catch {
+      paintTicket = null;
+      notify('局部改字没有提交，没有改成整张重绘。', true);
+      return;
+    }
+    if (!response.ok) {
+      paintTicket = null;
+      const data = await response.json().catch(() => ({}));
+      notify(data.error || '局部改字没有提交，没有改成整张重绘。', true);
+      return;
+    }
+    if (typeof activeKieTasks !== 'undefined' && Array.isArray(activeKieTasks)) activeKieTasks.push({slot: index, taskId, isInpaint: true});
+    if (typeof resumeKieListener === 'function') resumeKieListener(index, taskId, true);
+  }
+  function applyOrRedraw(index) {
+    const spec = currentSpec();
+    const image = typeof imageSlots === 'undefined' ? null : imageSlots?.[index];
+    if (spec && image?.url && layout.textMoveNeeded(spec, index)) {
+      const job = applyTextMove(index);
+      window.__taobaoTextMove = job;
+      return;
+    }
+    if (typeof triggerGeneration === 'function') triggerGeneration(index);
+  }
   function placePin(pin, position, committed) {
     pin.style.left = position.x + '%';
     pin.style.top = position.y + '%';
     pin.textContent = committed ? `${position.x},${position.y}` : '文字';
     pin.title = committed
-      ? `文字在水平 ${position.x}%、垂直 ${position.y}%。可拖到任意位置，不限于靠上、居中、靠下。`
-      : '拖动文字到画面任意位置。松手后记在这一张上，重绘时写进现有生图要求。';
+      ? `文字在水平 ${position.x}%、垂直 ${position.y}%。再点「重绘这一张」会按遮罩把原文改到这个位置。`
+      : '拖动文字到画面任意位置。松手后记在这一张上，再点「重绘这一张」按遮罩局部修改。';
   }
   function mountTextPlacement(slot, index, spec) {
     const slotImage = typeof imageSlots === 'undefined' ? null : imageSlots?.[index];
@@ -359,6 +464,7 @@
       if (event.button != null && event.button !== 0) return;
       event.preventDefault?.();
       event.stopPropagation?.();
+      ensureAnchor(index);
       onMove(event);
       window.addEventListener('pointermove', onMove);
       window.addEventListener('pointerup', onUp);
@@ -376,6 +482,7 @@
       button.addEventListener('click', event => {
         event.preventDefault?.();
         event.stopPropagation?.();
+        ensureAnchor(index);
         const pos = {x:preset.x, y:preset.y};
         current = pos;
         placePin(pin, pos, true);
@@ -444,6 +551,7 @@
   }
 
   function decorateSlot(index) {
+    notePaintedImage(index);
     const spec = currentSpec();
     const slot = $('slot-' + index);
     if (!spec || !slot) return;
@@ -469,7 +577,7 @@
       button.className = 'taobao-redraw';
       button.dataset.taobaoRedraw = String(index);
       button.textContent = '重绘这一张';
-      button.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); triggerGeneration(index); });
+      button.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); applyOrRedraw(index); });
       (slot.querySelector('.slot-actions') || slot).appendChild(button);
     }
   }
@@ -533,6 +641,8 @@
     const originalTrigger = triggerGeneration;
     window.triggerGeneration = async function (...args) {
       const shot = window.__taobaoOneShot;
+      const target = args[0];
+      if (paintTicket && (target == null || paintTicket.index === target)) paintTicket = null;
       try { return await originalTrigger.apply(this, args); }
       finally { if (shot && !shot.used) window.__taobaoOneShot = null; }
     };
