@@ -520,3 +520,425 @@ test('chosen set style is copied into every active slot prompt, including a one-
   assert.equal(captured.length, 4);
   assert.equal(captured.filter(item => /整套风格：纯白棚拍/.test(item.prompt)).length, 4);
 });
+
+test('free text coordinates and custom width height parse without collapsing to presets', () => {
+  const same = (actual, expected) => assert.equal(JSON.stringify(actual), JSON.stringify(expected));
+  same(layout.clampTextPosition({x:73.04, y:18}), {x:73, y:18});
+  same(layout.clampTextPosition({x:-5, y:140}), {x:0, y:100});
+  assert.equal(layout.clampTextPosition({x:'no', y:10}), null);
+  same(layout.textPositionFromPointer({clientX:146, clientY:72}, {left:0, top:0, width:200, height:400}), {x:73, y:18});
+  same(layout.textPositionFromPointer({clientX:-10, clientY:999}, {left:0, top:0, width:100, height:100}), {x:0, y:100});
+  assert.equal(layout.textPositionFromPointer({clientX:1, clientY:1}, {left:0, top:0, width:0, height:10}), null);
+  const free = layout.clampTextPosition({x:73, y:18});
+  assert.equal(layout.TEXT_PRESETS.some(item => item.x === free.x && item.y === free.y), false);
+  same(layout.normalize({textPositions:{0:{x:73, y:18}, 14:{x:1, y:1}, bad:{x:2, y:2}}}).textPositions, {0:{x:73, y:18}});
+  const note = layout.positionNote({x:73, y:18});
+  assert.match(note, /水平 73%/);
+  assert.match(note, /垂直 18%/);
+  assert.match(note, /不要改文案内容/);
+  assert.match(note, /产品仍完整留在画面里/);
+  assert.doesNotMatch(note, /水平 50%/);
+  for (const preset of layout.TEXT_PRESETS) {
+    assert.match(layout.positionNote(preset), new RegExp(`水平 ${preset.x}%`));
+    assert.match(layout.positionNote(preset), new RegExp(`垂直 ${preset.y}%`));
+  }
+  assert.equal(layout.parseCustomSize({width:800, height:''}), null);
+  assert.equal(layout.parseCustomSize({width:63, height:100}), null);
+  assert.equal(layout.parseCustomSize({width:800.5, height:1200}), null);
+  assert.equal(layout.parseCustomSize({width:'2049', height:'1024'}), null);
+  same(layout.parseCustomSize({width:'0800', height:'1200'}), {width:800, height:1200});
+  assert.equal(layout.normalize({customSizes:{main:{width:800}}}).customSizes.main, null);
+  assert.equal(layout.aspectRatioForPixels(800, 1200), '2:3');
+  assert.equal(layout.aspectRatioForPixels(1000, 1000), '1:1');
+  assert.equal(layout.aspectRatioForPixels(900, 1600), '9:16');
+  assert.equal(layout.aspectRatioForPixels(1200, 1600), '3:4');
+  assert.equal(layout.aspectRatioForPixels(1000, 800), '5:4');
+  assert.equal(layout.aspectRatioForPixels(1536, 1024), '3:2');
+  assert.equal(layout.aspectRatioForPixels(1920, 1080), '16:9');
+  assert.equal(layout.aspectRatioForPixels(640, 1000), '2:3');
+  assert.equal(layout.aspectRatioForPixels(800, 2000), '9:16');
+  const shortcuts = layout.normalize({sizes:{main:'square', sku:'landscape', detail:'portrait'}});
+  assert.equal(layout.ratioForZone('main', shortcuts), '1:1');
+  assert.equal(layout.ratioForZone('sku', shortcuts), '16:9');
+  assert.equal(layout.ratioForZone('detail', shortcuts), '3:4');
+  const custom = layout.normalize({mainCount:5, skuCount:1, detailCount:3, sizes:shortcuts.sizes, customSizes:{main:{width:800, height:1200}, sku:{width:1000, height:800}, detail:{width:900, height:1600}}});
+  assert.equal(custom.sizes.main, 'square');
+  assert.equal(custom.sizes.detail, 'portrait');
+  assert.equal(layout.ratioForZone('main', custom), '2:3');
+  assert.equal(layout.ratioForZone('sku', custom), '5:4');
+  assert.equal(layout.ratioForZone('detail', custom), '9:16');
+  assert.equal(layout.ratioForTitle('【主图】', custom), '2:3');
+  assert.equal(layout.ratioForTitle('【卖点图5】', custom), '5:4');
+  assert.equal(layout.ratioForTitle('【高级A+模块1】', custom), '9:16');
+  const kept = layout.annotateDirectives([
+    {slot:0, requirement:'主图要求；整套风格：胶片质感'},
+    {slot:7, requirement:'详情要求'}
+  ], {mainCount:1, skuCount:0, detailCount:1, setStyle:'morandi', textPositions:{0:{x:73, y:18}}, customSizes:{main:{width:800, height:1200}}});
+  assert.match(kept.directives[0].requirement, /^主图要求；整套风格：胶片质感/);
+  assert.match(kept.directives[0].requirement, /整套风格：莫兰迪低饱和/);
+  assert.match(kept.directives[0].requirement, /水平 73%/);
+  assert.match(kept.directives[0].requirement, /垂直 18%/);
+  assert.match(kept.directives[0].requirement, /宽 800 像素，高 1200 像素，画幅 2:3/);
+  assert.match(kept.directives[0].requirement, /不要改文案内容/);
+  same(kept.directives[0].text_position, {x:73, y:18});
+  same(kept.directives[0].custom_size, {width:800, height:1200});
+  assert.doesNotMatch(kept.directives[0].requirement, /水平 50%/);
+  assert.match(kept.directives[1].requirement, /^详情要求/);
+  assert.match(kept.directives[1].requirement, /整套风格：莫兰迪低饱和/);
+  assert.equal(kept.directives[1].text_position, undefined);
+});
+
+test('dragged text position and custom width height go out on the existing generate path', async t => {
+  const captured = [];
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ec-taobao-place-'));
+  const app = createWorkbench({dataDirectory:directory, configuration:{}, provider:async request => { captured.push(request); return png; }});
+  await new Promise(resolve => app.server.listen(0, '127.0.0.1', resolve));
+  t.after(async () => { await new Promise(resolve => app.server.close(resolve)); fs.rmSync(directory, {recursive:true, force:true}); });
+  const base = 'http://127.0.0.1:' + app.server.address().port;
+  const {token} = await (await fetch(base + '/api/session')).json();
+  const call = async (url, payload) => {
+    const response = await fetch(base + url, {method:'POST', headers:{'Content-Type':'application/json', 'X-Workbench-Token':token}, body:JSON.stringify(payload)});
+    return {response, data:await response.json()};
+  };
+  const wait = async id => {
+    let task;
+    for (let i = 0; i < 50; i++) {
+      task = await (await fetch(base + '/api/tasks/hyrule_tasks/' + id)).json();
+      if (task.status === 'completed' || task.status === 'failed') return task;
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    return task;
+  };
+  const spec = layout.normalize({
+    mainCount:1, skuCount:1, detailCount:1,
+    sizes:{main:'square', sku:'square', detail:'portrait'},
+    customSizes:{main:{width:800, height:1200}, sku:{width:1000, height:800}, detail:{width:900, height:1600}},
+    textPositions:{0:{x:73, y:18}, 1:{x:50, y:50}, 7:{x:12.5, y:91}},
+    detailWhitespace:true, background:'off', setStyle:'film_look'
+  });
+  const custom = layout.toCustomLayout(spec, {});
+  const layoutPayload = {main:custom.main, sub:custom.sub, aplus:custom.aplus, aplus_type:custom.aplusType};
+  await call('/api/agent', {agent_task_id:'tb_place', product_name:'杯子', product_desc:'白色杯身', design_scope:'custom', custom_layout:layoutPayload});
+  let agent;
+  for (let i = 0; i < 50; i++) {
+    agent = await (await fetch(base + '/api/tasks/agent_tasks/tb_place')).json();
+    if (agent.status === 'completed' || agent.status === 'failed') break;
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  assert.equal(agent.status, 'completed');
+  const dirs = layout.annotateDirectives([
+    {slot:0, title:'【主图】', requirement:'主图要求：标题保持原句', ref_images:[]},
+    {slot:1, title:'【卖点图1】', requirement:'SKU卖点原文', ref_images:[]},
+    {slot:7, title:'【高级A+模块1】', requirement:'详情要求：已有风格句不要清掉', ref_images:[]}
+  ], spec).directives;
+  const sent = await call('/api/generate', {
+    agent_task_id:'tb_place', sop_text:agent.result, design_scope:'custom', custom_layout:layoutPayload,
+    firebase_tasks:dirs.map(item => ({slot:item.slot, taskId:'tb_place_' + item.slot, aspect_ratio:layout.ratioForZone(layout.zoneForSlot(item.slot, spec).zone, spec)})),
+    slot_directives:dirs
+  });
+  assert.equal(sent.response.status, 202);
+  for (const item of dirs) assert.equal((await wait('tb_place_' + item.slot)).status, 'completed');
+  assert.equal(captured.length, 3);
+  const main = captured.find(item => item.ratio === '2:3');
+  const sku = captured.find(item => item.ratio === '5:4');
+  const detail = captured.find(item => item.ratio === '9:16');
+  assert.match(main.prompt, /水平 73%/);
+  assert.match(main.prompt, /垂直 18%/);
+  assert.match(main.prompt, /宽 800 像素，高 1200 像素/);
+  assert.match(main.prompt, /主图要求：标题保持原句/);
+  assert.match(main.prompt, /整套风格：胶片质感/);
+  assert.match(main.prompt, /不要改文案内容/);
+  assert.match(main.prompt, /产品仍完整留在画面里/);
+  assert.match(main.prompt, /杯子/);
+  assert.match(sku.prompt, /水平 50%/);
+  assert.match(sku.prompt, /垂直 50%/);
+  assert.match(sku.prompt, /宽 1000 像素，高 800 像素，画幅 5:4/);
+  assert.match(sku.prompt, /SKU卖点原文/);
+  assert.match(sku.prompt, /整套风格：胶片质感/);
+  assert.match(detail.prompt, /水平 12\.5%/);
+  assert.match(detail.prompt, /垂直 91%/);
+  assert.match(detail.prompt, /宽 900 像素，高 1600 像素，画幅 9:16/);
+  assert.match(detail.prompt, /详情要求：已有风格句不要清掉/);
+  assert.match(detail.prompt, /详情图底部留出一条干净留白/);
+  assert.match(detail.prompt, /整套风格：胶片质感/);
+});
+
+test('the shell drag handle stores a non-preset point, and typed width height overrides shortcuts until a shortcut is chosen', () => {
+  const ids = new Map();
+  const all = [];
+  const windowListeners = new Map();
+  function classListFor(el) {
+    const names = () => el.className ? el.className.split(/\s+/).filter(Boolean) : [];
+    return {
+      add(...list) { el.className = [...new Set([...names(), ...list])].join(' '); },
+      remove(...list) { const dropNames = new Set(list); el.className = names().filter(name => !dropNames.has(name)).join(' '); },
+      contains(name) { return names().includes(name); },
+      toggle(name, force) {
+        const on = force === undefined ? !names().includes(name) : !!force;
+        if (on) this.add(name); else this.remove(name);
+        return on;
+      }
+    };
+  }
+  function drop(node) {
+    const index = all.indexOf(node);
+    if (index >= 0) all.splice(index, 1);
+    if (node.id && ids.get(node.id) === node) ids.delete(node.id);
+    for (const child of [...(node.children || [])]) drop(child);
+    node.children = [];
+    node.parentElement = null;
+  }
+  function make(tag) {
+    let text = '';
+    let id = '';
+    const el = {
+      tagName: tag.toUpperCase(), className: '', hidden: false, disabled: false, checked: false, name: '', type: '',
+      style: {}, children: [], parentElement: null, _attrs: {}, classList: null, _rect: null
+    };
+    el.classList = classListFor(el);
+    Object.defineProperty(el, 'textContent', {
+      get() { return text || el.children.map(child => child.textContent).join(''); },
+      set(value) { text = String(value ?? ''); }
+    });
+    Object.defineProperty(el, 'id', {
+      get() { return id; },
+      set(value) { if (id && ids.get(id) === el) ids.delete(id); id = value || ''; if (id) ids.set(id, el); }
+    });
+    Object.defineProperty(el, 'parentNode', {get() { return el.parentElement; }});
+    el.dataset = new Proxy({}, {get: (box, key) => box[key], set: (box, key, value) => {
+      box[key] = String(value);
+      el._attrs['data-' + String(key).replace(/[A-Z]/g, char => '-' + char.toLowerCase())] = String(value);
+      return true;
+    }});
+    const adopt = child => {
+      if (child.parentElement) child.parentElement.children = child.parentElement.children.filter(item => item !== child);
+      child.parentElement = el;
+      if (!all.includes(child)) all.push(child);
+    };
+    el.appendChild = child => { adopt(child); el.children.push(child); return child; };
+    el.prepend = child => { adopt(child); el.children.unshift(child); return child; };
+    el.insertBefore = (child, before) => {
+      adopt(child);
+      const at = before ? el.children.indexOf(before) : el.children.length;
+      el.children.splice(at < 0 ? el.children.length : at, 0, child);
+      return child;
+    };
+    el.before = sibling => {
+      const parent = el.parentElement;
+      const index = parent.children.indexOf(el);
+      if (sibling.parentElement) sibling.parentElement.children = sibling.parentElement.children.filter(item => item !== sibling);
+      parent.children.splice(index, 0, sibling);
+      sibling.parentElement = parent;
+      if (!all.includes(sibling)) all.push(sibling);
+    };
+    el.remove = () => drop(el);
+    el.addEventListener = (type, fn) => { (el._on ||= {})[type] ||= []; el._on[type].push(fn); };
+    el.dispatchEvent = event => { for (const fn of el._on?.[event.type] || []) fn(event); };
+    el.getBoundingClientRect = () => el._rect || {left:0, top:0, right:200, bottom:400, width:200, height:400};
+    el.closest = () => null;
+    const walk = node => {
+      const found = [];
+      const visit = current => {
+        const kids = current.children || [];
+        for (let i = 0; i < kids.length; i++) { found.push(kids[i]); visit(kids[i]); }
+      };
+      visit(node);
+      return found;
+    };
+    el.querySelectorAll = selector => walk(el).filter(node => matches(node, selector));
+    el.querySelector = selector => el.querySelectorAll(selector)[0] || null;
+    if (tag === 'select') {
+      let value = '';
+      const options = () => { const found = []; const walk = node => { for (const child of node.children) { if (child.tagName === 'OPTION') found.push(child); else walk(child); } }; walk(el); return found; };
+      Object.defineProperty(el, 'options', {get: options});
+      Object.defineProperty(el, 'value', {get() { return value; }, set(next) { value = String(next ?? ''); }});
+      Object.defineProperty(el, 'selectedIndex', {get() { return options().findIndex(option => option.value === value); }});
+      Object.defineProperty(el, 'selectedOptions', {get() { const option = options().find(item => item.value === value); return option ? [option] : []; }});
+    } else el.value = '';
+    Object.defineProperty(el, 'innerHTML', {set(html) {
+      for (const child of [...el.children]) drop(child);
+      el.children = [];
+      parseHTML(String(html), el);
+    }});
+    return el;
+  }
+  function parseHTML(html, parent) {
+    const re = /([^<]+)|<\/([a-zA-Z0-9]+)>|<([a-zA-Z0-9]+)([^>]*)>/g;
+    const stack = [parent];
+    let match;
+    while ((match = re.exec(html))) {
+      if (match[1]) { const bit = match[1].replace(/\s+/g, ' ').trim(); if (bit && stack.at(-1) !== parent) stack.at(-1).textContent = `${stack.at(-1).textContent} ${bit}`.trim(); continue; }
+      if (match[2]) { const tag = match[2].toUpperCase(); while (stack.length > 1 && stack.at(-1).tagName !== tag) stack.pop(); if (stack.length > 1) stack.pop(); continue; }
+      const el = make(match[3].toLowerCase());
+      const attrs = match[4] || '';
+      for (const attr of attrs.matchAll(/([:\w-]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'))?/g)) {
+        const key = attr[1]; const val = attr[2] ?? attr[3] ?? '';
+        if (key === 'id') el.id = val;
+        else if (key === 'class') el.className = val;
+        else if (key === 'value') el.value = val;
+        else if (key === 'name') el.name = val;
+        else if (key === 'type') el.type = val;
+        else if (key === 'checked' || key === 'selected') el.checked = true;
+        else if (key === 'hidden') el.hidden = true;
+        else if (key === 'disabled') el.disabled = true;
+      }
+      stack.at(-1).appendChild(el);
+      if (!['input', 'br', 'img'].includes(match[3].toLowerCase()) && !/\/\s*$/.test(attrs)) stack.push(el);
+    }
+  }
+  function matches(el, selector) {
+    let rest = selector;
+    const tag = rest.match(/^[a-zA-Z][\w-]*/);
+    if (tag) { if (el.tagName !== tag[0].toUpperCase()) return false; rest = rest.slice(tag[0].length); }
+    if (!rest) return true;
+    const parts = rest.match(/(\.[^.#:[\]]+|#[^.#:[\]]+|\[[^\]]+\]|:[^.#:[\]]+)/g);
+    if (!parts) return false;
+    return parts.every(part => {
+      if (part.startsWith('.')) return el.classList.contains(part.slice(1));
+      if (part.startsWith('#')) return el.id === part.slice(1);
+      const attr = part.match(/^\[([^\]=]+)(?:="([^"]*)")?\]$/);
+      if (!attr) return false;
+      const actual = attr[1] === 'name' ? el.name : attr[1] === 'value' ? el.value : el._attrs[attr[1]];
+      return attr[2] === undefined ? actual != null && actual !== '' : String(actual) === attr[2];
+    });
+  }
+  function descendants(node) {
+    const found = [];
+    const walk = current => { for (const child of current.children || []) { found.push(child); walk(child); } };
+    return found;
+  }
+  function queryAll(selector) {
+    const steps = selector.trim().split(/\s+/);
+    let pool = all.filter(el => matches(el, steps[0]));
+    for (const step of steps.slice(1)) {
+      const next = [];
+      for (const base of pool) for (const child of descendants(base)) if (matches(child, step)) next.push(child);
+      pool = next;
+    }
+    return pool;
+  }
+  const document = {
+    readyState: 'complete',
+    createElement: make,
+    getElementById: id => ids.get(id) || null,
+    querySelector: selector => queryAll(selector)[0] || null,
+    querySelectorAll: selector => queryAll(selector),
+    addEventListener() {}
+  };
+  document.head = make('head');
+  document.body = make('body');
+  all.push(document.head, document.body);
+  const host = make('div');
+  document.body.appendChild(host);
+  host.innerHTML = `
+    <select id="generationMode"><option value="fast" selected>快速设计</option></select>
+    <select id="designScope"><option value="" disabled>请选择</option><option value="main_and_6">主幅图7张</option></select>
+    <select id="targetMarket"><option value='{"market":"中国大陆", "lang":"简体中文"}'>中国大陆 (CN / 简体中文)</option></select>
+    <div id="galleryContainer"></div>`;
+  const imageSlots = [{url:'/media/main.png'}];
+  const point = (type, x, y) => ({type, button:0, clientX:x, clientY:y, pointerId:1, preventDefault() {}, stopPropagation() {}});
+  const sandbox = {
+    console, document, Event,
+    imageSlots,
+    setTimeout: fn => { fn(); return 0; },
+    MutationObserver: class { constructor(fn) { this.fn = fn; } observe() {} disconnect() {} },
+    addEventListener(type, fn) { if (!windowListeners.has(type)) windowListeners.set(type, new Set()); windowListeners.get(type).add(fn); },
+    removeEventListener(type, fn) { windowListeners.get(type)?.delete(fn); },
+    buildGalleryLayout() {
+      const gallery = document.getElementById('galleryContainer');
+      gallery.innerHTML = '';
+      imageSlots.forEach((item, index) => {
+        if (!item?.url) return;
+        const slot = document.createElement('div');
+        slot.id = 'slot-' + index;
+        const img = document.createElement('img');
+        img.src = item.url;
+        slot.appendChild(img);
+        gallery.appendChild(slot);
+      });
+    },
+    renderSlot(index) {
+      const slot = document.getElementById('slot-' + index);
+      if (!slot) return;
+      slot.innerHTML = '';
+      if (!imageSlots[index]?.url) return;
+      const img = document.createElement('img');
+      img.src = imageSlots[index].url;
+      slot.appendChild(img);
+    },
+    buildSlotDirectives() {
+      return [
+        {slot:0, title:'【主图】', requirement:'主图要求：标题保持原句', ref_images:[]},
+        {slot:5, title:'【卖点图5】', requirement:'SKU卖点原文', ref_images:[]},
+        {slot:7, title:'【高级A+模块1】', requirement:'详情要求：已有风格句不要清掉', ref_images:[]}
+      ];
+    },
+    _aspectForTitle() { return '1:1'; },
+    saveAppState() { sandbox.saved = true; }
+  };
+  sandbox.window = sandbox;
+  vm.runInNewContext(layoutSource, sandbox, {filename:'taobao-layout.js'});
+  vm.runInNewContext(fs.readFileSync(path.join(root, 'public/local/taobao-shell.js'), 'utf8'), sandbox, {filename:'taobao-shell.js'});
+  const pin = document.querySelector('[data-taobao-text-pin]');
+  const stage = document.querySelector('.taobao-text-stage');
+  assert.ok(pin);
+  assert.equal(pin.textContent, '文字');
+  assert.equal(sandbox.buildSlotDirectives().find(item => item.slot === 0).requirement, '主图要求：标题保持原句');
+  stage._rect = {left:0, top:0, right:200, bottom:400, width:200, height:400};
+  pin.dispatchEvent(point('pointerdown', 146, 72));
+  for (const fn of [...(windowListeners.get('pointerup') || [])]) fn(point('pointerup', 146, 72));
+  assert.equal(JSON.stringify(sandbox.__customLayout.taobao.textPositions[0]), JSON.stringify({x:73, y:18}));
+  assert.equal(pin.textContent, '73,18');
+  assert.equal(layout.TEXT_PRESETS.some(item => item.x === 73 && item.y === 18), false);
+  assert.match(sandbox.buildSlotDirectives().find(item => item.slot === 0).requirement, /主图要求：标题保持原句/);
+  assert.match(sandbox.buildSlotDirectives().find(item => item.slot === 0).requirement, /水平 73%/);
+  assert.match(sandbox.buildSlotDirectives().find(item => item.slot === 0).requirement, /垂直 18%/);
+  document.querySelector('[data-taobao-text-preset="bottom"]').dispatchEvent({type:'click', preventDefault() {}, stopPropagation() {}});
+  assert.equal(JSON.stringify(sandbox.__customLayout.taobao.textPositions[0]), JSON.stringify({x:50, y:82}));
+  pin.dispatchEvent(point('pointerdown', 24, 364));
+  for (const fn of [...(windowListeners.get('pointerup') || [])]) fn(point('pointerup', 24, 364));
+  assert.equal(JSON.stringify(sandbox.__customLayout.taobao.textPositions[0]), JSON.stringify({x:12, y:91}));
+  const typeSize = (widthId, heightId, width, height) => {
+    document.getElementById(widthId).value = width;
+    document.getElementById(widthId).dispatchEvent({type:'input'});
+    assert.equal(sandbox.__customLayout.taobao.customSizes[widthId.includes('Main') ? 'main' : widthId.includes('Sku') ? 'sku' : 'detail'], null);
+    document.getElementById(heightId).value = height;
+    document.getElementById(heightId).dispatchEvent({type:'input'});
+  };
+  typeSize('tbMainWidth', 'tbMainHeight', '800', '1200');
+  typeSize('tbSkuWidth', 'tbSkuHeight', '1000', '800');
+  typeSize('tbDetailWidth', 'tbDetailHeight', '900', '1600');
+  assert.equal(JSON.stringify(sandbox.__customLayout.taobao.customSizes.main), JSON.stringify({width:800, height:1200}));
+  assert.equal(JSON.stringify(sandbox.__customLayout.taobao.customSizes.sku), JSON.stringify({width:1000, height:800}));
+  assert.equal(JSON.stringify(sandbox.__customLayout.taobao.customSizes.detail), JSON.stringify({width:900, height:1600}));
+  assert.equal(sandbox._aspectForTitle('【主图】'), '2:3');
+  assert.equal(sandbox._aspectForTitle('【卖点图5】'), '5:4');
+  assert.equal(sandbox._aspectForTitle('【高级A+模块1】'), '9:16');
+  assert.equal(sandbox.__customLayout.taobao.sizes.main, 'square');
+  assert.equal(sandbox.__customLayout.taobao.sizes.detail, 'portrait');
+  document.getElementById('tbMainSize').value = 'landscape';
+  document.getElementById('tbMainSize').dispatchEvent({type:'change'});
+  assert.equal(sandbox.__customLayout.taobao.customSizes.main, null);
+  assert.equal(document.getElementById('tbMainWidth').value, '');
+  assert.equal(document.getElementById('tbMainHeight').value, '');
+  assert.equal(sandbox._aspectForTitle('【主图】'), '16:9');
+  assert.equal(sandbox._aspectForTitle('【卖点图5】'), '5:4');
+  assert.equal(sandbox._aspectForTitle('【高级A+模块1】'), '9:16');
+  assert.equal(JSON.stringify(sandbox.__customLayout.taobao.textPositions[0]), JSON.stringify({x:12, y:91}));
+  document.getElementById('tbSetStyle').value = 'morandi';
+  document.getElementById('tbSetStyle').dispatchEvent({type:'change'});
+  const dirs = sandbox.buildSlotDirectives();
+  const main = dirs.find(item => item.slot === 0);
+  const detail = dirs.find(item => item.slot === 7);
+  assert.match(main.requirement, /^主图要求：标题保持原句/);
+  assert.match(main.requirement, /整套风格：莫兰迪低饱和/);
+  assert.match(main.requirement, /水平 12%/);
+  assert.match(main.requirement, /垂直 91%/);
+  assert.doesNotMatch(main.requirement, /宽 800/);
+  assert.match(detail.requirement, /^详情要求：已有风格句不要清掉/);
+  assert.match(detail.requirement, /整套风格：莫兰迪低饱和/);
+  assert.match(detail.requirement, /宽 900 像素，高 1600 像素/);
+  assert.equal(sandbox.__customLayout.taobao.setStyle, 'morandi');
+  assert.equal(document.querySelector('[data-taobao-text-pin]').textContent, '12,91');
+  assert.equal(sandbox.saved, true);
+});
