@@ -116,6 +116,55 @@ test('whole-set style notes land on every active Taobao slot and stay off by def
   assert.equal(stored.directives[3].req, '保留');
 });
 
+test('uploaded SKU photos map onto SKU slots and an empty upload leaves directives unchanged', () => {
+  const same = (actual, expected) => assert.equal(JSON.stringify(actual), JSON.stringify(expected));
+  const spec = layout.normalize({mainCount:1, skuCount:3, detailCount:1, setStyle:'morandi', detailWhitespace:false, background:'off'});
+  const dirs = [
+    {slot:0, requirement:'主图要求；整套风格：胶片质感', ref_images:['产品主体图_1']},
+    {slot:1, requirement:'红', ref_images:[]},
+    {slot:2, requirement:'蓝', ref_images:[]},
+    {slot:3, requirement:'绿', ref_images:[]},
+    {slot:7, requirement:'详情要求', ref_images:[]}
+  ];
+  const none = layout.attachSkuRefs(dirs, spec, []);
+  assert.equal(none.attached, false);
+  assert.equal(none.directives, dirs);
+  assert.equal(none.directives[1].requirement, '红');
+  same(none.directives[0].ref_images, ['产品主体图_1']);
+  same(none.directives[1].ref_images, []);
+  const noSlots = layout.attachSkuRefs([{slot:0, requirement:'主图', ref_images:[]}], {mainCount:1, skuCount:0, detailCount:0}, ['SKU图_1']);
+  assert.equal(noSlots.attached, false);
+  assert.equal(noSlots.directives[0].requirement, '主图');
+  same(noSlots.directives[0].ref_images, []);
+  const annotated = layout.annotateDirectives(dirs, spec).directives;
+  const attached = layout.attachSkuRefs(annotated, spec, [{filename:'SKU图_1'}, {filename:' SKU图_2 '}, {filename:'SKU图_2'}]);
+  assert.equal(attached.attached, true);
+  const bySlot = Object.fromEntries(attached.directives.map(item => [item.slot, item]));
+  same(bySlot[0].ref_images, ['产品主体图_1']);
+  assert.match(bySlot[0].requirement, /^主图要求；整套风格：胶片质感；整套风格：莫兰迪低饱和/);
+  assert.doesNotMatch(bySlot[0].requirement, /已上传的规格图/);
+  same(bySlot[1].ref_images, ['SKU图_1']);
+  same(bySlot[2].ref_images, ['SKU图_2']);
+  same(bySlot[3].ref_images, ['SKU图_2']);
+  same(bySlot[7].ref_images, []);
+  assert.match(bySlot[1].requirement, /^红；整套风格：莫兰迪低饱和/);
+  assert.match(bySlot[1].requirement, /规格图「SKU图_1」/);
+  assert.match(bySlot[1].requirement, /不要只按产品主体图/);
+  assert.match(bySlot[2].requirement, /^蓝；整套风格：莫兰迪低饱和/);
+  assert.match(bySlot[2].requirement, /SKU图_2/);
+  assert.match(bySlot[7].requirement, /^详情要求；整套风格：莫兰迪低饱和/);
+  assert.doesNotMatch(bySlot[7].requirement, /已上传的规格图/);
+  const oneSlot = layout.attachSkuRefs(
+    [{slot:1, requirement:'SKU卖点原文；整套风格：胶片质感', ref_images:[]}],
+    {mainCount:1, skuCount:1, detailCount:0, setStyle:'off'},
+    ['SKU图_1', 'SKU图_2']
+  );
+  same(oneSlot.directives[0].ref_images, ['SKU图_1']);
+  assert.match(oneSlot.directives[0].requirement, /^SKU卖点原文；整套风格：胶片质感/);
+  assert.match(oneSlot.directives[0].requirement, /SKU图_1/);
+  assert.doesNotMatch(oneSlot.directives[0].requirement, /SKU图_2/);
+});
+
 test('provider contract and Taobao publish claims stay out of this slice', () => {
   const provider = fs.readFileSync(path.join(root, 'src/provider.mjs'), 'utf8');
   assert.match(provider, /SUANZHOU_IMAGE_API_KEY/);
@@ -123,13 +172,18 @@ test('provider contract and Taobao publish claims stay out of this slice', () =>
   assert.equal(provider.match(/没有自动更换模型/g).length, 2);
   const shell = fs.readFileSync(path.join(root, 'public/local/taobao-shell.js'), 'utf8');
   assert.match(shell, /淘宝主图/);
+  assert.match(shell, /上传 SKU 图/);
+  assert.match(shell, /id="tbSkuUpload"/);
+  assert.match(shell, /id="tbSkuFile" type="file" accept="image\/\*" multiple/);
   assert.match(shell, /SKU图/);
   assert.match(shell, /详情底部留白/);
   assert.match(shell, /整套风格/);
   assert.match(shell, /tbSetStyle/);
   assert.match(shell, /重绘这一张/);
   assert.match(shell, /不是淘宝草稿/);
-  assert.doesNotMatch(shell, /SUANZHOU_IMAGE_API_KEY|images\/generations|已发布到淘宝|taobao\.com\/publish/);
+  assert.doesNotMatch(shell, /SUANZHOU_IMAGE_API_KEY|images\/generations|已发布到淘宝|taobao\.com\/publish|qianniu/);
+  const original = fs.readFileSync(path.join(root, 'public/original/original-01.js'), 'utf8');
+  assert.match(original, /window\.__workbenchMaterials = \(\) => globalMaterials/);
   assert.doesNotMatch(shell, /亚马逊主副图|THD要求图/);
   assert.match(shell, /option\.hidden = true/);
   assert.match(shell, /中国大陆/);
@@ -663,6 +717,115 @@ test('dragged text position and custom width height go out on the existing gener
   assert.match(detail.prompt, /整套风格：胶片质感/);
 });
 
+test('SKU slot generate uses uploaded SKU photos and keeps the main-product path when none are attached', async t => {
+  const captured = [];
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ec-taobao-sku-refs-'));
+  const app = createWorkbench({dataDirectory:directory, configuration:{}, provider:async request => { captured.push(request); return png; }});
+  await new Promise(resolve => app.server.listen(0, '127.0.0.1', resolve));
+  t.after(async () => { await new Promise(resolve => app.server.close(resolve)); fs.rmSync(directory, {recursive:true, force:true}); });
+  const base = 'http://127.0.0.1:' + app.server.address().port;
+  const {token} = await (await fetch(base + '/api/session')).json();
+  const call = async (url, payload) => {
+    const response = await fetch(base + url, {method:'POST', headers:{'Content-Type':'application/json', 'X-Workbench-Token':token}, body:JSON.stringify(payload)});
+    return {response, data:await response.json()};
+  };
+  const wait = async id => {
+    let task;
+    for (let i = 0; i < 50; i++) {
+      task = await (await fetch(base + '/api/tasks/hyrule_tasks/' + id)).json();
+      if (task.status === 'completed' || task.status === 'failed') return task;
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    return task;
+  };
+  const mainUrl = '/media/main-body.png';
+  const red = '/media/sku-red.png';
+  const blue = '/media/sku-blue.png';
+  const withSku = [
+    {filename:'产品主体图_1', url:mainUrl},
+    {filename:'SKU图_1', url:red},
+    {filename:'SKU图_2', url:blue}
+  ];
+  const spec = layout.normalize({mainCount:1, skuCount:2, detailCount:0, sizes:{main:'square', sku:'square', detail:'portrait'}, detailWhitespace:false, background:'off', setStyle:'film_look'});
+  const custom = layout.toCustomLayout(spec, {});
+  const layoutPayload = {main:custom.main, sub:custom.sub, aplus:custom.aplus, aplus_type:custom.aplusType};
+  const raw = [
+    {slot:0, title:'【主图】', requirement:'主图要求：标题保持原句', ref_images:[]},
+    {slot:1, title:'【卖点图1】', requirement:'红色规格', ref_images:[]},
+    {slot:2, title:'【卖点图2】', requirement:'蓝色规格', ref_images:[]}
+  ];
+  await call('/api/agent', {
+    agent_task_id:'tb_sku_refs', product_name:'杯子', product_desc:'白色杯身', design_scope:'custom',
+    custom_layout:layoutPayload, categorized_images:[{filename:'产品主体图_1', url:mainUrl}]
+  });
+  let agent;
+  for (let i = 0; i < 50; i++) {
+    agent = await (await fetch(base + '/api/tasks/agent_tasks/tb_sku_refs')).json();
+    if (agent.status === 'completed' || agent.status === 'failed') break;
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  assert.equal(agent.status, 'completed');
+  assert.equal(captured.length, 0);
+  assert.deepEqual(agent.plan.sections.find(item => item.slot === 1).ref_images, ['产品主体图_1']);
+  assert.deepEqual(agent.plan.sections.find(item => item.slot === 2).ref_images, ['产品主体图_1']);
+  const styled = layout.annotateDirectives(raw, spec).directives;
+  const old = await call('/api/generate', {
+    agent_task_id:'tb_sku_refs', sop_text:agent.result, design_scope:'custom', custom_layout:layoutPayload,
+    categorized_images:withSku,
+    firebase_tasks:styled.map(item => ({slot:item.slot, taskId:'tb_sku_old_' + item.slot, aspect_ratio:'1:1'})),
+    slot_directives:styled
+  });
+  assert.equal(old.response.status, 202);
+  for (const item of styled) {
+    const task = await wait('tb_sku_old_' + item.slot);
+    assert.equal(task.status, 'completed');
+    assert.deepEqual(task.referenceImages, [mainUrl]);
+  }
+  assert.equal(captured.length, 3);
+  assert.ok(captured.every(item => JSON.stringify(item.references) === JSON.stringify([mainUrl])));
+  assert.ok(captured.some(item => item.prompt.includes('红色规格')));
+  assert.ok(captured.every(item => item.prompt.includes('整套风格：胶片质感')));
+  assert.ok(captured.every(item => !item.prompt.includes('SKU图_')));
+  const linked = layout.attachSkuRefs(styled, spec, ['SKU图_1', 'SKU图_2']).directives;
+  const sent = await call('/api/generate', {
+    agent_task_id:'tb_sku_refs', sop_text:agent.result, design_scope:'custom', custom_layout:layoutPayload,
+    categorized_images:withSku,
+    firebase_tasks:linked.map(item => ({slot:item.slot, taskId:'tb_sku_new_' + item.slot, aspect_ratio:'1:1'})),
+    slot_directives:linked
+  });
+  assert.equal(sent.response.status, 202);
+  for (const item of linked) assert.equal((await wait('tb_sku_new_' + item.slot)).status, 'completed');
+  const fresh = captured.slice(3);
+  const mainShot = fresh.find(item => item.prompt.includes('主图要求：标题保持原句'));
+  const redShot = fresh.find(item => item.prompt.includes('红色规格'));
+  const blueShot = fresh.find(item => item.prompt.includes('蓝色规格'));
+  assert.deepEqual(mainShot.references, [mainUrl]);
+  assert.deepEqual(redShot.references, [red]);
+  assert.deepEqual(blueShot.references, [blue]);
+  assert.match(redShot.prompt, /红色规格；整套风格：胶片质感/);
+  assert.match(redShot.prompt, /规格图「SKU图_1」/);
+  assert.match(redShot.prompt, /不要只按产品主体图/);
+  assert.doesNotMatch(redShot.prompt, /SKU图_2/);
+  assert.match(blueShot.prompt, /蓝色规格；整套风格：胶片质感/);
+  assert.match(blueShot.prompt, /SKU图_2/);
+  assert.doesNotMatch(mainShot.prompt, /SKU图_/);
+  assert.deepEqual((await wait('tb_sku_new_1')).referenceImages, [red]);
+  assert.deepEqual((await wait('tb_sku_new_2')).referenceImages, [blue]);
+  const redraw = await call('/api/generate', {
+    agent_task_id:'tb_sku_refs', sop_text:agent.result, design_scope:'custom', custom_layout:layoutPayload,
+    categorized_images:withSku,
+    firebase_tasks:[{slot:1, taskId:'tb_sku_redraw', aspect_ratio:'1:1'}],
+    slot_directives:linked
+  });
+  assert.equal(redraw.response.status, 202);
+  const redrawTask = await wait('tb_sku_redraw');
+  assert.equal(redrawTask.status, 'completed');
+  assert.deepEqual(redrawTask.referenceImages, [red]);
+  assert.deepEqual(captured.at(-1).references, [red]);
+  assert.match(captured.at(-1).prompt, /红色规格；整套风格：胶片质感/);
+  assert.match(captured.at(-1).prompt, /SKU图_1/);
+});
+
 test('the shell drag handle stores a non-preset point, and typed width height overrides shortcuts until a shortcut is chosen', () => {
   const ids = new Map();
   const all = [];
@@ -879,6 +1042,26 @@ test('the shell drag handle stores a non-preset point, and typed width height ov
   sandbox.window = sandbox;
   vm.runInNewContext(layoutSource, sandbox, {filename:'taobao-layout.js'});
   vm.runInNewContext(fs.readFileSync(path.join(root, 'public/local/taobao-shell.js'), 'utf8'), sandbox, {filename:'taobao-shell.js'});
+  const upload = document.getElementById('tbSkuUpload');
+  assert.equal(upload.textContent, '上传 SKU 图');
+  assert.equal(upload.hidden, false);
+  let walk = upload;
+  let inShell = false;
+  let inLegacy = false;
+  while (walk) {
+    if (walk.id === 'taobaoShell') inShell = true;
+    if (walk.id === 'taobaoLegacyScope') inLegacy = true;
+    walk = walk.parentElement;
+  }
+  assert.equal(inShell, true);
+  assert.equal(inLegacy, false);
+  assert.equal(document.getElementById('taobaoShell').hidden, false);
+  assert.equal(document.getElementById('tbSkuFile').type, 'file');
+  assert.equal(document.getElementById('tbSkuUploadCount').textContent, '还没有 SKU 图');
+  assert.match(document.getElementById('tbSkuUploadHint').textContent, /没传则仍走原来的生图/);
+  const bare = sandbox.buildSlotDirectives();
+  assert.equal(JSON.stringify(bare.find(item => item.slot === 5).ref_images), '[]');
+  assert.equal(bare.find(item => item.slot === 5).requirement, 'SKU卖点原文');
   const pin = document.querySelector('[data-taobao-text-pin]');
   const stage = document.querySelector('.taobao-text-stage');
   assert.ok(pin);
@@ -941,4 +1124,53 @@ test('the shell drag handle stores a non-preset point, and typed width height ov
   assert.equal(sandbox.__customLayout.taobao.setStyle, 'morandi');
   assert.equal(document.querySelector('[data-taobao-text-pin]').textContent, '12,91');
   assert.equal(sandbox.saved, true);
+  const materials = [];
+  sandbox.__workbenchMaterials = () => materials;
+  sandbox.processNewFiles = (files, category) => {
+    sandbox.skuUpload = {category, length: files.length};
+    for (const file of files) {
+      if (!String(file.type || '').startsWith('image/')) continue;
+      const index = materials.filter(item => item.category === category).length + 1;
+      materials.push({id:'sku_' + file.name, category, filename:category + '_' + index, preview:file.preview, url:file.url});
+    }
+  };
+  sandbox.removeMaterial = id => {
+    const index = materials.findIndex(item => item.id === id);
+    if (index >= 0) materials.splice(index, 1);
+    sandbox.removed = id;
+  };
+  const input = document.getElementById('tbSkuFile');
+  input.value = 'picked';
+  input.files = [
+    {type:'image/jpeg', name:'red.jpg', url:'/media/sku-red.jpg', preview:'data:image/jpeg;base64,red'},
+    {type:'image/png', name:'blue.png', url:'/media/sku-blue.png', preview:'data:image/png;base64,blue'},
+    {type:'text/plain', name:'notes.txt', url:'/media/notes.txt'}
+  ];
+  input.dispatchEvent({type:'change'});
+  assert.equal(input.value, '');
+  assert.equal(sandbox.skuUpload.category, 'SKU图');
+  assert.equal(sandbox.skuUpload.length, 3);
+  assert.equal(materials.length, 2);
+  assert.equal(document.getElementById('tbSkuUploadCount').textContent, '已上传 2 张 SKU 图');
+  assert.equal(document.getElementById('tbSkuUpload').textContent, '上传 SKU 图');
+  const uploaded = sandbox.buildSlotDirectives();
+  const sku = uploaded.find(item => item.slot === 5);
+  assert.equal(JSON.stringify(sku.ref_images), JSON.stringify(['SKU图_1']));
+  assert.match(sku.requirement, /^SKU卖点原文/);
+  assert.match(sku.requirement, /整套风格：莫兰迪低饱和/);
+  assert.match(sku.requirement, /宽 1000 像素，高 800 像素/);
+  assert.match(sku.requirement, /SKU图_1/);
+  assert.match(sku.requirement, /不要只按产品主体图/);
+  assert.equal(JSON.stringify(uploaded.find(item => item.slot === 0).ref_images), '[]');
+  assert.equal(JSON.stringify(uploaded.find(item => item.slot === 7).ref_images), '[]');
+  assert.match(uploaded.find(item => item.slot === 0).requirement, /^主图要求：标题保持原句/);
+  document.querySelector('.tb-sku-remove').dispatchEvent({type:'click'});
+  assert.equal(sandbox.removed, 'sku_red.jpg');
+  assert.equal(materials.length, 1);
+  assert.equal(materials[0].filename, 'SKU图_2');
+  assert.equal(JSON.stringify(sandbox.buildSlotDirectives().find(item => item.slot === 5).ref_images), JSON.stringify(['SKU图_2']));
+  assert.equal(document.getElementById('tbSkuUploadCount').textContent, '已上传 1 张 SKU 图');
+  assert.match(sandbox.buildSlotDirectives().find(item => item.slot === 0).requirement, /^主图要求：标题保持原句/);
+  assert.match(sandbox.buildSlotDirectives().find(item => item.slot === 0).requirement, /水平 12%/);
+  assert.equal(sandbox._aspectForTitle('【卖点图5】'), '5:4');
 });

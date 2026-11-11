@@ -245,6 +245,27 @@
     if (!pos) return '';
     return `文字位置：水平 ${pos.x}%、垂直 ${pos.y}%（相对画面左上角，可落在任意一点，不限于靠上、居中、靠下）。把本张已有文案放到这个位置，不要改文案内容，产品仍完整留在画面里。`;
   }
+  function skuReferenceNote(filename) {
+    return `本张 SKU 图以已上传的规格图「${filename}」为参考。按这张规格图的颜色和外观出图，不要只按产品主体图来画，也不要换成其他规格。`;
+  }
+  function attachSkuRefs(directives, spec, photos) {
+    const names = [];
+    for (const photo of photos || []) {
+      const name = (typeof photo === 'string' ? photo : photo?.filename || '').trim();
+      if (name && !names.includes(name)) names.push(name);
+    }
+    const source = directives || [];
+    if (!names.length) return {directives: source, attached: false};
+    const skuSlots = activeSlots(spec).filter(item => item.zone === 'sku');
+    if (!skuSlots.length) return {directives: source, attached: false};
+    const bySlot = new Map(skuSlots.map((item, index) => [item.slot, names[Math.min(index, names.length - 1)]]));
+    const next = source.map(item => {
+      const filename = bySlot.get(item.slot);
+      if (!filename) return item;
+      return {...item, ref_images: [filename], requirement: [item.requirement, skuReferenceNote(filename)].filter(Boolean).join('；')};
+    });
+    return {directives: next, attached: true};
+  }
   function annotateDirectives(dirs, spec, oneShot) {
     let used = false;
     const style = styleNote(spec);
@@ -277,6 +298,6 @@
     SIZE_CHOICES, SET_STYLES, TEXT_PRESETS, CUSTOM_MIN, CUSTOM_MAX, DEFAULTS, clampLayout, normalize, activeSlots, zoneForSlot, customerLabel,
     toCustomLayout, countsMatch, ratioForZone, aspectRatioForPixels, parseCustomSize, clampTextPosition, textPositionFromPointer,
     slotFromTitle, ratioForTitle, backgroundNote,
-    directiveNote, sizeNote, positionNote, styleOf, styleNote, annotateDirectives, backgroundSlot
+    directiveNote, sizeNote, positionNote, styleOf, styleNote, annotateDirectives, attachSkuRefs, skuReferenceNote, backgroundSlot
   };
 })(typeof window !== 'undefined' ? window : globalThis);
