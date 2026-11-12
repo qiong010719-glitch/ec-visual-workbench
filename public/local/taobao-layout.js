@@ -327,7 +327,9 @@
     };
   }
   function textMoveRegions(old, next) {
-    return [textRegion(old, 'erase'), textRegion(next, 'paint')].filter(Boolean);
+    const erase = textRegion(old, 'erase');
+    const paint = textRegion(next, 'paint');
+    return erase && paint ? [erase, paint] : [];
   }
   function sectionBody(sop, title) {
     const text = String(sop || '');
@@ -341,9 +343,9 @@
   }
   function labeledSentence(text) {
     const source = String(text || '');
-    const labeled = source.match(/文案[:：]\s*([^\n]{1,120})/) || source.match(/(?:主标题|标题)[:：]\s*([^\n]{1,120})/);
+    const labeled = source.match(/(?:原文|文案)[:：]\s*([^\n]{1,120})/) || source.match(/(?:主标题|标题)[:：]\s*([^\n]{1,120})/);
     if (labeled) {
-      const sentence = labeled[1].trim().replace(/[。；;]+$/, '');
+      const sentence = labeled[1].trim();
       if (sentence && !/^(整套风格|文字位置|本张)/.test(sentence)) return sentence;
     }
     const quoted = source.match(/「([^」\n]{1,80})」/);

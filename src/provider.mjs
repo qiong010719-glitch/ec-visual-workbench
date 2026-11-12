@@ -193,7 +193,7 @@ export function pngAlpha(bytes, x, y) {
   return raw[y * (1 + width * 4) + 1 + x * 4 + 3];
 }
 
-function pixelBox(region, width, height) {
+export function pixelBox(region, width, height) {
   const xPct = Number(region?.x), yPct = Number(region?.y), wPct = Number(region?.w), hPct = Number(region?.h);
   if (![xPct, yPct, wPct, hPct].every(Number.isFinite)) throw new Error('局部修改遮罩无效，没有改成整张重绘。');
   const x = Math.max(0, Math.min(width - 1, Math.round(xPct / 100 * width)));

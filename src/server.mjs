@@ -5,7 +5,8 @@ import crypto from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {Store} from './store.mjs';
 import {planProduct, buildPlan, slotPlan, promptForSlot} from './planner.mjs';
-import {createImageProvider, createImageDownloader, imageType, resolveImage, editMask} from './provider.mjs';
+import {createImageProvider, createImageDownloader, imageType, resolveImage} from './provider.mjs';
+import {prepareTextMove, finishTextMove, textMoveBoundsNote} from './text-move.mjs';
 import {ResearchService} from './research.mjs';
 import {designPatterns} from './design-patterns.mjs';
 import {generationMode} from './visual-style.mjs';
@@ -46,21 +47,26 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
     if(!task)return null;
     const {resultUrl,partialPlanText,...visible}=task;
     return {...visible,...(visible.error?{error:String(visible.error).replace(/算舟|suanzhou/gi,'图片服务')} : {}),
-      ...(visible.provider==='suanzhou'?{provider:'configured-image-api'}:{}),canRetryDownload:!!resultUrl && task.status==='failed'};
+      ...(visible.provider==='suanzhou'?{provider:'configured-image-api'}:{}),canRetryDownload:!!resultUrl && task.status==='failed' && task.phase!=='edit_rejected'};
   };
   function retryDownload(taskId) {
     const key='hyrule_tasks/'+taskId,task=store.state.tasks[key];
     if(!task)throw fail(404,'图片任务不存在');
     if(task.status==='completed')return {task:publicTask(task),accepted:false};
+    if(task.phase==='edit_rejected')throw fail(409,'该结果未通过局部改字检查，重复下载无法修复；原图已保留。');
     if(!task.resultUrl)throw fail(409,'该任务没有保存生成结果地址，无法只重试下载');
     if(['pending','running'].includes(task.status))return {task:publicTask(task),accepted:true};
     store.task(key,{status:'pending',phase:'download_queued',error:null,downloadRecoveryRequestedAt:new Date().toISOString(),downloadAttempt:0});
     enqueue(async()=>{
       store.task(key,{status:'running',phase:'downloading'});
       try {
-        const bytes=await imageDownloader(task.resultUrl,{onAttempt:attempt=>store.task(key,{downloadAttempt:attempt})});
+        let bytes=await imageDownloader(task.resultUrl,{onAttempt:attempt=>store.task(key,{downloadAttempt:attempt})});
+        if(task.textMove) {
+          const edit=await prepareTextMove(await resolveImage(task.textMove.sourceImageUrl,mediaDirectory),task.textMove.regions);
+          bytes=await finishTextMove(edit,bytes);
+        }
         store.task(key,{status:'completed',phase:'completed',imageUrl:saveImage(bytes),error:null,downloadRecoveredAt:new Date().toISOString()});
-      } catch(error) {store.task(key,{status:'failed',phase:'download_failed',error:String(error.message).slice(0,500)});}
+      } catch(error) {store.task(key,{status:'failed',phase:error.code==='TEXT_MOVE_REJECTED'?'edit_rejected':'download_failed',error:String(error.message).slice(0,500)});}
     });
     return {task:publicTask(store.state.tasks[key]),accepted:true};
   }
@@ -112,8 +118,8 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
     if (textMove) {
       textMoveBase = [payload.base_image_b64, payload.image_url, payload.source_image_url].find(value => typeof value === 'string' && value.trim()) || '';
       if (!textMoveBase) throw fail(400, '局部改字需要已生成的原图，没有改成整张重绘。');
-      if (!Array.isArray(payload.mask_regions) || payload.mask_regions.length < 1 || payload.mask_regions.length > 2) throw fail(400, '局部改字需要遮罩，没有改成整张重绘。');
-      if (payload.mask_regions.some(region => !region || [region.x, region.y, region.w, region.h].some(value => !Number.isFinite(Number(value))))) throw fail(400, '局部改字遮罩无效，没有改成整张重绘。');
+      if (!Array.isArray(payload.mask_regions) || payload.mask_regions.length !== 2 || payload.mask_regions[0]?.role !== 'erase' || payload.mask_regions[1]?.role !== 'paint') throw fail(400, '局部改字需要旧位和新位两个遮罩，没有改成整张重绘。');
+      if (payload.mask_regions.some(region => !region || [region.x, region.y, region.w, region.h].some(value => typeof value !== 'number' || !Number.isFinite(value)) || region.x < 0 || region.y < 0 || region.w <= 0 || region.h <= 0 || region.x + region.w > 100 || region.y + region.h > 100)) throw fail(400, '局部改字遮罩无效，没有改成整张重绘。');
     }
     if (!provider && !configuration.SUANZHOU_IMAGE_API_KEY) throw fail(503, '缺少专用图片密钥；请求未提交，也未扣点');
     const known = tasks.map(t => store.state.tasks['hyrule_tasks/' + t.taskId]);
@@ -152,15 +158,21 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
       enqueue(async () => {
         store.task(key, {status:'running',phase:'generating'});
         try {
-          let mask;
+          let edit, requestPrompt=prompt, requestRefs=refs;
           if (textMove) {
             const baseBytes = await resolveImage(refs[0], mediaDirectory);
-            mask = editMask(baseBytes, payload.mask_regions);
+            edit = await prepareTextMove(baseBytes, payload.mask_regions);
+            // Persist an immutable input for download recovery, including inline uploads.
+            const sourceImageUrl=saveImage(edit.source);
+            requestRefs=[sourceImageUrl];
+            requestPrompt+='\n'+textMoveBoundsNote(edit);
+            store.task(key,{textMove:{sourceImageUrl,regions:payload.mask_regions},prompt:requestPrompt});
           }
-          const bytes = await imageProvider({prompt, references:refs, ratio:task.aspect_ratio || section?.ratio || '1:1', model, kind, ...(mask ? {mask} : {}), onProgress:patch=>store.task(key,patch)});
+          let bytes = await imageProvider({prompt:requestPrompt, references:requestRefs, ratio:task.aspect_ratio || section?.ratio || '1:1', model, kind, ...(edit ? {mask:edit.mask} : {}), onProgress:patch=>store.task(key,patch)});
+          if(edit) bytes=await finishTextMove(edit,bytes);
           store.task(key, {status:'completed',phase:'completed', imageUrl:saveImage(bytes), provider:provider ? 'test-provider' : 'suanzhou', model});
         } catch (error) {
-          store.task(key, {status:'failed',phase:store.state.tasks[key].resultUrl?'download_failed':'generation_failed', error: String(error.message).slice(0,500)});
+          store.task(key, {status:'failed',phase:error.code==='TEXT_MOVE_REJECTED'?'edit_rejected':store.state.tasks[key].resultUrl?'download_failed':'generation_failed', error: String(error.message).slice(0,500)});
           refund(requestId, task.taskId);
         }
       });
@@ -181,7 +193,7 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
       response.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' data: blob:; font-src 'self' data:; media-src 'self' blob:; frame-src 'self' blob:; frame-ancestors 'none'; object-src 'none'; base-uri 'self'");
       if (pathname === '/api/session' && request.method === 'GET') return json(response,200,{token:csrf,user:{id:'local-owner',email:'local@workbench.local'}});
       if (pathname.startsWith('/api/') && !['GET','HEAD'].includes(request.method) && request.headers['x-workbench-token'] !== csrf) throw fail(403, '本地会话已过期，请刷新页面');
-      if (pathname === '/api/status') return json(response,200,{mode:'local', isolatedPreview:configuration.WORKBENCH_STYLE_PREVIEW==='true', imageProvider:provider ? 'test-fixture' : 'configured-image-api', imageConfigured:!!provider || !!configuration.SUANZHOU_IMAGE_API_KEY, model:resolveImageModel(undefined,configuration), imageModels, planner:configuration.PLANNER_API_KEY ? 'configured' : 'local-rules', active, queued:queue.length,downloadProxyConfigured:!!configuration.IMAGE_DOWNLOAD_PROXY,downloadRecoveryEnabled:true,recoverableDownloads:Object.values(store.state.tasks).filter(t=>t.resultUrl&&t.status==='failed').length, defaultProductStatus:'draft', paymentEnabled:false, publishEnabled:false});
+      if (pathname === '/api/status') return json(response,200,{mode:'local', isolatedPreview:configuration.WORKBENCH_STYLE_PREVIEW==='true', imageProvider:provider ? 'test-fixture' : 'configured-image-api', imageConfigured:!!provider || !!configuration.SUANZHOU_IMAGE_API_KEY, model:resolveImageModel(undefined,configuration), imageModels, planner:configuration.PLANNER_API_KEY ? 'configured' : 'local-rules', active, queued:queue.length,downloadProxyConfigured:!!configuration.IMAGE_DOWNLOAD_PROXY,downloadRecoveryEnabled:true,recoverableDownloads:Object.values(store.state.tasks).filter(t=>t.resultUrl&&t.status==='failed'&&t.phase!=='edit_rejected').length, defaultProductStatus:'draft', paymentEnabled:false, publishEnabled:false});
       if (pathname === '/api/research/status' && request.method === 'GET') return json(response,200,research.status());
       if (pathname === '/api/research/design-patterns' && request.method === 'GET') return json(response,200,designPatterns(research.library.state));
       if (pathname === '/api/research/products' && request.method === 'GET') return json(response,200,Object.values(research.library.state.products).map(p=>({id:p.id,title:p.title,brand:p.brand,asin:p.asin,url:p.url,category:p.category,categoryMemberships:p.categoryMemberships||[],styleProfileIds:p.styleProfileIds||[],collectionIds:p.collectionIds||[],rank:p.rank,rankBasis:p.rankBasis,provenance:p.provenance,aplusStatus:p.aplusStatus,images:p.assets.length,downloaded:p.assets.filter(a=>a.status==='downloaded').length,analysisStatus:p.analysis?.status || 'pending',analysisError:p.analysis?.error || null,thumbnail:p.assets.find(a=>a.localUrl)?.localUrl || null,warnings:p.warnings})));

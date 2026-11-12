@@ -38,11 +38,17 @@
     #designScope option[hidden],#targetMarket option[hidden],#targetMarket optgroup[hidden]{display:none !important}
     .taobao-deemphasize{opacity:.55}
     .taobao-slot-label{font-size:11px;font-weight:700;letter-spacing:.04em;color:#9fffea;padding:6px 8px 0}
+    .quest-slot[data-taobao-zone]{flex-direction:column;align-items:stretch;height:auto;transform:none !important}
+    .quest-slot[data-taobao-zone] .slot-actions{position:static;transform:none;opacity:1;width:100%;box-sizing:border-box}
     .taobao-text-stage{position:relative;display:block;width:100%}
     .taobao-text-stage img{width:100%;height:auto;display:block}
+    .taobao-text-region{position:absolute;pointer-events:none;box-sizing:border-box;z-index:60;border:2px dashed #65b6ff;color:#9fd2ff;font-size:10px;text-shadow:0 1px 3px #000}
+    .taobao-text-region[data-role="erase"]{border-color:#ff9292;color:#ffbcbc}
     .quest-slot:hover .taobao-text-stage img{transform:none}
     .taobao-text-pin{position:absolute;z-index:61;transform:translate(-50%,-50%);padding:4px 8px;border-radius:999px;border:1px solid #ffd36a;background:rgba(0,0,0,.78);color:#ffd36a;font-size:11px;font-weight:700;cursor:grab;touch-action:none;user-select:none}
-    .taobao-text-shortcuts{position:absolute;z-index:62;top:6px;left:6px;display:flex;gap:4px}
+    .taobao-text-shortcuts{display:flex;flex-wrap:wrap;gap:4px;padding:6px}
+    .taobao-text-origin-note{padding:0 6px 6px;font-size:11px;color:#ffd36a}
+    .taobao-text-stage[data-picking-origin="1"]{cursor:crosshair;outline:2px solid #ffd36a}
     .taobao-text-preset{border:1px solid rgba(255,211,106,.7);background:rgba(0,0,0,.72);color:#ffd36a;border-radius:6px;font-size:10px;font-weight:700;padding:3px 6px;cursor:pointer}
     .taobao-redraw{width:100%;margin-top:4px;border:1px solid #ffd36a;color:#ffd36a;background:transparent;border-radius:8px;padding:6px;font-size:12px;font-weight:700;cursor:pointer}
     #galleryContainer.taobao-whitespace [data-taobao-zone="detail"]{box-shadow:inset 0 -36px 0 #f7f7f7}
@@ -319,7 +325,7 @@
     if (typeof saveAppState === 'function') saveAppState();
   }
   const paintedUrl = new Map();
-  let paintTicket = null;
+  const paintTickets = new Map();
   function hasAnchor(shell, index) {
     const anchors = shell?.textAnchors || {};
     return Object.prototype.hasOwnProperty.call(anchors, index) || Object.prototype.hasOwnProperty.call(anchors, String(index));
@@ -345,8 +351,10 @@
     const shell = window.__customLayout?.taobao;
     if (!shell?.applied) return;
     if (previous) {
-      const to = paintTicket && paintTicket.index === index && url !== paintTicket.url ? paintTicket.to : (shell.textPositions?.[index] || null);
-      if (paintTicket?.index === index) paintTicket = null;
+      const ticket = paintTickets.get(index) || (typeof activeKieTasks === 'undefined' ? null : activeKieTasks.find(task => task.slot === index)?.taobaoTextMove);
+      const to = ticket && url !== ticket.url ? ticket.to : (shell.textPositions?.[index] || null);
+      if (ticket?.sentence && typeof imageSlots !== 'undefined') imageSlots[index].taobaoText = ticket.sentence;
+      paintTickets.delete(index);
       setAnchor(index, to);
       return;
     }
@@ -361,6 +369,7 @@
   }
   function slotCopy(index) {
     const image = typeof imageSlots === 'undefined' ? null : imageSlots?.[index];
+    if (image?.taobaoText) return image.taobaoText;
     return layout.plannedSentence({
       requirement: window.__customLayout?.directives?.[index]?.req || '',
       sop: $('sopText')?.value || '',
@@ -374,6 +383,14 @@
     const image = typeof imageSlots === 'undefined' ? null : imageSlots?.[index];
     const next = spec?.textPositions?.[index];
     const old = spec?.textAnchors?.[index] || null;
+    if (paintTickets.has(index) || (typeof activeKieTasks !== 'undefined' && activeKieTasks.some(task => task.slot === index))) {
+      notify('这一张已有任务，请等它完成后再移动文字。', true);
+      return;
+    }
+    if (!old) {
+      notify('请先点「标记原字位置」，再在原图文字中心点一下。确认旧位置后才能局部移动。', true);
+      return;
+    }
     const sentence = slotCopy(index);
     const regions = layout.textMoveRegions(old, next);
     if (!image?.url || !next || !sentence || !regions.length) {
@@ -394,28 +411,29 @@
     };
     const model = $('modelChoice')?.value;
     if (model) payload.model = model;
-    paintTicket = {index, url: image.url, to: next};
+    const ticket = {url:image.url, to:next, sentence};
+    paintTickets.set(index, ticket);
     let response;
     try {
       response = await fetch('/api/inpaint', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
     } catch {
-      paintTicket = null;
+      paintTickets.delete(index);
       notify('局部改字没有提交，没有改成整张重绘。', true);
       return;
     }
     if (!response.ok) {
-      paintTicket = null;
+      paintTickets.delete(index);
       const data = await response.json().catch(() => ({}));
       notify(data.error || '局部改字没有提交，没有改成整张重绘。', true);
       return;
     }
-    if (typeof activeKieTasks !== 'undefined' && Array.isArray(activeKieTasks)) activeKieTasks.push({slot: index, taskId, isInpaint: true});
+    if (typeof activeKieTasks !== 'undefined' && Array.isArray(activeKieTasks)) activeKieTasks.push({slot: index, taskId, isInpaint: true, taobaoTextMove:ticket});
+    if (typeof saveAppState === 'function') saveAppState();
     if (typeof resumeKieListener === 'function') resumeKieListener(index, taskId, true);
   }
   function applyOrRedraw(index) {
     const spec = currentSpec();
-    const image = typeof imageSlots === 'undefined' ? null : imageSlots?.[index];
-    if (spec && image?.url && layout.textMoveNeeded(spec, index)) {
+    if (spec && layout.textMoveNeeded(spec, index)) {
       const job = applyTextMove(index);
       window.__taobaoTextMove = job;
       return;
@@ -446,13 +464,30 @@
     const stored = spec.textPositions?.[index] || null;
     placePin(pin, stored || {x:50, y:50}, !!stored);
     let current = stored;
-    const read = event => layout.textPositionFromPointer(event, stage.getBoundingClientRect?.());
+    const regionGuides = ['erase','paint'].map(role => {
+      const guide = document.createElement('div');
+      guide.className = 'taobao-text-region';guide.dataset.role = role;
+      guide.textContent = role === 'erase' ? '原字清除区域' : '新字放置区域';
+      stage.appendChild(guide);return guide;
+    });
+    const showRegions = () => {
+      const old = window.__customLayout?.taobao?.textAnchors?.[index];
+      [old, current].forEach((position, i) => {
+        const guide = regionGuides[i];guide.hidden = !position;
+        if (!position) return;
+        const region = layout.textMoveRegions(position, position)[i];
+        Object.assign(guide.style, {left:region.x+'%',top:region.y+'%',width:region.w+'%',height:region.h+'%'});
+      });
+    };
+    showRegions();
+    const read = event => layout.textPositionFromPointer(event, img.getBoundingClientRect?.());
     const onMove = event => {
       event.preventDefault?.();
       const next = read(event);
       if (!next) return;
       current = next;
       placePin(pin, next, true);
+      showRegions();
     };
     const onUp = event => {
       window.removeEventListener('pointermove', onMove);
@@ -472,6 +507,44 @@
     stage.appendChild(pin);
     const bar = document.createElement('div');
     bar.className = 'taobao-text-shortcuts';
+    const origin = document.createElement('button');
+    origin.type = 'button';
+    origin.className = 'taobao-text-preset';
+    origin.dataset.taobaoTextOrigin = String(index);
+    origin.textContent = '标记原字位置';
+    const originNote = document.createElement('div');
+    originNote.className = 'taobao-text-origin-note';
+    const describeOrigin = () => {
+      const old = window.__customLayout?.taobao?.textAnchors?.[index];
+      originNote.textContent = old ? `原字中心：${old.x}%, ${old.y}%。请核对与原图一致；移动区域约 56%×18%。` : '首次移动前，先标记原图中文字的中心；此处不会自动识别文字。';
+      showRegions();
+    };
+    describeOrigin();
+    origin.addEventListener('click', event => {
+      event.preventDefault?.();event.stopPropagation?.();
+      stage.dataset.pickingOrigin = '1';
+      originNote.textContent = '请在原图文字的中心点一下。';
+    });
+    let originClick = false;
+    stage.addEventListener('pointerdown', event => {
+      if (stage.dataset.pickingOrigin !== '1' || (event.button != null && event.button !== 0)) return;
+      event.preventDefault?.();event.stopPropagation?.();
+      const old = read(event);
+      if (!old) return;
+      originClick = true;
+      setAnchor(index, old);
+      if (!window.__customLayout?.taobao?.textPositions?.[index]) {
+        current = old;rememberTextPosition(index, old);placePin(pin, old, true);
+      }
+      stage.dataset.pickingOrigin = '';
+      describeOrigin();
+    }, true);
+    stage.addEventListener('click', event => {
+      if (!originClick) return;
+      originClick = false;
+      event.preventDefault?.();event.stopPropagation?.();
+    }, true);
+    bar.appendChild(origin);
     for (const preset of layout.TEXT_PRESETS) {
       const button = document.createElement('button');
       button.type = 'button';
@@ -487,10 +560,16 @@
         current = pos;
         placePin(pin, pos, true);
         rememberTextPosition(index, pos);
+        showRegions();
       });
       bar.appendChild(button);
     }
-    stage.appendChild(bar);
+    stage.parentNode.insertBefore(bar, stage);
+    stage.parentNode.insertBefore(originNote, stage);
+    const copyNote = document.createElement('div');
+    copyNote.className = 'taobao-text-origin-note';
+    copyNote.textContent = `待移动原文（请核对）：${slotCopy(index) || '未找到，请先补齐当前图的文案。'}`;
+    stage.parentNode.insertBefore(copyNote, stage);
   }
   function redrawBackground() {
     const picked = document.querySelector('input[name="tbBg"]:checked')?.value;
@@ -615,6 +694,30 @@
     const originalRender = renderSlot;
     window.renderSlot = function (index) { originalRender(index); decorateSlot(index); };
   }
+  if (typeof resumeKieListener === 'function') {
+    const originalListener = resumeKieListener;
+    window.resumeKieListener = function (index, taskId, ...args) {
+      const ticket = typeof activeKieTasks === 'undefined' ? null : activeKieTasks.find(task => task.taskId === taskId)?.taobaoTextMove;
+      if (ticket) paintTickets.set(index, ticket);
+      return originalListener.call(this, index, taskId, ...args);
+    };
+  }
+  window.addEventListener('local-image-task-update', event => {
+    const task = event.detail;
+    const slot = $('slot-' + task?.slot);
+    if (!slot || slot.dataset.localTaskId !== task.taskId) return;
+    if (task.status === 'completed' && typeof imageSlots !== 'undefined' && imageSlots[task.slot]?.id === task.taskId) {
+      imageSlots[task.slot].finalPrompt = task.prompt || imageSlots[task.slot].finalPrompt || '';
+      if (typeof saveAppState === 'function') saveAppState();
+    }
+    if (task.status === 'failed' && paintTickets.has(task.slot)) {
+      paintTickets.delete(task.slot);
+      if (!task.canRetryDownload && currentSpec() && typeof imageSlots !== 'undefined' && imageSlots[task.slot]?.url) {
+        renderSlot(task.slot);
+        notify(task.error || '局部修改失败，已保留原图和目标位置；再次重试仍按局部修改提交。', true);
+      }
+    }
+  });
   if (typeof _aspectForTitle === 'function') {
     const originalAspect = _aspectForTitle;
     window._aspectForTitle = function (title) {
@@ -642,7 +745,13 @@
     window.triggerGeneration = async function (...args) {
       const shot = window.__taobaoOneShot;
       const target = args[0];
-      if (paintTicket && (target == null || paintTicket.index === target)) paintTicket = null;
+      if (!shot && Number.isInteger(target) && currentSpec() && layout.textMoveNeeded(currentSpec(), target)) {
+        const job = applyTextMove(target);
+        window.__taobaoTextMove = job;
+        return job;
+      }
+      if (target == null) paintTickets.clear();
+      else paintTickets.delete(target);
       try { return await originalTrigger.apply(this, args); }
       finally { if (shot && !shot.used) window.__taobaoOneShot = null; }
     };

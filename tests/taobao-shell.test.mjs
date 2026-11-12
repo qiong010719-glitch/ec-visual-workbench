@@ -1069,7 +1069,7 @@ test('the shell drag handle stores a non-preset point, and typed width height ov
   assert.ok(pin);
   assert.equal(pin.textContent, '文字');
   assert.equal(sandbox.buildSlotDirectives().find(item => item.slot === 0).requirement, '主图要求：标题保持原句');
-  stage._rect = {left:0, top:0, right:200, bottom:400, width:200, height:400};
+  stage.querySelector('img')._rect = {left:0, top:0, right:200, bottom:400, width:200, height:400};
   pin.dispatchEvent(point('pointerdown', 146, 72));
   for (const fn of [...(windowListeners.get('pointerup') || [])]) fn(point('pointerup', 146, 72));
   assert.equal(JSON.stringify(sandbox.__customLayout.taobao.textPositions[0]), JSON.stringify({x:73, y:18}));
@@ -1194,6 +1194,18 @@ test('the shell drag handle stores a non-preset point, and typed width height ov
   redraw.dispatchEvent({type:'click', preventDefault() {}, stopPropagation() {}});
   assert.equal(generated, 1);
   assert.equal(sandbox.calls.length, 0);
+  sandbox.__customLayout.taobao.textAnchors = {0:null};
+  redraw.dispatchEvent({type:'click', preventDefault() {}, stopPropagation() {}});
+  await sandbox.__taobaoTextMove;
+  assert.equal(sandbox.calls.length, 0, 'an unknown original position must not submit a one-region edit');
+  assert.equal(generated, 1, 'missing origin must not fall back to full generation');
+  const origin = document.querySelector('[data-taobao-text-origin]');
+  origin.dispatchEvent({type:'click', preventDefault() {}, stopPropagation() {}});
+  const currentStage = document.querySelector('.taobao-text-stage');
+  currentStage.querySelector('img')._rect = {left:0, top:0, right:200, bottom:400, width:200, height:400};
+  currentStage.dispatchEvent(point('pointerdown', 100, 48));
+  assert.equal(JSON.stringify(sandbox.__customLayout.taobao.textAnchors[0]), JSON.stringify({x:50, y:12}));
+  assert.equal(JSON.stringify(sandbox.__customLayout.taobao.textPositions[0]), JSON.stringify({x:12, y:91}));
   sandbox.__customLayout.taobao.textAnchors = {0:{x:50, y:12}};
   redraw.dispatchEvent({type:'click', preventDefault() {}, stopPropagation() {}});
   await sandbox.__taobaoTextMove;
@@ -1216,6 +1228,9 @@ test('the shell drag handle stores a non-preset point, and typed width height ov
   assert.equal(body.firebase_tasks, undefined);
   assert.equal(sandbox.listened.isInpaint, true);
   assert.equal(sandbox.listened.slot, 0);
+  redraw.dispatchEvent({type:'click', preventDefault() {}, stopPropagation() {}});
+  await sandbox.__taobaoTextMove;
+  assert.equal(sandbox.calls.length, 1, 'a second click while the slot is pending must not submit another edit');
 });
 
 test('text move keeps the original sentence and describes both masked regions', () => {
@@ -1225,7 +1240,8 @@ test('text move keeps the original sentence and describes both masked regions', 
   assert.equal(regions.length, 2);
   assert.equal(regions[0].role, 'erase');
   assert.equal(regions[1].role, 'paint');
-  assert.equal(layout.textMoveRegions(null, next).length, 1);
+  assert.equal(layout.textMoveRegions(null, next).length, 0);
+  assert.equal(layout.textMoveRegions(old, null).length, 0);
   assert.equal(layout.textMoveNeeded({textPositions:{0:next}, textAnchors:{0:old}}, 0), true);
   assert.equal(layout.textMoveNeeded({textPositions:{0:next}, textAnchors:{0:next}}, 0), false);
   assert.equal(layout.textMoveNeeded({textPositions:{0:next}, textAnchors:{}}, 0), false);
@@ -1247,12 +1263,14 @@ test('text move keeps the original sentence and describes both masked regions', 
   assert.match(prompt, /不要改字/);
   const fallback = layout.plannedSentence({requirement:'SKU卖点原文；整套风格：胶片质感；本张 SKU 图以已上传的规格图「SKU图_1」为参考。'});
   assert.equal(fallback, 'SKU卖点原文');
+  assert.equal(layout.plannedSentence({prompt:'局部修改\n原文：轻便耐用\n不要改字',sop:'【主图】\n文案：已更换的构思',title:'【主图】'}), '轻便耐用');
+  assert.equal(layout.plannedSentence({prompt:'原文：杯碟为场景道具，不代表随附配件。'}), '杯碟为场景道具，不代表随附配件。');
 });
 
 test('applying a text move sends a mask to the existing edits endpoint and does not redraw', async t => {
   const captured = [];
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ec-taobao-text-move-'));
-  const app = createWorkbench({dataDirectory:directory, configuration:{}, provider:async request => { captured.push(request); if (!request.mask) throw new Error('missing mask'); return png; }});
+  const app = createWorkbench({dataDirectory:directory, configuration:{}, provider:async request => { captured.push(request); if (!request.mask) throw new Error('missing mask'); return picture; }});
   await new Promise(resolve => app.server.listen(0, '127.0.0.1', resolve));
   t.after(async () => { await new Promise(resolve => app.server.close(resolve)); fs.rmSync(directory, {recursive:true, force:true}); });
   const base = 'http://127.0.0.1:' + app.server.address().port;
@@ -1280,19 +1298,47 @@ test('applying a text move sends a mask to the existing edits endpoint and does 
   assert.equal(missing.response.status, 400);
   assert.match(missing.data.error, /遮罩/);
   assert.equal(captured.length, 0);
+  const beforeBalance = app.store.state.balance;
+  const invalidRegions = [
+    regions.slice(1),
+    [regions[0], regions[0]],
+    [{...regions[0],x:-1}, regions[1]],
+    [{...regions[0],x:99}, regions[1]],
+    [{...regions[0],w:0}, regions[1]],
+    [{...regions[0],h:-1}, regions[1]],
+    [{...regions[0],x:null}, regions[1]],
+    [{...regions[0],x:''}, regions[1]]
+  ];
+  for (let i = 0; i < invalidRegions.length; i++) {
+    const invalid = await call('/api/inpaint', {text_move:true,task_id:'text_move_invalid_'+i,slot_idx:0,prompt,image_url:imageUrl,mask_regions:invalidRegions[i]});
+    assert.equal(invalid.response.status, 400);
+    assert.match(invalid.data.error, /遮罩/);
+  }
+  const noBase = await call('/api/inpaint', {text_move:true,task_id:'text_move_no_base',slot_idx:0,prompt,mask_regions:regions});
+  assert.equal(noBase.response.status, 400);
+  assert.equal(captured.length, 0);
+  assert.equal(app.store.state.balance, beforeBalance, 'invalid edits must fail before queuing or simulated charging');
   const sent = await call('/api/inpaint', {text_move:true, task_id:'text_move_ok', slot_idx:1, prompt, aspect_ratio:'1:1', image_url:imageUrl, mask_regions:regions, categorized_images:[{filename:'产品主体图_1', url:'/media/other.png'}]});
   assert.equal(sent.response.status, 202);
   const task = await wait('text_move_ok');
   assert.equal(task.status, 'completed');
   assert.equal(captured.length, 1);
   assert.equal(captured[0].kind, 'inpaint');
-  assert.deepEqual(captured[0].references, [imageUrl]);
+  assert.equal(captured[0].references.length, 1);
+  assert.deepEqual(fs.readFileSync(path.join(directory,captured[0].references[0])), picture);
   assert.match(captured[0].prompt, /原文：轻便耐用/);
   assert.match(captured[0].prompt, /不要重构整张图/);
   assert.match(captured[0].prompt, /产品和房间/);
   assert.equal(pngAlpha(captured[0].mask, 28, 16), 0);
   assert.equal(pngAlpha(captured[0].mask, 60, 60), 0);
   assert.equal(pngAlpha(captured[0].mask, 0, 79), 255);
+  for (let y = 0; y < 80; y++) for (let x = 0; x < 100; x++) {
+    const editable = regions.some(region => {
+      const left=Math.round(region.x), top=Math.round(region.y / 100 * 80);
+      return x >= left && x < left + Math.round(region.w) && y >= top && y < top + Math.round(region.h / 100 * 80);
+    });
+    assert.equal(pngAlpha(captured[0].mask,x,y), editable ? 0 : 255, `mask alpha at ${x},${y}`);
+  }
   const upstream = [];
   const server = http.createServer(async (req, res) => {
     const chunks = [];
