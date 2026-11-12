@@ -1324,8 +1324,11 @@ test('applying a text move sends a mask to the existing edits endpoint and does 
   assert.equal(task.status, 'completed');
   assert.equal(captured.length, 1);
   assert.equal(captured[0].kind, 'inpaint');
-  assert.equal(captured[0].references.length, 1);
+  assert.equal(captured[0].references.length, 2);
   assert.deepEqual(fs.readFileSync(path.join(directory,captured[0].references[0])), picture);
+  const guide=fs.readFileSync(path.join(directory,captured[0].references[1]));
+  assert.notDeepEqual(guide,picture,'position reference is distinct from the unchanged first image');
+  assert.match(captured[0].prompt,/输入图1是唯一编辑底图/);
   assert.match(captured[0].prompt, /原文：轻便耐用/);
   assert.match(captured[0].prompt, /不要重构整张图/);
   assert.match(captured[0].prompt, /产品和房间/);

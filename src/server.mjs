@@ -6,7 +6,7 @@ import {fileURLToPath} from 'node:url';
 import {Store} from './store.mjs';
 import {planProduct, buildPlan, slotPlan, promptForSlot} from './planner.mjs';
 import {createImageProvider, createImageDownloader, imageType, resolveImage} from './provider.mjs';
-import {prepareTextMove, finishTextMove, textMoveBoundsNote} from './text-move.mjs';
+import {prepareTextMove, finishTextMove, textMoveBoundsNote, textMoveGuide} from './text-move.mjs';
 import {ResearchService} from './research.mjs';
 import {designPatterns} from './design-patterns.mjs';
 import {generationMode} from './visual-style.mjs';
@@ -164,9 +164,10 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
             edit = await prepareTextMove(baseBytes, payload.mask_regions);
             // Persist an immutable input for download recovery, including inline uploads.
             const sourceImageUrl=saveImage(edit.source);
-            requestRefs=[sourceImageUrl];
+            const guideImageUrl=saveImage(textMoveGuide(edit));
+            requestRefs=[sourceImageUrl,guideImageUrl];
             requestPrompt+='\n'+textMoveBoundsNote(edit);
-            store.task(key,{textMove:{sourceImageUrl,regions:payload.mask_regions},prompt:requestPrompt});
+            store.task(key,{textMove:{sourceImageUrl,guideImageUrl,regions:payload.mask_regions},prompt:requestPrompt,referenceImages:requestRefs});
           }
           let bytes = await imageProvider({prompt:requestPrompt, references:requestRefs, ratio:task.aspect_ratio || section?.ratio || '1:1', model, kind, ...(edit ? {mask:edit.mask} : {}), onProgress:patch=>store.task(key,patch)});
           if(edit) bytes=await finishTextMove(edit,bytes);

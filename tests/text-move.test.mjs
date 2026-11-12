@@ -6,12 +6,36 @@ import path from 'node:path';
 import os from 'node:os';
 import {createWorkbench} from '../src/server.mjs';
 import {encodeRgbaPng} from '../src/provider.mjs';
-import {prepareTextMove,finishTextMove} from '../src/text-move.mjs';
+import {prepareTextMove,finishTextMove,textMoveGuide} from '../src/text-move.mjs';
 
 const regions=[{role:'erase',x:10,y:10,w:30,h:20},{role:'paint',x:50,y:60,w:40,h:30}];
 const source=()=>encodeRgbaPng(100,100,Buffer.alloc(40000,220));
 const decode=bytes=>sharp(bytes).toColourspace('srgb').ensureAlpha().raw().toBuffer();
 const draw=(rgba,left,top,w,h,value)=>{for(let y=top;y<top+h;y++)for(let x=left;x<left+w;x++){const i=(y*100+x)*4;rgba.fill(value,i,i+3);rgba[i+3]=255;}};
+
+test('the separate guide marks old and new areas without mutating the source, mask or final output',async()=>{
+  const original=source(),edit=await prepareTextMove(original,regions);
+  const originalPixels=Buffer.from(edit.data),originalMask=Buffer.from(edit.mask);
+  const guide=await decode(textMoveGuide(edit));
+  const pixel=(x,y)=>Array.from(guide.subarray((y*100+x)*4,(y*100+x)*4+3));
+  assert.deepEqual(pixel(10,10),[235,40,65]);
+  assert.deepEqual(pixel(54,64),[0,105,255]);
+  assert.deepEqual(pixel(70,75),[0,105,255]);
+  assert.deepEqual(pixel(0,0),Array.from(originalPixels.subarray(0,3)));
+  assert.deepEqual(edit.source,original);assert.deepEqual(edit.data,originalPixels);assert.deepEqual(edit.mask,originalMask);
+  assert.deepEqual(await decode(await finishTextMove(edit,original)),originalPixels,'guide marks must never reach the merged output');
+  await assert.rejects(finishTextMove(edit,textMoveGuide(edit)),/残留了位置参考标记/);
+});
+
+test('small shifts of an existing boundary detail do not look like new clipped text',async()=>{
+  const input=Buffer.alloc(40000,220);draw(input,88,70,3,12,20);
+  const edit=await prepareTextMove(encodeRgbaPng(100,100,input),regions);
+  const shifted=Buffer.alloc(40000,220);draw(shifted,89,70,3,12,20);
+  const result=await decode(await finishTextMove(edit,encodeRgbaPng(100,100,shifted)));
+  for(let y=0;y<100;y++)for(let x=90;x<100;x++) {
+    const i=(y*100+x)*4;assert.deepEqual(result.subarray(i,i+4),edit.data.subarray(i,i+4));
+  }
+});
 
 test('masked output preserves every outside RGBA pixel while accepting only inside edits, including alpha',async()=>{
   const edit=await prepareTextMove(source(),regions);

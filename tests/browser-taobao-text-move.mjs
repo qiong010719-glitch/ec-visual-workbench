@@ -7,6 +7,7 @@ import crypto from 'node:crypto';
 import sharp from 'sharp';
 import {createWorkbench,root} from '../src/server.mjs';
 import {editMask,imageSize,encodeRgbaPng,pixelBox} from '../src/provider.mjs';
+import {prepareTextMove,textMoveGuide} from '../src/text-move.mjs';
 
 const output=path.join(root,'tests/results/taobao-text-move');
 fs.mkdirSync(path.join(output,'tmp'),{recursive:true});
@@ -20,11 +21,15 @@ const upstream=http.createServer(async(req,res)=>{
     const chunks=[];for await(const chunk of req)chunks.push(chunk);
     const form=await new Request('http://127.0.0.1'+req.url,{method:'POST',headers:req.headers,body:Buffer.concat(chunks)}).formData();
     const source=Buffer.from(await form.get('image[]').arrayBuffer());
+    assert.equal(form.getAll('image[]').length,2);
+    const guide=Buffer.from(await form.getAll('image[]')[1].arrayBuffer());
     const mask=Buffer.from(await form.get('mask').arrayBuffer());
     const request=requests.at(-1);
     assert.equal(req.url,'/v1/images/edits');
     assert.deepEqual(await sharp(source).ensureAlpha().raw().toBuffer(),await sharp(fixture).ensureAlpha().raw().toBuffer());
     assert.deepEqual(mask,editMask(fixture,request.mask_regions));
+    assert.deepEqual(guide,textMoveGuide(await prepareTextMove(source,request.mask_regions)));
+    assert.match(form.get('prompt'),/输入图2只是同一张图的位置指示/);
     assert.equal(form.get('size'),'800x1000');
     upstreamCalls.push({path:req.url,model:form.get('model'),size:form.get('size'),prompt:form.get('prompt'),maskSize:imageSize(mask),maskSha256:crypto.createHash('sha256').update(mask).digest('hex')});
     fs.writeFileSync(path.join(output,'last-mask.png'),mask);
@@ -80,6 +85,7 @@ const settled=async id=>{
 };
 try {
   await page.goto(address,{waitUntil:'networkidle'});await page.locator('#taobaoShell').waitFor();
+  await page.waitForFunction(()=>document.querySelector('#designScope')?.value==='custom' && window.__customLayout?.taobao?.applied);
   assert.equal(await page.locator('#designScope').inputValue(),'custom');
   assert.equal(await page.locator('#targetMarket option:not([hidden])').count(),1);
   await page.evaluate(()=>{

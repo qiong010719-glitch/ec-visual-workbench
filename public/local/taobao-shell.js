@@ -516,7 +516,7 @@
     originNote.className = 'taobao-text-origin-note';
     const describeOrigin = () => {
       const old = window.__customLayout?.taobao?.textAnchors?.[index];
-      originNote.textContent = old ? `原字中心：${old.x}%, ${old.y}%。请核对与原图一致；移动区域约 56%×18%。` : '首次移动前，先标记原图中文字的中心；此处不会自动识别文字。';
+      originNote.textContent = old ? `原字中心：${old.x}%, ${old.y}%。移动区域约 56%×18%；框内画面可能一起变化，出图后请核对原文和位置。` : '首次移动前，先标记原图中文字的中心；此处不会自动识别文字。';
       showRegions();
     };
     describeOrigin();
