@@ -102,7 +102,7 @@
     if(!slot)return;
     if(['pending','running'].includes(task.status)) {
       const label=slot.querySelector('.animate-pulse');
-      if(label)label.textContent=task.status==='pending'?'排队中…':task.phase==='locating_text'?'正在识别原字位置…':task.phase==='checking_text'?'正在核对文字和位置…':task.phase==='downloading'?(task.downloadAttempt>1?`下载重试（${task.downloadAttempt}/3）…`:'正在下载图片…'):'正在生成图片…';
+      if(label)label.textContent=task.status==='pending'?'排队中…':task.phase==='downloading'?(task.downloadAttempt>1?`下载重试（${task.downloadAttempt}/3）…`:'正在下载图片…'):'正在生成图片…';
     } else if(task.status==='failed' && task.canRetryDownload) {
       slot.classList.remove('standby');slot.classList.add('failed');
       slot.innerHTML=`<div style="padding:16px;text-align:center"><strong>图片已生成，下载未完成</strong><p class="local-muted">${escape(task.error || '下载失败')}</p><button type="button" class="local-action" data-download-retry>重试下载</button><p class="local-muted">只取回已有图片，不重新生图</p></div>`;

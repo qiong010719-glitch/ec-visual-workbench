@@ -5,9 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import vm from 'node:vm';
 import {fileURLToPath} from 'node:url';
-import http from 'node:http';
 import {createWorkbench} from '../src/server.mjs';
-import {createImageProvider, editMask, encodeRgbaPng, pngAlpha} from '../src/provider.mjs';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const layoutSource = fs.readFileSync(path.join(root, 'public/local/taobao-layout.js'), 'utf8');
@@ -577,27 +575,8 @@ test('chosen set style is copied into every active slot prompt, including a one-
   assert.equal(captured.filter(item => /整套风格：纯白棚拍/.test(item.prompt)).length, 4);
 });
 
-test('free text coordinates and custom width height parse without collapsing to presets', () => {
+test('custom sizes remain available while legacy text coordinates are ignored', () => {
   const same = (actual, expected) => assert.equal(JSON.stringify(actual), JSON.stringify(expected));
-  same(layout.clampTextPosition({x:73.04, y:18}), {x:73, y:18});
-  same(layout.clampTextPosition({x:-5, y:140}), {x:0, y:100});
-  assert.equal(layout.clampTextPosition({x:'no', y:10}), null);
-  same(layout.textPositionFromPointer({clientX:146, clientY:72}, {left:0, top:0, width:200, height:400}), {x:73, y:18});
-  same(layout.textPositionFromPointer({clientX:-10, clientY:999}, {left:0, top:0, width:100, height:100}), {x:0, y:100});
-  assert.equal(layout.textPositionFromPointer({clientX:1, clientY:1}, {left:0, top:0, width:0, height:10}), null);
-  const free = layout.clampTextPosition({x:73, y:18});
-  assert.equal(layout.TEXT_PRESETS.some(item => item.x === free.x && item.y === free.y), false);
-  same(layout.normalize({textPositions:{0:{x:73, y:18}, 14:{x:1, y:1}, bad:{x:2, y:2}}}).textPositions, {0:{x:73, y:18}});
-  const note = layout.positionNote({x:73, y:18});
-  assert.match(note, /水平 73%/);
-  assert.match(note, /垂直 18%/);
-  assert.match(note, /不要改文案内容/);
-  assert.match(note, /产品仍完整留在画面里/);
-  assert.doesNotMatch(note, /水平 50%/);
-  for (const preset of layout.TEXT_PRESETS) {
-    assert.match(layout.positionNote(preset), new RegExp(`水平 ${preset.x}%`));
-    assert.match(layout.positionNote(preset), new RegExp(`垂直 ${preset.y}%`));
-  }
   assert.equal(layout.parseCustomSize({width:800, height:''}), null);
   assert.equal(layout.parseCustomSize({width:63, height:100}), null);
   assert.equal(layout.parseCustomSize({width:800.5, height:1200}), null);
@@ -632,11 +611,9 @@ test('free text coordinates and custom width height parse without collapsing to 
   ], {mainCount:1, skuCount:0, detailCount:1, setStyle:'morandi', textPositions:{0:{x:73, y:18}}, customSizes:{main:{width:800, height:1200}}});
   assert.match(kept.directives[0].requirement, /^主图要求；整套风格：胶片质感/);
   assert.match(kept.directives[0].requirement, /整套风格：莫兰迪低饱和/);
-  assert.match(kept.directives[0].requirement, /水平 73%/);
-  assert.match(kept.directives[0].requirement, /垂直 18%/);
   assert.match(kept.directives[0].requirement, /宽 800 像素，高 1200 像素，画幅 2:3/);
-  assert.match(kept.directives[0].requirement, /不要改文案内容/);
-  same(kept.directives[0].text_position, {x:73, y:18});
+  assert.equal(kept.directives[0].text_position,undefined);
+  assert.doesNotMatch(kept.directives[0].requirement,/文字位置|水平 73%|垂直 18%/);
   same(kept.directives[0].custom_size, {width:800, height:1200});
   assert.doesNotMatch(kept.directives[0].requirement, /水平 50%/);
   assert.match(kept.directives[1].requirement, /^详情要求/);
@@ -644,7 +621,7 @@ test('free text coordinates and custom width height parse without collapsing to 
   assert.equal(kept.directives[1].text_position, undefined);
 });
 
-test('dragged text position and custom width height go out on the existing generate path', async t => {
+test('custom width and height use generation while legacy text positions do not', async t => {
   const captured = [];
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ec-taobao-place-'));
   const app = createWorkbench({dataDirectory:directory, configuration:{}, provider:async request => { captured.push(request); return png; }});
@@ -695,24 +672,17 @@ test('dragged text position and custom width height go out on the existing gener
   assert.equal(sent.response.status, 202);
   for (const item of dirs) assert.equal((await wait('tb_place_' + item.slot)).status, 'completed');
   assert.equal(captured.length, 3);
+  for(const request of captured)assert.doesNotMatch(request.prompt,/文字位置|text_position|水平 73%|垂直 91%/);
   const main = captured.find(item => item.ratio === '2:3');
   const sku = captured.find(item => item.ratio === '5:4');
   const detail = captured.find(item => item.ratio === '9:16');
-  assert.match(main.prompt, /水平 73%/);
-  assert.match(main.prompt, /垂直 18%/);
   assert.match(main.prompt, /宽 800 像素，高 1200 像素/);
   assert.match(main.prompt, /主图要求：标题保持原句/);
   assert.match(main.prompt, /整套风格：胶片质感/);
-  assert.match(main.prompt, /不要改文案内容/);
-  assert.match(main.prompt, /产品仍完整留在画面里/);
   assert.match(main.prompt, /杯子/);
-  assert.match(sku.prompt, /水平 50%/);
-  assert.match(sku.prompt, /垂直 50%/);
   assert.match(sku.prompt, /宽 1000 像素，高 800 像素，画幅 5:4/);
   assert.match(sku.prompt, /SKU卖点原文/);
   assert.match(sku.prompt, /整套风格：胶片质感/);
-  assert.match(detail.prompt, /水平 12\.5%/);
-  assert.match(detail.prompt, /垂直 91%/);
   assert.match(detail.prompt, /宽 900 像素，高 1600 像素，画幅 9:16/);
   assert.match(detail.prompt, /详情要求：已有风格句不要清掉/);
   assert.match(detail.prompt, /详情图底部留出一条干净留白/);
@@ -828,7 +798,7 @@ test('SKU slot generate uses uploaded SKU photos and keeps the main-product path
   assert.match(captured.at(-1).prompt, /SKU图_1/);
 });
 
-test('the shell drag handle stores a non-preset point, and typed width height overrides shortcuts until a shortcut is chosen', async () => {
+test('gallery has no text movement controls while custom sizes, SKU references and ordinary redraw remain', async () => {
   const ids = new Map();
   const all = [];
   const windowListeners = new Map();
@@ -1064,25 +1034,6 @@ test('the shell drag handle stores a non-preset point, and typed width height ov
   const bare = sandbox.buildSlotDirectives();
   assert.equal(JSON.stringify(bare.find(item => item.slot === 5).ref_images), '[]');
   assert.equal(bare.find(item => item.slot === 5).requirement, 'SKU卖点原文');
-  const pin = document.querySelector('[data-taobao-text-pin]');
-  const stage = document.querySelector('.taobao-text-stage');
-  assert.ok(pin);
-  assert.equal(pin.textContent, '文字');
-  assert.equal(sandbox.buildSlotDirectives().find(item => item.slot === 0).requirement, '主图要求：标题保持原句');
-  stage.querySelector('img')._rect = {left:0, top:0, right:200, bottom:400, width:200, height:400};
-  pin.dispatchEvent(point('pointerdown', 146, 72));
-  for (const fn of [...(windowListeners.get('pointerup') || [])]) fn(point('pointerup', 146, 72));
-  assert.equal(JSON.stringify(sandbox.__customLayout.taobao.textPositions[0]), JSON.stringify({x:73, y:18}));
-  assert.equal(pin.textContent, '73,18');
-  assert.equal(layout.TEXT_PRESETS.some(item => item.x === 73 && item.y === 18), false);
-  assert.match(sandbox.buildSlotDirectives().find(item => item.slot === 0).requirement, /主图要求：标题保持原句/);
-  assert.match(sandbox.buildSlotDirectives().find(item => item.slot === 0).requirement, /水平 73%/);
-  assert.match(sandbox.buildSlotDirectives().find(item => item.slot === 0).requirement, /垂直 18%/);
-  document.querySelector('[data-taobao-text-preset="bottom"]').dispatchEvent({type:'click', preventDefault() {}, stopPropagation() {}});
-  assert.equal(JSON.stringify(sandbox.__customLayout.taobao.textPositions[0]), JSON.stringify({x:50, y:82}));
-  pin.dispatchEvent(point('pointerdown', 24, 364));
-  for (const fn of [...(windowListeners.get('pointerup') || [])]) fn(point('pointerup', 24, 364));
-  assert.equal(JSON.stringify(sandbox.__customLayout.taobao.textPositions[0]), JSON.stringify({x:12, y:91}));
   const typeSize = (widthId, heightId, width, height) => {
     document.getElementById(widthId).value = width;
     document.getElementById(widthId).dispatchEvent({type:'input'});
@@ -1109,7 +1060,7 @@ test('the shell drag handle stores a non-preset point, and typed width height ov
   assert.equal(sandbox._aspectForTitle('【主图】'), '16:9');
   assert.equal(sandbox._aspectForTitle('【卖点图5】'), '5:4');
   assert.equal(sandbox._aspectForTitle('【高级A+模块1】'), '9:16');
-  assert.equal(JSON.stringify(sandbox.__customLayout.taobao.textPositions[0]), JSON.stringify({x:12, y:91}));
+  assert.equal(sandbox.__customLayout.taobao.textPositions, undefined);
   document.getElementById('tbSetStyle').value = 'morandi';
   document.getElementById('tbSetStyle').dispatchEvent({type:'change'});
   const dirs = sandbox.buildSlotDirectives();
@@ -1117,14 +1068,14 @@ test('the shell drag handle stores a non-preset point, and typed width height ov
   const detail = dirs.find(item => item.slot === 7);
   assert.match(main.requirement, /^主图要求：标题保持原句/);
   assert.match(main.requirement, /整套风格：莫兰迪低饱和/);
-  assert.match(main.requirement, /水平 12%/);
-  assert.match(main.requirement, /垂直 91%/);
   assert.doesNotMatch(main.requirement, /宽 800/);
   assert.match(detail.requirement, /^详情要求：已有风格句不要清掉/);
   assert.match(detail.requirement, /整套风格：莫兰迪低饱和/);
   assert.match(detail.requirement, /宽 900 像素，高 1600 像素/);
   assert.equal(sandbox.__customLayout.taobao.setStyle, 'morandi');
-  assert.equal(document.querySelector('[data-taobao-text-pin]').textContent, '12,91');
+  assert.equal(document.querySelector('[data-taobao-text-pin]'),null);
+  assert.equal(document.querySelector('[data-taobao-text-origin]'),null);
+  assert.equal(document.querySelector('.taobao-text-stage'),null);
   assert.equal(sandbox.saved, true);
   const materials = [];
   sandbox.__workbenchMaterials = () => materials;
@@ -1173,198 +1124,12 @@ test('the shell drag handle stores a non-preset point, and typed width height ov
   assert.equal(JSON.stringify(sandbox.buildSlotDirectives().find(item => item.slot === 5).ref_images), JSON.stringify(['SKU图_2']));
   assert.equal(document.getElementById('tbSkuUploadCount').textContent, '已上传 1 张 SKU 图');
   assert.match(sandbox.buildSlotDirectives().find(item => item.slot === 0).requirement, /^主图要求：标题保持原句/);
-  assert.match(sandbox.buildSlotDirectives().find(item => item.slot === 0).requirement, /水平 12%/);
   assert.equal(sandbox._aspectForTitle('【卖点图5】'), '5:4');
-  sandbox.calls = [];
-  sandbox.fetch = (url, init) => {
-    sandbox.calls.push({url, body: JSON.parse(init.body)});
-    return Promise.resolve({ok:true, status:202, headers:{get() { return 'req'; }}, json:async () => ({ok:true})});
-  };
-  let generated = 0;
-  sandbox.triggerGeneration = () => { generated += 1; };
-  sandbox.activeKieTasks = [];
-  sandbox.resumeKieListener = (slot, taskId, isInpaint) => { sandbox.listened = {slot, taskId, isInpaint}; };
-  sandbox.getCurrentSlotTitles = () => ['【主图】'];
-  const sop = document.createElement('textarea');
-  sop.id = 'sopText';
-  sop.value = '【主图】\n文案：轻便耐用';
-  document.body.appendChild(sop);
-  const redraw = document.querySelector('[data-taobao-redraw]');
-  sandbox.__customLayout.taobao.textAnchors = {0:{x:12, y:91}};
-  redraw.dispatchEvent({type:'click', preventDefault() {}, stopPropagation() {}});
-  assert.equal(generated, 1);
-  assert.equal(sandbox.calls.length, 0);
-  sandbox.__customLayout.taobao.textAnchors = {0:null};
-  redraw.dispatchEvent({type:'click', preventDefault() {}, stopPropagation() {}});
-  await sandbox.__taobaoTextMove;
-  assert.equal(sandbox.calls.length, 0, 'an unknown original position must not submit a one-region edit');
-  assert.equal(generated, 1, 'missing origin must not fall back to full generation');
-  const origin = document.querySelector('[data-taobao-text-origin]');
-  origin.dispatchEvent({type:'click', preventDefault() {}, stopPropagation() {}});
-  const currentStage = document.querySelector('.taobao-text-stage');
-  currentStage.querySelector('img')._rect = {left:0, top:0, right:200, bottom:400, width:200, height:400};
-  currentStage.dispatchEvent(point('pointerdown', 100, 48));
-  assert.equal(JSON.stringify(sandbox.__customLayout.taobao.textAnchors[0]), JSON.stringify({x:50, y:12}));
-  assert.equal(JSON.stringify(sandbox.__customLayout.taobao.textPositions[0]), JSON.stringify({x:12, y:91}));
-  sandbox.__customLayout.taobao.textAnchors = {0:{x:50, y:12}};
-  redraw.dispatchEvent({type:'click', preventDefault() {}, stopPropagation() {}});
-  await sandbox.__taobaoTextMove;
-  assert.equal(generated, 1);
-  assert.equal(sandbox.calls.length, 1);
-  assert.equal(sandbox.calls[0].url, '/api/inpaint');
-  const body = sandbox.calls[0].body;
-  assert.equal(body.text_move, true);
-  assert.equal(body.image_url, '/media/main.png');
-  assert.equal(body.base_image_b64, undefined);
-  assert.equal(body.slot_idx, 0);
-  assert.equal(body.mask_regions.length, 2);
-  assert.equal(body.mask_regions[0].role, 'erase');
-  assert.equal(body.mask_regions[1].role, 'paint');
-  assert.ok(body.mask_regions[0].y < body.mask_regions[1].y);
-  assert.match(body.prompt, /原文：轻便耐用/);
-  assert.match(body.prompt, /产品/);
-  assert.match(body.prompt, /房间/);
-  assert.match(body.prompt, /不要重构整张图/);
-  assert.equal(body.firebase_tasks, undefined);
-  assert.equal(sandbox.listened.isInpaint, true);
-  assert.equal(sandbox.listened.slot, 0);
-  redraw.dispatchEvent({type:'click', preventDefault() {}, stopPropagation() {}});
-  await sandbox.__taobaoTextMove;
-  assert.equal(sandbox.calls.length, 1, 'a second click while the slot is pending must not submit another edit');
-});
-
-test('text move keeps the original sentence and describes both masked regions', () => {
-  const old = {x:20, y:20};
-  const next = {x:80, y:80};
-  const regions = layout.textMoveRegions(old, next);
-  assert.equal(regions.length, 2);
-  assert.equal(regions[0].role, 'erase');
-  assert.equal(regions[1].role, 'paint');
-  assert.equal(layout.textMoveRegions(null, next).length, 0);
-  assert.equal(layout.textMoveRegions(old, null).length, 0);
-  assert.equal(layout.textMoveNeeded({textPositions:{0:next}, textAnchors:{0:old}}, 0), true);
-  assert.equal(layout.textMoveNeeded({textPositions:{0:next}, textAnchors:{0:next}}, 0), false);
-  assert.equal(layout.textMoveNeeded({textPositions:{0:next}, textAnchors:{}}, 0), false);
-  assert.equal(layout.textMoveNeeded({textPositions:{0:next}, textAnchors:{0:null}}, 0), true);
-  const sentence = layout.plannedSentence({
-    requirement:'主图要求：标题保持原句；整套风格：莫兰迪低饱和；文字位置：水平 12%、垂直 91%。把本张已有文案放到这个位置',
-    sop:'【主图】\n文案：轻便耐用\n【卖点图1】\n文案：另一句',
-    title:'【主图】',
-    prompt:'本图重点资料：不要用这句。'
-  });
-  assert.equal(sentence, '轻便耐用');
-  const prompt = layout.textMovePrompt({sentence, old, next});
-  assert.match(prompt, /原文：轻便耐用/);
-  assert.match(prompt, /水平 20%/);
-  assert.match(prompt, /垂直 80%/);
-  assert.match(prompt, /产品/);
-  assert.match(prompt, /房间/);
-  assert.match(prompt, /不要重构整张图/);
-  assert.match(prompt, /不要改字/);
-  const fallback = layout.plannedSentence({requirement:'SKU卖点原文；整套风格：胶片质感；本张 SKU 图以已上传的规格图「SKU图_1」为参考。'});
-  assert.equal(fallback, 'SKU卖点原文');
-  assert.equal(layout.plannedSentence({prompt:'局部修改\n原文：轻便耐用\n不要改字',sop:'【主图】\n文案：已更换的构思',title:'【主图】'}), '轻便耐用');
-  assert.equal(layout.plannedSentence({prompt:'原文：杯碟为场景道具，不代表随附配件。'}), '杯碟为场景道具，不代表随附配件。');
-});
-
-test('applying a text move sends a mask to the existing edits endpoint and does not redraw', async t => {
-  const captured = [];
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ec-taobao-text-move-'));
-  // Contract fixture; real local OCR is exercised in the browser test.
-  const textRecognizer=async(_bytes,box)=>box.w<=20?[]:[{text:'轻便耐用',confidence:95,box:box.y<30?{x:18,y:14,w:10,h:4}:{x:75,y:62,w:10,h:4}}];
-  const app = createWorkbench({dataDirectory:directory, configuration:{}, textRecognizer, provider:async request => { captured.push(request); if (!request.mask) throw new Error('missing mask'); return picture; }});
-  await new Promise(resolve => app.server.listen(0, '127.0.0.1', resolve));
-  t.after(async () => { await new Promise(resolve => app.server.close(resolve)); fs.rmSync(directory, {recursive:true, force:true}); });
-  const base = 'http://127.0.0.1:' + app.server.address().port;
-  const {token} = await (await fetch(base + '/api/session')).json();
-  const call = async (url, payload) => {
-    const response = await fetch(base + url, {method:'POST', headers:{'Content-Type':'application/json', 'X-Workbench-Token':token}, body:JSON.stringify(payload)});
-    return {response, data:await response.json()};
-  };
-  const wait = async id => {
-    let task;
-    for (let i = 0; i < 50; i++) {
-      task = await (await fetch(base + '/api/tasks/hyrule_tasks/' + id)).json();
-      if (task.status === 'completed' || task.status === 'failed') return task;
-      await new Promise(resolve => setTimeout(resolve, 10));
-    }
-    return task;
-  };
-  const picture = encodeRgbaPng(100, 80, Buffer.alloc(100 * 80 * 4, 255));
-  const imageUrl = app.saveImage(picture);
-  const old = {x:20, y:20};
-  const next = {x:80, y:80};
-  const regions = layout.textMoveRegions(old, next);
-  const prompt = layout.textMovePrompt({sentence:'轻便耐用', old, next});
-  const missing = await call('/api/inpaint', {text_move:true, task_id:'text_move_missing', slot_idx:0, prompt, image_url:imageUrl});
-  assert.equal(missing.response.status, 400);
-  assert.match(missing.data.error, /遮罩/);
-  assert.equal(captured.length, 0);
-  const beforeBalance = app.store.state.balance;
-  const invalidRegions = [
-    regions.slice(1),
-    [regions[0], regions[0]],
-    [{...regions[0],x:-1}, regions[1]],
-    [{...regions[0],x:99}, regions[1]],
-    [{...regions[0],w:0}, regions[1]],
-    [{...regions[0],h:-1}, regions[1]],
-    [{...regions[0],x:null}, regions[1]],
-    [{...regions[0],x:''}, regions[1]]
-  ];
-  for (let i = 0; i < invalidRegions.length; i++) {
-    const invalid = await call('/api/inpaint', {text_move:true,task_id:'text_move_invalid_'+i,slot_idx:0,prompt,image_url:imageUrl,mask_regions:invalidRegions[i]});
-    assert.equal(invalid.response.status, 400);
-    assert.match(invalid.data.error, /遮罩/);
-  }
-  const noBase = await call('/api/inpaint', {text_move:true,task_id:'text_move_no_base',slot_idx:0,prompt,mask_regions:regions});
-  assert.equal(noBase.response.status, 400);
-  for(const fields of [{},{text_sentence:'轻便耐用',text_target:{x:'80',y:80}},{text_sentence:'第一行\n第二行',text_target:next}]) {
-    const invalid=await call('/api/inpaint',{text_move:true,task_id:'invalid_position',slot_idx:0,prompt,image_url:imageUrl,mask_regions:regions,...fields});
-    assert.equal(invalid.response.status,400);
-  }
-  assert.equal(captured.length, 0);
-  assert.equal(app.store.state.balance, beforeBalance, 'invalid edits must fail before queuing or simulated charging');
-  const sent = await call('/api/inpaint', {text_move:true,text_sentence:'轻便耐用',text_target:next, task_id:'text_move_ok', slot_idx:1, prompt, aspect_ratio:'1:1', image_url:imageUrl, mask_regions:regions, categorized_images:[{filename:'产品主体图_1', url:'/media/other.png'}]});
-  assert.equal(sent.response.status, 202);
-  const task = await wait('text_move_ok');
-  assert.equal(task.status, 'completed');
-  assert.equal(captured.length, 1);
-  assert.equal(captured[0].kind, 'inpaint');
-  assert.equal(captured[0].references.length, 2);
-  assert.deepEqual(fs.readFileSync(path.join(directory,captured[0].references[0])), picture);
-  const guide=fs.readFileSync(path.join(directory,captured[0].references[1]));
-  assert.notDeepEqual(guide,picture,'position reference is distinct from the unchanged first image');
-  assert.match(captured[0].prompt,/输入图1是唯一编辑底图/);
-  assert.match(captured[0].prompt, /原文：轻便耐用/);
-  assert.match(captured[0].prompt, /不要重构整张图/);
-  assert.match(captured[0].prompt, /产品和房间/);
-  assert.equal(pngAlpha(captured[0].mask, 20, 16), 0);
-  assert.equal(pngAlpha(captured[0].mask, 80, 64), 0);
-  assert.equal(pngAlpha(captured[0].mask, 0, 79), 255);
-  for (let y = 0; y < 80; y++) for (let x = 0; x < 100; x++) {
-    const editable = [{x:16,y:12,w:14,h:8},{x:73,y:60,w:14,h:8}].some(box=>x>=box.x && y>=box.y && x<box.x+box.w && y<box.y+box.h);
-    assert.equal(pngAlpha(captured[0].mask,x,y), editable ? 0 : 255, `mask alpha at ${x},${y}`);
-  }
-  const upstream = [];
-  const server = http.createServer(async (req, res) => {
-    const chunks = [];
-    for await (const chunk of req) chunks.push(chunk);
-    upstream.push({path:req.url, body:Buffer.concat(chunks).toString('utf8')});
-    res.writeHead(200, {'Content-Type':'application/json'});
-    res.end(JSON.stringify({data:[{b64_json:png.toString('base64')}]}));
-  });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  t.after(() => new Promise(resolve => server.close(resolve)));
-  const provider = createImageProvider({SUANZHOU_IMAGE_API_KEY:'dedicated-test-key', SUANZHOU_IMAGE_BASE_URL:'http://127.0.0.1:' + server.address().port}, directory);
-  const mask = editMask(picture, regions);
-  await provider({prompt, references:['data:image/png;base64,' + picture.toString('base64')], mask, ratio:'1:1'});
-  assert.equal(upstream.length, 1);
-  assert.equal(upstream[0].path, '/images/edits');
-  assert.match(upstream[0].body, /name="mask"/);
-  assert.match(upstream[0].body, /name="image\[\]"/);
-  assert.match(upstream[0].body, /不要重构整张图/);
-  assert.match(upstream[0].body, /轻便耐用/);
-  assert.doesNotMatch(upstream.map(item => item.path).join(','), /images\/generations/);
-  await assert.rejects(provider({prompt:'no base', mask, references:[]}), /没有改成整张重绘/);
-  assert.equal(upstream.length, 1);
+  const generated=[];
+  sandbox.triggerGeneration=index=>generated.push(index);
+  sandbox.__customLayout.taobao.textPositions={0:{x:12,y:91}};
+  sandbox.__customLayout.taobao.textAnchors={0:{x:50,y:12}};
+  document.querySelector('[data-taobao-redraw]').dispatchEvent({type:'click',preventDefault(){},stopPropagation(){}});
+  assert.deepEqual(generated,[0],'old movement state cannot hijack ordinary redraw');
+  assert.equal(document.querySelector('[data-taobao-text-pin]'),null);
 });

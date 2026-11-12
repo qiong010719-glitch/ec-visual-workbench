@@ -1,9 +1,7 @@
 /* Pure Taobao shell mapping. Customer labels sit on the existing 14 slots.
    Internal titles stay 主图 / 卖点图 / 高级A+ so the planner and single-slot redraw keep working.
    Shortcut sizes stay the workbench trio: 1:1 → 1024², 16:9 → 1536×1024, 3:4 → 1024×1536.
-   Custom width/height and the first text placement are written into the same slot directive
-   the generate path already sends. Moving text on an existing picture is a masked edit
-   of that picture: the same image model repaints the original sentence. No second painter. */
+   Custom width/height and style choices use the existing slot directives. */
 (function (root) {
   const SIZE_CHOICES = [
     {id:'square', ratio:'1:1', label:'工作台可选尺寸 · 方图', pixels:'1024×1024'},
@@ -29,11 +27,6 @@
     {id:'dark_tone', label:'暗调质感', note:'整套风格：暗调质感。主图、SKU图和详情用深色背景和集中的主体光，四周收暗，产品仍看得清，不改商品结构和已确认事实。这是出图方向，不是实拍承诺，也不绑定某一品类。'},
     {id:'high_contrast', label:'高对比撞色', note:'整套风格：高对比撞色。主图、SKU图和详情用同一套高对比色块，颜色少而明确，产品仍是主体，不改商品结构和已确认事实。这是出图方向，不是实拍承诺，也不绑定某一品类。'}
   ];
-  const TEXT_PRESETS = [
-    {id:'top', label:'靠上', x:50, y:12},
-    {id:'middle', label:'居中', x:50, y:50},
-    {id:'bottom', label:'靠下', x:50, y:82}
-  ];
   const CUSTOM_MIN = 64;
   const CUSTOM_MAX = 2048;
   const PORTRAIT_RATIOS = ['3:4', '2:3', '9:16'];
@@ -41,7 +34,6 @@
     mainCount:5, skuCount:1, detailCount:3,
     sizes:{main:'square', sku:'square', detail:'portrait'},
     customSizes:{main:null, sku:null, detail:null},
-    textPositions:{},
     detailWhitespace:true, background:'off', setStyle:'off'
   };
   function clampInt(value, min, max) {
@@ -89,55 +81,12 @@
       detail: parseCustomSize(raw.detail)
     };
   }
-  function clampTextPosition(position) {
-    if (!position || typeof position !== 'object') return null;
-    const x = Number(position.x);
-    const y = Number(position.y);
-    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
-    const round = value => Math.round(Math.max(0, Math.min(100, value)) * 10) / 10;
-    return {x: round(x), y: round(y)};
-  }
-  function textPositionsOf(spec) {
-    const raw = spec?.textPositions || {};
-    const out = {};
-    for (const [key, value] of Object.entries(raw)) {
-      if (!/^\d+$/.test(key)) continue;
-      const slot = Number(key);
-      if (slot > 13) continue;
-      const pos = clampTextPosition(value);
-      if (pos) out[slot] = pos;
-    }
-    return out;
-  }
-  function textAnchorsOf(spec) {
-    const raw = spec?.textAnchors || {};
-    const out = {};
-    for (const [key, value] of Object.entries(raw)) {
-      if (!/^\d+$/.test(key)) continue;
-      const slot = Number(key);
-      if (slot > 13) continue;
-      if (value == null) { out[slot] = null; continue; }
-      const pos = clampTextPosition(value);
-      if (pos) out[slot] = pos;
-    }
-    return out;
-  }
-  function textPositionFromPointer(pointer, rect) {
-    const width = Number(rect?.width);
-    const height = Number(rect?.height);
-    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return null;
-    const x = (Number(pointer?.clientX) - Number(rect.left)) / width * 100;
-    const y = (Number(pointer?.clientY) - Number(rect.top)) / height * 100;
-    return clampTextPosition({x, y});
-  }
   function normalize(spec) {
     const counts = clampLayout(spec || DEFAULTS);
     return {
       ...counts,
       sizes: sizesOf(spec || DEFAULTS),
       customSizes: customSizesOf(spec || DEFAULTS),
-      textPositions: textPositionsOf(spec || DEFAULTS),
-      textAnchors: textAnchorsOf(spec || DEFAULTS),
       detailWhitespace: !!(spec && Object.prototype.hasOwnProperty.call(spec, 'detailWhitespace') ? spec.detailWhitespace : DEFAULTS.detailWhitespace),
       background: spec?.background === 'white' || spec?.background === 'transparent' ? spec.background : 'off',
       setStyle: styleOf(spec).id
@@ -255,11 +204,6 @@
     const ratio = aspectRatioForPixels(custom.width, custom.height);
     return `本张自定义宽高：宽 ${custom.width} 像素，高 ${custom.height} 像素，画幅 ${ratio}。按这个宽高安排构图，产品完整留在画面里。`;
   }
-  function positionNote(position) {
-    const pos = clampTextPosition(position);
-    if (!pos) return '';
-    return `文字位置：水平 ${pos.x}%、垂直 ${pos.y}%（相对画面左上角，可落在任意一点，不限于靠上、居中、靠下）。把本张已有文案放到这个位置，不要改文案内容，产品仍完整留在画面里。`;
-  }
   function skuReferenceNote(filename) {
     return `本张 SKU 图以已上传的规格图「${filename}」为参考。按这张规格图的颜色和外观出图，不要只按产品主体图来画，也不要换成其他规格。`;
   }
@@ -293,98 +237,22 @@
       if (zone && style) notes.push(style);
       const size = sizeNote(zone, spec);
       if (size) notes.push(size);
-      const place = textPositionsOf(spec)[item.slot] || null;
-      const placeNote = positionNote(place);
-      if (placeNote) notes.push(placeNote);
       if (!notes.length) return item;
       const next = {...item, requirement:[item.requirement, ...notes].filter(Boolean).join('；')};
-      if (place) next.text_position = {x: place.x, y: place.y};
       const custom = zone === 'main' || zone === 'sku' || zone === 'detail' ? customSizesOf(spec)[zone] : null;
       if (custom) next.custom_size = {width: custom.width, height: custom.height};
       return next;
     });
     return {directives, used};
   }
-  function textMoveNeeded(spec, index) {
-    const normalized = normalize(spec);
-    const next = normalized.textPositions[index];
-    if (!next) return false;
-    if (!Object.prototype.hasOwnProperty.call(normalized.textAnchors, index)) return false;
-    const old = normalized.textAnchors[index];
-    return !old || old.x !== next.x || old.y !== next.y;
-  }
-  function textRegion(position, role) {
-    const pos = clampTextPosition(position);
-    if (!pos) return null;
-    const w = 56;
-    const h = 18;
-    const round = value => Math.round(value * 10) / 10;
-    return {
-      role,
-      x: round(Math.max(0, Math.min(100 - w, pos.x - w / 2))),
-      y: round(Math.max(0, Math.min(100 - h, pos.y - h / 2))),
-      w, h
-    };
-  }
-  function textMoveRegions(old, next) {
-    const erase = textRegion(old, 'erase');
-    const paint = textRegion(next, 'paint');
-    return erase && paint ? [erase, paint] : [];
-  }
-  function sectionBody(sop, title) {
-    const text = String(sop || '');
-    const heading = String(title || '').trim();
-    if (!text || !heading) return '';
-    const start = text.indexOf(heading);
-    if (start < 0) return '';
-    const rest = text.slice(start + heading.length);
-    const next = rest.search(/\n【/);
-    return next < 0 ? rest : rest.slice(0, next);
-  }
-  function labeledSentence(text) {
-    const source = String(text || '');
-    const labeled = source.match(/(?:原文|文案)[:：]\s*([^\n]{1,120})/) || source.match(/(?:主标题|标题)[:：]\s*([^\n]{1,120})/);
-    if (labeled) {
-      const sentence = labeled[1].trim();
-      if (sentence && !/^(整套风格|文字位置|本张)/.test(sentence)) return sentence;
-    }
-    const quoted = source.match(/「([^」\n]{1,80})」/);
-    if (quoted && !/[._]/.test(quoted[1])) return quoted[1].trim();
-    return '';
-  }
-  function baseRequirement(requirement) {
-    return String(requirement || '').split('；').map(part => part.trim()).filter(part => part && !/^(整套风格：|文字位置：|本张自定义宽高：|详情图底部留出|本张为白底图|本张按透明图|本张 SKU 图以已上传)/.test(part)).join('；');
-  }
-  function plannedSentence({requirement, sop, title, prompt, productDesc} = {}) {
-    const section = sectionBody(sop, title);
-    const labeled = labeledSentence(prompt) || labeledSentence(section) || labeledSentence(requirement);
-    if (labeled) return labeled;
-    const base = baseRequirement(requirement);
-    if (base) return base;
-    const fact = String(prompt || section || '').match(/本图重点资料[:：]\s*([^\n。]{1,80})/);
-    if (fact) return fact[1].trim();
-    return (labeledSentence(productDesc) || String(productDesc || '').trim()).slice(0, 80);
-  }
-  function textMovePrompt({sentence, old, next}) {
-    const place = value => `水平 ${value.x}%、垂直 ${value.y}%`;
-    return [
-      '局部遮罩修改。只改遮罩中完全透明的区域。',
-      '遮罩以外的产品、房间、背景保持这张已生成图片的原样，不要重新构图，不要重构整张图，不要整张重绘。',
-      old ? `旧文字区域（${place(old)} 一带）：去掉这里现有的营销文案，按周围画面补回原来的产品、房间或背景，不要留字。` : '去掉画面上现有的这句营销文案，但只动遮罩里允许修改的地方。',
-      `新位置（${place(next)} 一带）：在这里把下面这句原文原样画上去。字形仍由图像模型绘制。不要改字，不要换说法，不要增删。`,
-      `原文：${sentence}`,
-      '产品外形、颜色、结构和所在房间与当前这张图保持一致。'
-    ].join('\n');
-  }
   function backgroundSlot(spec) {
     const slots = activeSlots(spec);
     return (slots.find(item => item.zone === 'sku') || slots.find(item => item.zone === 'main') || slots.find(item => item.zone === 'detail'))?.slot ?? null;
   }
   root.TaobaoLayout = {
-    SIZE_CHOICES, SET_STYLES, TEXT_PRESETS, CUSTOM_MIN, CUSTOM_MAX, DEFAULTS, clampLayout, normalize, activeSlots, zoneForSlot, customerLabel,
-    toCustomLayout, countsMatch, ratioForZone, aspectRatioForPixels, parseCustomSize, clampTextPosition, textPositionFromPointer,
+    SIZE_CHOICES, SET_STYLES, CUSTOM_MIN, CUSTOM_MAX, DEFAULTS, clampLayout, normalize, activeSlots, zoneForSlot, customerLabel,
+    toCustomLayout, countsMatch, ratioForZone, aspectRatioForPixels, parseCustomSize,
     slotFromTitle, ratioForTitle, backgroundNote,
-    directiveNote, sizeNote, positionNote, styleOf, styleNote, annotateDirectives, attachSkuRefs, skuReferenceNote, backgroundSlot,
-    textMoveNeeded, textMoveRegions, plannedSentence, textMovePrompt
+    directiveNote, sizeNote, styleOf, styleNote, annotateDirectives, attachSkuRefs, skuReferenceNote, backgroundSlot
   };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -56,10 +56,11 @@ test('newly studied carrier, garden and bag categories use relevant actions',()=
     assert.match(section.storyboard.scene,scene);assert.match(section.storyboard.action,action);
   }
 });
-test('main and THD keep their stronger constraints',()=>{
+test('first image follows the chosen background while explicit THD restrictions remain',()=>{
   const main=buildPlan(product);
-  assert.match(main.sections[0].detail,/白底/);
-  assert.match(main.sections[0].detail,/不.*营销文字/);
+  assert.doesNotMatch(main.sections[0].detail,/白底|不.*营销文字/);
+  assert.match(promptForSlot({},main.sections[0],main),/场景|设计背景/);
+  assert.equal(main.sections[0].outputConstraint,null);
   const thd=buildPlan({...product,design_scope:'thd_only'});
   const prompt=promptForSlot({},thd.sections[3],thd);
   assert.match(prompt,/不加文字、数字、图标和人物/);
@@ -81,7 +82,7 @@ test('ultra composites contain one set guide and real per-panel directions',()=>
   const plan=buildPlan({...product,design_scope:'ultra_main'});
   assert.equal(plan.sections.length,1);assert.match(plan.text,/场景广告/);
   assert.match(plan.sections[0].detail,/分镜1|画面1/);
-  assert.match(plan.sections[0].detail,/白底/);
+  assert.doesNotMatch(plan.sections[0].detail,/白底/);
   assert.match(plan.sections[0].detail,/视觉证据/);
 });
 test('all three no-text/main-only output scopes remain valid',()=>{
