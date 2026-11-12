@@ -1270,7 +1270,9 @@ test('text move keeps the original sentence and describes both masked regions', 
 test('applying a text move sends a mask to the existing edits endpoint and does not redraw', async t => {
   const captured = [];
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ec-taobao-text-move-'));
-  const app = createWorkbench({dataDirectory:directory, configuration:{}, provider:async request => { captured.push(request); if (!request.mask) throw new Error('missing mask'); return picture; }});
+  // Contract fixture; real local OCR is exercised in the browser test.
+  const textRecognizer=async(_bytes,box)=>box.w<=20?[]:[{text:'轻便耐用',confidence:95,box:box.y<30?{x:18,y:14,w:10,h:4}:{x:75,y:62,w:10,h:4}}];
+  const app = createWorkbench({dataDirectory:directory, configuration:{}, textRecognizer, provider:async request => { captured.push(request); if (!request.mask) throw new Error('missing mask'); return picture; }});
   await new Promise(resolve => app.server.listen(0, '127.0.0.1', resolve));
   t.after(async () => { await new Promise(resolve => app.server.close(resolve)); fs.rmSync(directory, {recursive:true, force:true}); });
   const base = 'http://127.0.0.1:' + app.server.address().port;
@@ -1316,9 +1318,13 @@ test('applying a text move sends a mask to the existing edits endpoint and does 
   }
   const noBase = await call('/api/inpaint', {text_move:true,task_id:'text_move_no_base',slot_idx:0,prompt,mask_regions:regions});
   assert.equal(noBase.response.status, 400);
+  for(const fields of [{},{text_sentence:'轻便耐用',text_target:{x:'80',y:80}},{text_sentence:'第一行\n第二行',text_target:next}]) {
+    const invalid=await call('/api/inpaint',{text_move:true,task_id:'invalid_position',slot_idx:0,prompt,image_url:imageUrl,mask_regions:regions,...fields});
+    assert.equal(invalid.response.status,400);
+  }
   assert.equal(captured.length, 0);
   assert.equal(app.store.state.balance, beforeBalance, 'invalid edits must fail before queuing or simulated charging');
-  const sent = await call('/api/inpaint', {text_move:true, task_id:'text_move_ok', slot_idx:1, prompt, aspect_ratio:'1:1', image_url:imageUrl, mask_regions:regions, categorized_images:[{filename:'产品主体图_1', url:'/media/other.png'}]});
+  const sent = await call('/api/inpaint', {text_move:true,text_sentence:'轻便耐用',text_target:next, task_id:'text_move_ok', slot_idx:1, prompt, aspect_ratio:'1:1', image_url:imageUrl, mask_regions:regions, categorized_images:[{filename:'产品主体图_1', url:'/media/other.png'}]});
   assert.equal(sent.response.status, 202);
   const task = await wait('text_move_ok');
   assert.equal(task.status, 'completed');
@@ -1332,14 +1338,11 @@ test('applying a text move sends a mask to the existing edits endpoint and does 
   assert.match(captured[0].prompt, /原文：轻便耐用/);
   assert.match(captured[0].prompt, /不要重构整张图/);
   assert.match(captured[0].prompt, /产品和房间/);
-  assert.equal(pngAlpha(captured[0].mask, 28, 16), 0);
-  assert.equal(pngAlpha(captured[0].mask, 60, 60), 0);
+  assert.equal(pngAlpha(captured[0].mask, 20, 16), 0);
+  assert.equal(pngAlpha(captured[0].mask, 80, 64), 0);
   assert.equal(pngAlpha(captured[0].mask, 0, 79), 255);
   for (let y = 0; y < 80; y++) for (let x = 0; x < 100; x++) {
-    const editable = regions.some(region => {
-      const left=Math.round(region.x), top=Math.round(region.y / 100 * 80);
-      return x >= left && x < left + Math.round(region.w) && y >= top && y < top + Math.round(region.h / 100 * 80);
-    });
+    const editable = [{x:16,y:12,w:14,h:8},{x:73,y:60,w:14,h:8}].some(box=>x>=box.x && y>=box.y && x<box.x+box.w && y<box.y+box.h);
     assert.equal(pngAlpha(captured[0].mask,x,y), editable ? 0 : 255, `mask alpha at ${x},${y}`);
   }
   const upstream = [];

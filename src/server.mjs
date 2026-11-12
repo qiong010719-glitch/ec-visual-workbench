@@ -7,6 +7,7 @@ import {Store} from './store.mjs';
 import {planProduct, buildPlan, slotPlan, promptForSlot} from './planner.mjs';
 import {createImageProvider, createImageDownloader, imageType, resolveImage} from './provider.mjs';
 import {prepareTextMove, finishTextMove, textMoveBoundsNote, textMoveGuide} from './text-move.mjs';
+import {locateTextMove,installPrecision} from './text-move-precision.mjs';
 import {ResearchService} from './research.mjs';
 import {designPatterns} from './design-patterns.mjs';
 import {generationMode} from './visual-style.mjs';
@@ -19,7 +20,7 @@ const validId = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,120}$/.t
 const uuid = () => crypto.randomUUID();
 const fail = (status, message) => Object.assign(new Error(message), {status});
 
-export function createWorkbench({dataDirectory = path.join(root, 'data'), configuration = process.env, provider, download, planner, researchOptions = {}} = {}) {
+export function createWorkbench({dataDirectory = path.join(root, 'data'), configuration = process.env, provider, download, planner, textRecognizer, researchOptions = {}} = {}) {
   const store = new Store(dataDirectory);
   const mediaDirectory = path.join(dataDirectory, 'media');
   fs.mkdirSync(mediaDirectory, {recursive: true});
@@ -63,7 +64,8 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
         let bytes=await imageDownloader(task.resultUrl,{onAttempt:attempt=>store.task(key,{downloadAttempt:attempt})});
         if(task.textMove) {
           const edit=await prepareTextMove(await resolveImage(task.textMove.sourceImageUrl,mediaDirectory),task.textMove.regions);
-          bytes=await finishTextMove(edit,bytes);
+          if(task.textMove.precision)installPrecision(edit,task.textMove.precision);
+          bytes=await finishTextMove(edit,bytes,textRecognizer);
         }
         store.task(key,{status:'completed',phase:'completed',imageUrl:saveImage(bytes),error:null,downloadRecoveredAt:new Date().toISOString()});
       } catch(error) {store.task(key,{status:'failed',phase:error.code==='TEXT_MOVE_REJECTED'?'edit_rejected':'download_failed',error:String(error.message).slice(0,500)});}
@@ -120,6 +122,9 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
       if (!textMoveBase) throw fail(400, '局部改字需要已生成的原图，没有改成整张重绘。');
       if (!Array.isArray(payload.mask_regions) || payload.mask_regions.length !== 2 || payload.mask_regions[0]?.role !== 'erase' || payload.mask_regions[1]?.role !== 'paint') throw fail(400, '局部改字需要旧位和新位两个遮罩，没有改成整张重绘。');
       if (payload.mask_regions.some(region => !region || [region.x, region.y, region.w, region.h].some(value => typeof value !== 'number' || !Number.isFinite(value)) || region.x < 0 || region.y < 0 || region.w <= 0 || region.h <= 0 || region.x + region.w > 100 || region.y + region.h > 100)) throw fail(400, '局部改字遮罩无效，没有改成整张重绘。');
+      if(typeof payload.text_sentence!=='string' || !payload.text_sentence.trim() || payload.text_sentence.length>120 || /[\r\n]/.test(payload.text_sentence) ||
+        !payload.text_target || ['x','y'].some(k=>typeof payload.text_target[k]!=='number' || !Number.isFinite(payload.text_target[k]) || payload.text_target[k]<0 || payload.text_target[k]>100))
+        throw fail(400,'局部改字需要完整的单行原文和拖动位置；请刷新页面后重新标记。');
     }
     if (!provider && !configuration.SUANZHOU_IMAGE_API_KEY) throw fail(503, '缺少专用图片密钥；请求未提交，也未扣点');
     const known = tasks.map(t => store.state.tasks['hyrule_tasks/' + t.taskId]);
@@ -160,17 +165,19 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
         try {
           let edit, requestPrompt=prompt, requestRefs=refs;
           if (textMove) {
+            store.task(key,{phase:'locating_text'});
             const baseBytes = await resolveImage(refs[0], mediaDirectory);
             edit = await prepareTextMove(baseBytes, payload.mask_regions);
+            await locateTextMove(edit,{sentence:payload.text_sentence,target:payload.text_target},textRecognizer);
             // Persist an immutable input for download recovery, including inline uploads.
             const sourceImageUrl=saveImage(edit.source);
             const guideImageUrl=saveImage(textMoveGuide(edit));
             requestRefs=[sourceImageUrl,guideImageUrl];
             requestPrompt+='\n'+textMoveBoundsNote(edit);
-            store.task(key,{textMove:{sourceImageUrl,guideImageUrl,regions:payload.mask_regions},prompt:requestPrompt,referenceImages:requestRefs});
+            store.task(key,{phase:'generating',textMove:{sourceImageUrl,guideImageUrl,regions:payload.mask_regions,precision:edit.precision},prompt:requestPrompt,referenceImages:requestRefs});
           }
           let bytes = await imageProvider({prompt:requestPrompt, references:requestRefs, ratio:task.aspect_ratio || section?.ratio || '1:1', model, kind, ...(edit ? {mask:edit.mask} : {}), onProgress:patch=>store.task(key,patch)});
-          if(edit) bytes=await finishTextMove(edit,bytes);
+          if(edit) {store.task(key,{phase:'checking_text'});bytes=await finishTextMove(edit,bytes,textRecognizer);}
           store.task(key, {status:'completed',phase:'completed', imageUrl:saveImage(bytes), provider:provider ? 'test-provider' : 'suanzhou', model});
         } catch (error) {
           store.task(key, {status:'failed',phase:error.code==='TEXT_MOVE_REJECTED'?'edit_rejected':store.state.tasks[key].resultUrl?'download_failed':'generation_failed', error: String(error.message).slice(0,500)});

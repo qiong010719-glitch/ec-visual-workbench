@@ -91,13 +91,27 @@ async function fixture(t,options={}) {
   return {...app,base,call,wait};
 }
 
+test('uncertain local recognition stops before the provider and returns the simulated charge',async t=>{
+  let generated=0;
+  const app=await fixture(t,{textRecognizer:async()=>[],provider:async()=>{generated++;return source();}});
+  const before=app.store.state.balance;
+  const sent=await app.call('/api/inpaint',{text_move:true,text_sentence:'测试',text_target:{x:70,y:75},task_id:'unrecognized',slot_idx:0,prompt:'原文：测试',base_image_b64:'data:image/png;base64,'+source().toString('base64'),mask_regions:regions});
+  assert.equal(sent.status,202);
+  const task=await app.wait('unrecognized');
+  assert.equal(task.phase,'edit_rejected');assert.match(task.error,/本次未提交出图/);
+  assert.equal(task.imageUrl,undefined);assert.equal(task.canRetryDownload,false);
+  assert.equal(generated,0);assert.equal(app.store.state.balance,before);
+});
+
 test('download recovery retains mask enforcement after a restart and never resubmits generation',async t=>{
   let generated=0,downloads=0;
-  const app=await fixture(t,{provider:async({onProgress})=>{generated++;await onProgress({resultUrl:'https://example.com/edited.png'});throw new Error('download timeout');}});
+  const textRecognizer=async(_bytes,box)=>box.w===30&&box.h===20?[{text:'测试',confidence:95,box:{x:15,y:15,w:12,h:6}}]:box.w>40?[{text:'测试',confidence:95,box:{x:64,y:72,w:12,h:6}}]:[];
+  const app=await fixture(t,{textRecognizer,provider:async({onProgress})=>{generated++;await onProgress({resultUrl:'https://example.com/edited.png'});throw new Error('download timeout');}});
   const inline='data:image/png;base64,'+source().toString('base64');
-  assert.equal((await app.call('/api/inpaint',{text_move:true,task_id:'recover_masked',slot_idx:0,prompt:'原文：测试',base_image_b64:inline,mask_regions:regions})).status,202);
+  assert.equal((await app.call('/api/inpaint',{text_move:true,text_sentence:'测试',text_target:{x:70,y:75},task_id:'recover_masked',slot_idx:0,prompt:'原文：测试',base_image_b64:inline,mask_regions:regions})).status,202);
   const initial=await app.wait('recover_masked');assert.equal(initial.canRetryDownload,true);
-  const recovery=await fixture(t,{dataDirectory:app.store.directory,download:async()=>{downloads++;const raw=await decode(source());draw(raw,88,70,6,8,0);return encodeRgbaPng(100,100,raw);}});
+  const recovery=await fixture(t,{dataDirectory:app.store.directory,textRecognizer,download:async()=>{downloads++;const raw=await decode(source());draw(raw,76,71,6,6,0);return encodeRgbaPng(100,100,raw);}});
+  assert.deepEqual(recovery.store.state.tasks['hyrule_tasks/recover_masked'].textMove.precision.boxes,[{x:13,y:13,w:16,h:10},{x:62,y:70,w:16,h:10}]);
   const chargeCount=recovery.store.state.charges.length;
   assert.equal((await recovery.call('/api/downloads/retry',{taskId:'recover_masked'})).status,202);
   const rejected=await recovery.wait('recover_masked');

@@ -402,6 +402,8 @@
     const taskId = `textmove_${Date.now()}_${index}`;
     const payload = {
       text_move: true,
+      text_sentence: sentence,
+      text_target: {x:next.x,y:next.y},
       task_id: taskId,
       slot_idx: index,
       prompt: layout.textMovePrompt({sentence, old, next}),
@@ -467,7 +469,7 @@
     const regionGuides = ['erase','paint'].map(role => {
       const guide = document.createElement('div');
       guide.className = 'taobao-text-region';guide.dataset.role = role;
-      guide.textContent = role === 'erase' ? '原字清除区域' : '新字放置区域';
+      guide.textContent = role === 'erase' ? '原字查找范围' : '新位置参考范围';
       stage.appendChild(guide);return guide;
     });
     const showRegions = () => {
@@ -516,7 +518,7 @@
     originNote.className = 'taobao-text-origin-note';
     const describeOrigin = () => {
       const old = window.__customLayout?.taobao?.textAnchors?.[index];
-      originNote.textContent = old ? `原字中心：${old.x}%, ${old.y}%。移动区域约 56%×18%；框内画面可能一起变化，出图后请核对原文和位置。` : '首次移动前，先标记原图中文字的中心；此处不会自动识别文字。';
+      originNote.textContent = old ? `原字中心：${old.x}%, ${old.y}%。提交时识别单行原文并收紧重绘范围；新字以拖动钉为中心。识别失败、靠边放不下或结果明显偏位时保留原图。` : '先标记原图中文字的中心，再拖动新位置；提交时会核对单行原文。';
       showRegions();
     };
     describeOrigin();

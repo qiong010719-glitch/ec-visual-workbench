@@ -1,5 +1,6 @@
 import sharp from 'sharp';
 import {editMask, encodeRgbaPng, pixelBox} from './provider.mjs';
+import {checkTextMove} from './text-move-precision.mjs';
 
 const options = {limitInputPixels: 16777216, failOn: 'warning'};
 const rejected = message => Object.assign(new Error(`${message} 已保留原图，未自动重试出图。`), {code:'TEXT_MOVE_REJECTED'});
@@ -23,6 +24,7 @@ export async function prepareTextMove(bytes, regions) {
 }
 
 function paintArea(edit) {
+  if(edit.precision)return edit.precision.target;
   const box = edit.boxes[1];
   const margin = Math.max(1, Math.round(Math.min(box.w, box.h) * .12));
   return {x:box.x+margin,y:box.y+margin,w:Math.max(1,box.w-margin*2),h:Math.max(1,box.h-margin*2)};
@@ -73,7 +75,7 @@ export function textMoveBoundsNote(edit) {
   return [
     '输入图1是唯一编辑底图。输入图2只是同一张图的位置指示，不是要合成进结果的素材。红框标出要擦去原文的区域；蓝框标出新文案必须完整落入的范围，蓝色十字标出整句的中心。',
     `严格按图2的蓝色十字居中绘制原文。蓝框像素范围：左上角 (${area.x}, ${area.y})，右下角 (${area.x+area.w-1}, ${area.y+area.h-1})，原图 ${edit.width}×${edit.height}。所有字和标点都必须在蓝框以内。`,
-    '位置优先于自动排版。允许文案在指定位置覆盖原有物体，但不要搬动、删除或重画物体来腾位置。不要为了避让植物、商品或其他画面内容把文字移向旁边空白；空间不足时缩小字号或在框内换行，不能删字。',
+    edit.precision ? '保留原句的单行排版、字号和宽高。严格在蓝框原样绘制整句，不要缩小、换行、删字或偏移。允许文字覆盖原物体，但不要删除、搬动或重画物体来腾位置。' : '位置优先于自动排版。允许文案在指定位置覆盖原有物体，但不要搬动、删除或重画物体来腾位置。不要为了避让植物、商品或其他画面内容把文字移向旁边空白；空间不足时缩小字号或在框内换行，不能删字。',
     '仅从图1恢复背景和绘制原文。输出中必须完全没有图2的红框、蓝框、十字或其他指示线。'
   ].join('\n');
 }
@@ -122,11 +124,12 @@ export function assertSafeTextBoundary(edit, result) {
   }
 }
 
-export async function finishTextMove(edit, resultBytes) {
+export async function finishTextMove(edit, resultBytes, recognize) {
   let result;
   try {result = await pixels(resultBytes);} catch {throw rejected('无法校验局部改字返回的图片。');}
   if (result.width !== edit.width || result.height !== edit.height) throw rejected('局部改字返回的尺寸与原图不一致。');
   assertGuideRemoved(edit,result.data);
+  await checkTextMove(edit,encodeRgbaPng(edit.width,edit.height,result.data),recognize);
   assertSafeTextBoundary(edit, result.data);
   // Copy only editable pixels. Opaque-mask RGBA is always the decoded original,
   // including transparency; lossless PNG avoids changing it during re-encoding.
@@ -135,5 +138,9 @@ export async function finishTextMove(edit, resultBytes) {
     const start = (y * edit.width + box.x) * 4;
     result.data.copy(merged, start, start, start + box.w * 4);
   }
-  return encodeRgbaPng(edit.width, edit.height, merged);
+  const output=encodeRgbaPng(edit.width, edit.height, merged);
+  // Recheck the actual delivered pixels too: compositing must not leave a
+  // readable raw result as a clipped or broken sentence in the final image.
+  if(edit.precision)await checkTextMove(edit,output,recognize);
+  return output;
 }

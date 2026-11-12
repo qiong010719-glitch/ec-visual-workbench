@@ -6,8 +6,9 @@ import http from 'node:http';
 import crypto from 'node:crypto';
 import sharp from 'sharp';
 import {createWorkbench,root} from '../src/server.mjs';
-import {editMask,imageSize,encodeRgbaPng,pixelBox} from '../src/provider.mjs';
+import {imageSize,encodeRgbaPng} from '../src/provider.mjs';
 import {prepareTextMove,textMoveGuide} from '../src/text-move.mjs';
+import {locateTextMove} from '../src/text-move-precision.mjs';
 
 const output=path.join(root,'tests/results/taobao-text-move');
 fs.mkdirSync(path.join(output,'tmp'),{recursive:true});
@@ -27,20 +28,34 @@ const upstream=http.createServer(async(req,res)=>{
     const request=requests.at(-1);
     assert.equal(req.url,'/v1/images/edits');
     assert.deepEqual(await sharp(source).ensureAlpha().raw().toBuffer(),await sharp(fixture).ensureAlpha().raw().toBuffer());
-    assert.deepEqual(mask,editMask(fixture,request.mask_regions));
-    assert.deepEqual(guide,textMoveGuide(await prepareTextMove(source,request.mask_regions)));
+    const edit=await prepareTextMove(source,request.mask_regions);
+    await locateTextMove(edit,{sentence:request.text_sentence,target:request.text_target});
+    assert.deepEqual(mask,edit.mask);
+    assert.deepEqual(guide,textMoveGuide(edit));
     assert.match(form.get('prompt'),/输入图2只是同一张图的位置指示/);
     assert.equal(form.get('size'),'800x1000');
     upstreamCalls.push({path:req.url,model:form.get('model'),size:form.get('size'),prompt:form.get('prompt'),maskSize:imageSize(mask),maskSha256:crypto.createHash('sha256').update(mask).digest('hex')});
     fs.writeFileSync(path.join(output,'last-mask.png'),mask);
     if(hold)await hold;
     if(failNext){failNext=false;res.writeHead(500,{'Content-Type':'application/json'});res.end(JSON.stringify({error:'intentional fixture failure'}));return;}
-    let returned=fixture;
+    // This local upstream double draws the requested move with browser canvas.
+    // Production code never renders text. Its OCR checks use the real bundled
+    // recognizer, including on these synthetic result pixels.
+    let returned=Buffer.from((await page.evaluate(async({source,old,target})=>{
+      const img=new Image();img.src=source;await img.decode();
+      const canvas=document.createElement('canvas');canvas.width=800;canvas.height=1000;
+      const ctx=canvas.getContext('2d');ctx.drawImage(img,0,0);
+      ctx.fillStyle='#eef3f8';ctx.fillRect(old.x,old.y,old.w,old.h);
+      ctx.fillStyle='#152642';ctx.font='bold 60px sans-serif';
+      const m=ctx.measureText('轻便耐用');
+      ctx.fillText('轻便耐用',target.x+target.w/2-(m.actualBoundingBoxRight-m.actualBoundingBoxLeft)/2,target.y+target.h/2+(m.actualBoundingBoxAscent-m.actualBoundingBoxDescent)/2);
+      return canvas.toDataURL('image/png');
+    },{source:'data:image/png;base64,'+source.toString('base64'),old:edit.boxes[0],target:edit.precision.target})).split(',')[1],'base64');
     if(overflowNext){
       overflowNext=false;
-      const rgba=await sharp(source).ensureAlpha().raw().toBuffer();
-      const box=pixelBox(request.mask_regions[1],800,1000);
-      for(let y=box.y+30;y<box.y+40;y++)for(let x=box.x+box.w-3;x<box.x+box.w+3;x++){const i=(y*800+x)*4;rgba.fill(0,i,i+3);rgba[i+3]=255;}
+      const rgba=await sharp(returned).ensureAlpha().raw().toBuffer();
+      const box=edit.boxes[1];
+      for(let y=box.y+10;y<box.y+20;y++)for(let x=box.x+box.w-3;x<box.x+box.w+3;x++){const i=(y*800+x)*4;rgba.fill(0,i,i+3);rgba[i+3]=255;}
       returned=encodeRgbaPng(800,1000,rgba);
     }
     res.writeHead(200,{'Content-Type':'application/json'});
@@ -64,7 +79,7 @@ await context.route('**/*',async route=>{
   if(url.pathname==='/api/inpaint' && req.method()==='POST')requests.push(req.postDataJSON());
   return route.continue();
 });
-const page=context.pages()[0]||await context.newPage();page.setDefaultTimeout(15000);
+const page=context.pages()[0]||await context.newPage();page.setDefaultTimeout(45000);
 page.on('pageerror',e=>errors.push(e.message));
 const click=selector=>page.locator(selector).click();
 const drag=async(x,y)=>{
@@ -82,6 +97,8 @@ const settled=async id=>{
   await page.waitForFunction(()=>{const image=document.querySelector('#slot-0 .taobao-text-stage img');return image?.complete && image.naturalWidth===800 && image.naturalHeight===1000;});
   await page.locator('#slot-0 .taobao-text-stage img').evaluate(image=>image.decode());
   await page.waitForFunction(()=>!document.querySelector('#slot-0 .taobao-text-stage img')?.classList.contains('img-reveal'));
+  const current=await page.evaluate(()=>imageSlots[0].url);
+  fixture=current.startsWith('data:')?Buffer.from(current.split(',')[1],'base64'):fs.readFileSync(path.join(directory,current));
 };
 try {
   await page.goto(address,{waitUntil:'networkidle'});await page.locator('#taobaoShell').waitFor();
@@ -125,15 +142,19 @@ try {
   assert.equal(requests[0].mask_regions.length,2);assert.equal(requests[0].model,'gpt-image-2');
   const completed=await page.evaluate(()=>({anchor:window.__customLayout.taobao.textAnchors[0],target:window.__customLayout.taobao.textPositions[0],copy:imageSlots[0].taobaoText}));
   assert.deepEqual(completed.anchor,completed.target);assert.equal(completed.copy,'轻便耐用');
-  checks.push('UI → 本地 inpaint → 模拟 /v1/images/edits：原图、双蒙版、原尺寸、模型均正确；无整图生成请求');
+  checks.push('UI → 本机真实 OCR → 模拟 /v1/images/edits：原图、收紧蒙版、原尺寸、模型均正确；真实 OCR 校验模拟结果，无整图生成请求');
   checks.push('重复点击不重复提交；任务中刷新可恢复文字位置和原文');
   await page.evaluate(()=>{document.querySelector('#sopText').value='【主图】\n文案：后来改过的构思';});
-  await drag(1,1);const second=await submit();await settled(second);
+  const beforeEdge=await page.evaluate(()=>imageSlots[0].url);
+  await drag(1,1);const second=await submit();await page.waitForFunction(()=>!activeKieTasks.some(t=>t.slot===0));
+  assert.equal(app.store.state.tasks['hyrule_tasks/'+second].phase,'edit_rejected');
+  assert.equal(upstreamCalls.length,1,'edge rejection happens before paid provider');
+  assert.equal(await page.evaluate(()=>imageSlots[0].url),beforeEdge);
   assert.match(requests[1].prompt,/原文：轻便耐用/);assert.doesNotMatch(requests[1].prompt,/后来改过/);
   assert.equal(requests[1].mask_regions[1].x,0);assert.equal(requests[1].mask_regions[1].y,0);
-  checks.push('二次移动保留上一张原文；靠边时方框保持在图内');
+  checks.push('二次移动保留上一张原文；靠边放不下整句时，调用图片服务前拦截并保留原图');
   const previous=await page.evaluate(()=>imageSlots[0].url);
-  failNext=true;await drag(50,75);const failed=await submit();
+  failNext=true;await drag(50,85);const failed=await submit();
   await page.waitForFunction(()=>!activeKieTasks.some(t=>t.slot===0));
   assert.equal(app.store.state.tasks['hyrule_tasks/'+failed].status,'failed');
   assert.equal(await page.evaluate(()=>imageSlots[0].url),previous);
@@ -145,7 +166,7 @@ try {
   await page.waitForFunction(()=>!activeKieTasks.some(t=>t.slot===0));
   assert.equal(app.store.state.tasks['hyrule_tasks/'+rejected].phase,'edit_rejected');
   assert.equal(await page.evaluate(()=>imageSlots[0].url),beforeReject);
-  assert.equal(requests.length,5);assert.equal(upstreamCalls.length,5);
+  assert.equal(requests.length,5);assert.equal(upstreamCalls.length,4);
   await page.locator('[data-taobao-redraw="0"]').waitFor();
   checks.push('真实接收流程拦下模拟越界图片，原图可继续操作，没有自动重提');
   await page.screenshot({path:path.join(output,'02-after-mock-edit.png'),fullPage:true});
