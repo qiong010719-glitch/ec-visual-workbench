@@ -50,7 +50,8 @@ test('compatible one-image requests are allowed in THD and single-main output sc
     const plan=buildPlan(payload);
     const prompts=plan.sections.map(section=>promptForSlot(payload,section,plan));
     assert.equal(prompts.filter(p=>p.includes(options.strict_requirements)).length,1);
-    assert.ok(prompts.every(p=>/本图最终约束/.test(p)));
+    if(options.design_scope==='thd_only')assert.ok(prompts.every(p=>/本图最终约束/.test(p)));
+    else assert.ok(prompts.every(p=>!/本图最终约束：白底/.test(p)));
   }
 });
 

@@ -57,7 +57,7 @@
     <div class="relative w-full max-w-5xl mx-4 p-8 msm-box">
         
         <h2 class="text-3xl font-bold font-mono text-white mb-2 text-center">选择设计模式</h2>
-        <p class="text-gray-400 text-center text-sm font-mono mb-3">SELECT GENERATION MODE</p>
+        <p class="text-gray-400 text-center text-sm font-mono mb-3">选择生成模式</p>
         <div class="flex items-center gap-3 msm-warn rounded-xl px-4 py-3 mb-8">
             <span class="text-yellow-400 text-lg flex-shrink-0">⚠️</span>
             <p class="text-yellow-300/90 text-xs font-mono leading-relaxed">
@@ -105,7 +105,7 @@
                     <div class="absolute inset-0 bg-gradient-to-br from-[#ff3366]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
                     <div class="flex items-center justify-between mb-4">
                         <h3 class="text-xl font-bold text-[#ff3366] font-mono">快速设计模式</h3>
-                        <span class="text-xs bg-[#ff3366]/20 text-[#ff3366] px-2 py-1 rounded border border-[#ff3366]/30">FAST MODE</span>
+                        <span class="text-xs bg-[#ff3366]/20 text-[#ff3366] px-2 py-1 rounded border border-[#ff3366]/30">快速模式</span>
                     </div>
                     <p class="text-gray-300 text-sm leading-relaxed mb-4">适合<strong class="text-gray-100">卖点多、需要靠文字和图标讲清楚</strong>的产品。引擎会重点平衡文字图标排版与品牌留白的画报感，风格居中偏商业。<br><br>可以用<strong class="text-gray-100">「信息密度」</strong>调文字要多还是要少，用<strong class="text-gray-100">「场景化倾向」</strong>决定卖点用不用真实使用场景来演示——这两个旋钮对本模式影响最大。<br><br>跨图统一性略弱于另外两个模式。</p>
                     <div class="mt-auto space-y-2">
@@ -144,7 +144,7 @@
                     <div class="absolute inset-0 bg-gradient-to-br from-[#a855f7]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
                     <div class="flex items-center justify-between mb-4">
                         <h3 class="text-xl font-bold text-[#a855f7] font-mono">大师设计模式</h3>
-                        <span class="text-xs bg-[#a855f7]/20 text-[#a855f7] px-2 py-1 rounded border border-[#a855f7]/30">MASTER MODE</span>
+                        <span class="text-xs bg-[#a855f7]/20 text-[#a855f7] px-2 py-1 rounded border border-[#a855f7]/30">大师模式</span>
                     </div>
                     <p class="text-gray-300 text-sm leading-relaxed mb-4">追求极致视觉张力与极简高级感。适合<strong class="text-gray-100">靠气质打动人、不需要堆文字说明</strong>的产品——同样一件东西，出来能显著拉高一个质感档次。<br><br>强调光影雕刻、极简构图与沉浸式场景化表达，通常大量留白，引擎优先保障空间透视与摄影级质感。<br><br>出图最慢，但<strong class="text-gray-100">单张成图的视觉上限最高</strong>。</p>
                     <div class="mt-auto space-y-2">
@@ -581,7 +581,7 @@
                     <div class="flex-grow flex flex-col min-h-0">
                         <div class="flex justify-between items-center mb-2">
                             <h3 class="text-xs text-gray-400 font-mono uppercase">裁切结果预览</h3>
-                            <span id="cropResultCount" class="text-[10px] text-gray-500">READY</span>
+                            <span id="cropResultCount" class="text-[10px] text-gray-500">准备就绪</span>
                         </div>
                         <div id="cropResultsGrid" class="flex-grow overflow-y-auto grid grid-cols-2 gap-2 pr-2 custom-scrollbar content-start">
                             <!-- Thumbs here -->
@@ -616,7 +616,7 @@
 
                     <div class="w-80 flex flex-col gap-4">
                         <div class="p-4 bg-black/40 border border-sheikah-blue/30 rounded-xl">
-                            <label class="text-xs text-sheikah-blue font-mono tracking-widest block mb-2">画笔粗细 / BRUSH SIZE</label>
+                            <label class="text-xs text-sheikah-blue font-mono tracking-widest block mb-2">画笔粗细</label>
                             <input type="range" id="brushSize" min="5" max="100" value="30" class="w-full mb-4" style="accent-color: var(--zonai-teal);">
                             <div class="flex gap-2">
                                 <button onclick="undoBrush()" class="action-mini-btn flex-1">↩️ 撤销</button>
@@ -625,7 +625,7 @@
                         </div>
 
                         <div class="p-4 bg-black/40 border border-sheikah-blue/30 rounded-xl">
-                            <label class="text-xs text-sheikah-blue font-mono tracking-widest block mb-2">画笔颜色 / INK COLOR</label>
+                            <label class="text-xs text-sheikah-blue font-mono tracking-widest block mb-2">画笔颜色</label>
                             <div class="flex gap-3">
                                 <button onclick="changeBrushColor('#FF3333')" class="w-8 h-8 rounded-full bg-[#FF3333] border-2 border-white/50 focus:border-white hover:scale-110 transition"></button>
                                 <button onclick="changeBrushColor('#000000')" class="w-8 h-8 rounded-full bg-black border-2 border-white/50 focus:border-white hover:scale-110 transition"></button>
@@ -635,7 +635,7 @@
                         </div>
 
                         <div class="p-4 bg-black/40 border border-sheikah-blue/30 rounded-xl flex-grow flex flex-col">
-                            <label class="text-xs text-sheikah-blue font-mono tracking-widest block mb-2">重绘指令 / NEW PROMPT</label>
+                            <label class="text-xs text-sheikah-blue font-mono tracking-widest block mb-2">重绘指令</label>
                             <button onclick="fillSizeFixPrompt('inpaintPrompt')" class="text-left text-[10px] text-zonai-yellow/90 hover:text-zonai-yellow bg-zonai-yellow/10 border border-zonai-yellow/30 rounded-lg px-2 py-1.5 mb-2 leading-relaxed font-['PingFang SC'] transition" title="点击自动填入产品大小修正指令">📏 <strong>产品大小不对？</strong>红笔圈住产品 → 青绿色笔画一个目标大小的圈 → 点我填入修正指令</button>
                             <textarea id="inpaintPrompt" class="flex-grow sheikah-input resize-none text-sm custom-scrollbar" placeholder="例如：把红圈里的项链换成纯金材质，保持高光..."></textarea>
                         </div>
@@ -723,7 +723,7 @@
                             </div>
                         </h3>
                         
-                        <h3 class="text-[10px] text-gray-500 font-mono tracking-widest mt-4 mb-2 pl-1 border-l-2 border-[#ff3366]">GENERATION MODE</h3>
+                        <h3 class="text-[10px] text-gray-500 font-mono tracking-widest mt-4 mb-2 pl-1 border-l-2 border-[#ff3366]">生成模式</h3>
 
                         <!-- 隐藏的原生 select，供 JS 读值用 -->
                         <select id="generationMode" class="hidden">
@@ -972,7 +972,7 @@
                     <header class="mb-6">
                         <h2 class="text-6xl text-sheikah-blue italic game-title tracking-widest">快速模式与大师模式</h2>
                         <p class="text-zonai-yellow font-black text-sm mt-2 tracking-wide animate-pulse">⚡ 重绘单张图片 = 2点</p>
-                        <span class="text-[10px] text-sheikah-blue/40 block mt-4 uppercase tracking-[0.4em] font-mono">GENERATION LOG</span>
+                        <span class="text-[10px] text-sheikah-blue/40 block mt-4 uppercase tracking-[0.4em] font-mono">生成记录</span>
                     </header>
                     <div id="progressStatus" class="flex-grow status-box-enhanced font-mono text-xs space-y-4">
                         <div class="text-sheikah-blue flex items-center gap-2"><div class="w-2 h-2 bg-sheikah-blue animate-ping"></div><span>状态 · 已连接</span></div>
@@ -1042,7 +1042,7 @@
                     </div>
                     <div class="w-72 flex flex-col gap-4">
                         <div class="p-4 bg-black/40 border border-sheikah-blue/30 rounded-xl">
-                            <label class="text-xs text-sheikah-blue font-mono tracking-widest block mb-2">画笔粗细 / BRUSH SIZE</label>
+                            <label class="text-xs text-sheikah-blue font-mono tracking-widest block mb-2">画笔粗细</label>
                             <input type="range" id="editAnnBrushSize" min="3" max="100" value="12" class="w-full mb-4" style="accent-color: var(--zonai-teal);">
                             <div class="flex gap-2">
                                 <button onclick="editAnnUndo()" class="action-mini-btn flex-1">↩️ 撤销</button>
@@ -1050,7 +1050,7 @@
                             </div>
                         </div>
                         <div class="p-4 bg-black/40 border border-sheikah-blue/30 rounded-xl">
-                            <label class="text-xs text-sheikah-blue font-mono tracking-widest block mb-2">画笔颜色 / INK COLOR</label>
+                            <label class="text-xs text-sheikah-blue font-mono tracking-widest block mb-2">画笔颜色</label>
                             <div class="flex gap-3">
                                 <button onclick="editAnnSetColor('#FF3333')" class="w-8 h-8 rounded-full bg-[#FF3333] border-2 border-white/50 focus:border-white hover:scale-110 transition"></button>
                                 <button onclick="editAnnSetColor('#000000')" class="w-8 h-8 rounded-full bg-black border-2 border-white/50 focus:border-white hover:scale-110 transition"></button>
@@ -1090,7 +1090,7 @@
                     <div class="relative flex-grow bg-black/50 border border-zonai-yellow/30 rounded-xl overflow-hidden flex justify-center items-center min-h-0">
                         <img id="editBaseImg" src="" class="max-w-full max-h-full object-contain hidden">
                         <div id="editBasePlaceholder" class="text-center text-white/40 text-xs font-['PingFang SC'] leading-loose px-8">
-                            还没有底图（<strong class="text-white">底图可选</strong>）。<br>① 在生成结果里点 <strong class="text-white">INPAINT → 🔄 送入编辑模式</strong>，把满意的那张图带过来；<br>② 或直接在下方上传 / 粘贴图片链接；<br>③ 不放底图也行——右侧只传产品素材图 + 自己写提示词，即为<strong class="text-white">自由生成</strong>。
+                            还没有底图（<strong class="text-white">底图可选</strong>）。<br>① 在生成结果里点 <strong class="text-white">修改图片 → 🔄 送入编辑模式</strong>，把满意的那张图带过来；<br>② 或直接在下方上传 / 粘贴图片链接；<br>③ 不放底图也行——右侧只传产品素材图 + 自己写提示词，即为<strong class="text-white">自由生成</strong>。
                         </div>
                     </div>
                     <div class="flex gap-2">
@@ -1104,7 +1104,7 @@
                 <!-- 右：素材 + 指令 + 结果 -->
                 <div class="flex-grow flex flex-col gap-4 z-10 overflow-y-auto custom-scrollbar pr-2">
                     <div class="p-4 bg-black/40 border border-zonai-yellow/40 rounded-xl">
-                        <label id="editMatLabel" class="text-xs text-zonai-yellow font-mono tracking-widest block mb-2">① 产品素材图 / MATERIALS <span class="text-white/40">(最多4张，产品替换必备)</span></label>
+                        <label id="editMatLabel" class="text-xs text-zonai-yellow font-mono tracking-widest block mb-2">① 产品素材图 <span class="text-white/40">(最多4张，产品替换必备)</span></label>
                         <div id="editMatList" class="flex flex-wrap gap-2 mb-2"></div>
                         <button id="editMatAddBtn" onclick="document.getElementById('editMatInput').click()" class="action-mini-btn w-full py-2">📎 添加正确的产品素材图（多角度更稳）</button>
                         <input type="file" id="editMatInput" accept="image/*" multiple class="hidden" onchange="editHandleMaterials(this.files)">
@@ -1112,7 +1112,7 @@
 
                     <div class="p-4 bg-black/40 border border-sheikah-blue/30 rounded-xl flex flex-col">
                         <div class="flex items-center justify-between mb-2">
-                            <label class="text-xs text-sheikah-blue font-mono tracking-widest">② 编辑指令 / DIRECTIVE</label>
+                            <label class="text-xs text-sheikah-blue font-mono tracking-widest">② 编辑指令</label>
                             <div class="flex gap-2">
                                 <button id="editPresetBtn" onclick="editFillReplacePreset()" class="action-mini-btn text-zonai-yellow border-zonai-yellow text-[10px]">🔄 产品替换预设</button>
                                 <button onclick="fillSizeFixPrompt('editPrompt')" class="action-mini-btn text-sheikah-blue border-sheikah-blue text-[10px]" title="先圈注：红笔圈住产品、青绿色笔画目标大小的圈，再点我填入修正指令">📏 大小修正</button>
@@ -1123,7 +1123,7 @@
                     </div>
 
                     <div class="p-4 bg-black/40 border border-white/20 rounded-xl">
-                        <label class="text-xs text-white/70 font-mono tracking-widest block mb-2">③ 生成参数 / IMAGE2 PARAMS</label>
+                        <label class="text-xs text-white/70 font-mono tracking-widest block mb-2">③ 生成参数</label>
                         <div class="flex gap-2 flex-wrap">
                             <select id="editChannel" class="sheikah-input text-xs font-mono flex-1 min-w-[220px] custom-scrollbar" style="background-color:rgba(0,0,0,0.8);">
                                 <option value="flyfus" selected>🛰️ 通道：备用通道（GPT Image 2.5 Sunburst · 现行编辑引擎）</option>
@@ -1148,7 +1148,7 @@
                     <div id="editStatus" class="text-xs font-mono text-white/50 text-center hidden"></div>
 
                     <div id="editResultPanel" class="p-4 bg-black/40 border border-zonai-teal/40 rounded-xl hidden">
-                        <label class="text-xs text-zonai-teal font-mono tracking-widest block mb-2">④ 生成结果 / RESULT</label>
+                        <label class="text-xs text-zonai-teal font-mono tracking-widest block mb-2">④ 生成结果</label>
                         <div class="bg-black/50 rounded-xl overflow-hidden flex justify-center items-center mb-3" style="max-height: 50vh;">
                             <img id="editResultImg" src="" class="max-w-full object-contain cursor-zoom-in" style="max-height: 50vh;" onclick="openSampleLightbox(this.src)">
                         </div>
@@ -1371,6 +1371,7 @@
 <script src="/local/visual-style.js"></script>
 <script src="/local/workbench.js"></script>
 <script src="/local/taobao-layout.js"></script>
+<script src="/local/taobao-files.js"></script>
 <script src="/local/taobao-shell.js"></script>
 </body>
 </html>

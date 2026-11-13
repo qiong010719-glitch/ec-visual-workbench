@@ -1,6 +1,5 @@
-/* Slice-1 Taobao shell. Relabels existing slots and reuses size mapping plus single-slot redraw.
-   Does not call a Taobao publish API and does not change the image provider.
-   SKU reference photos go through the existing material library and per-slot ref_images. */
+/* Taobao shell. Relabels existing slots and reuses size mapping.
+   Does not call a Taobao publish API. SKU photos stay on the material library. */
 (() => {
   const layout = window.TaobaoLayout;
   if (!layout) return;
@@ -38,12 +37,11 @@
     #designScope option[hidden],#targetMarket option[hidden],#targetMarket optgroup[hidden]{display:none !important}
     .taobao-deemphasize{opacity:.55}
     .taobao-slot-label{font-size:11px;font-weight:700;letter-spacing:.04em;color:#9fffea;padding:6px 8px 0}
-    .taobao-text-stage{position:relative;display:block;width:100%}
-    .taobao-text-stage img{width:100%;height:auto;display:block}
-    .quest-slot:hover .taobao-text-stage img{transform:none}
-    .taobao-text-pin{position:absolute;z-index:61;transform:translate(-50%,-50%);padding:4px 8px;border-radius:999px;border:1px solid #ffd36a;background:rgba(0,0,0,.78);color:#ffd36a;font-size:11px;font-weight:700;cursor:grab;touch-action:none;user-select:none}
-    .taobao-text-shortcuts{position:absolute;z-index:62;top:6px;left:6px;display:flex;gap:4px}
-    .taobao-text-preset{border:1px solid rgba(255,211,106,.7);background:rgba(0,0,0,.72);color:#ffd36a;border-radius:6px;font-size:10px;font-weight:700;padding:3px 6px;cursor:pointer}
+    .taobao-image-size{font-size:11px;line-height:1.6;color:#c7d5e8;padding:6px 10px;background:#091125}
+    #customLayoutModal.taobao-directives .taobao-counts{display:none}
+    .quest-slot[data-taobao-zone]{flex-direction:column;align-items:stretch;height:auto;transform:none !important}
+    .quest-slot[data-taobao-zone] .slot-actions{position:static;transform:none;opacity:1;width:100%;box-sizing:border-box}
+    .quest-slot[data-taobao-zone] > img{display:block;width:100%;height:auto}
     .taobao-redraw{width:100%;margin-top:4px;border:1px solid #ffd36a;color:#ffd36a;background:transparent;border-radius:8px;padding:6px;font-size:12px;font-weight:700;cursor:pointer}
     #galleryContainer.taobao-whitespace [data-taobao-zone="detail"]{box-shadow:inset 0 -36px 0 #f7f7f7}
     #galleryContainer.taobao-whitespace [data-taobao-zone="detail"] .taobao-pad{display:block;margin-top:4px;background:#f7f7f7;color:#666;text-align:center;font-size:10px;line-height:22px;border-radius:0 0 8px 8px}
@@ -57,7 +55,6 @@
     return layout.normalize(shell);
   }
   function readPanel() {
-    const current = window.__customLayout?.taobao || {};
     return layout.normalize({
       mainCount:$('tbMainCount')?.value,
       skuCount:$('tbSkuCount')?.value,
@@ -68,7 +65,6 @@
         sku:{width:$('tbSkuWidth')?.value, height:$('tbSkuHeight')?.value},
         detail:{width:$('tbDetailWidth')?.value, height:$('tbDetailHeight')?.value}
       },
-      textPositions:current.textPositions,
       detailWhitespace:!!$('tbWhitespace')?.checked,
       background:document.querySelector('input[name="tbBg"]:checked')?.value || 'off',
       setStyle:$('tbSetStyle')?.value
@@ -83,7 +79,7 @@
     return `已选「${choice.label}」。主图、SKU图、详情整套共用这一条风格说明，仍走现在的生图。不承诺成图质量。`;
   }
   function sizeOptions(selected) {
-    return layout.SIZE_CHOICES.map(choice => `<option value="${choice.id}" ${choice.id === selected ? 'selected' : ''}>${escapeHtml(choice.label)}</option>`).join('');
+    return layout.SIZE_CHOICES.map(choice => `<option value="${choice.id}" ${choice.id === selected ? 'selected' : ''}>${escapeHtml(choice.label.replace('工作台可选尺寸 · ', ''))} · ${choice.ratio}</option>`).join('');
   }
   function sizeHint(spec) {
     const value = layout.normalize(spec || layout.DEFAULTS);
@@ -94,7 +90,7 @@
       const choice = layout.SIZE_CHOICES.find(item => item.id === value.sizes[zone]);
       return `${names[zone]} ${choice?.ratio || ''}`;
     });
-    return `当前：${parts.join('，')}。宽和高都填上（${layout.CUSTOM_MIN}–${layout.CUSTOM_MAX}）才用自定义尺寸，并写进这一组现有的生图要求。竖图若不是通道已有的 3:4、2:3、9:16，会就近选一档，避免被收成横图。改快捷尺寸会清掉这一组的自定义数字。`;
+    return `构图目标：${parts.join('，')}。宽和高都填上（${layout.CUSTOM_MIN}–${layout.CUSTOM_MAX} px）才启用自定义目标。生成仍使用方图 1024×1024、横图 1536×1024、竖图 1024×1536 档位；竖向比例会选就近支持档。实际像素以成图标注为准，下载保留原文件，不自动裁切或拉伸到目标尺寸。改快捷尺寸会清空该组自定义值。`;
   }
   function syncCustom(widthId, heightId, size) {
     const width = $(widthId);
@@ -184,21 +180,21 @@
       </div>
       <p id="tbSkuUploadHint" class="local-muted">规格或颜色各传一张，按顺序对应 SKU图 1、2、3。照片进现有参考图（最多 8 张）。生成 SKU 图时用对应的这张，不再只按产品主体图。没传则仍走原来的生图。照片比 SKU 槽少时，多出来的槽用最后一张规格图。只在本机工作台使用，不会上传到淘宝。</p>
       <div id="tbSkuThumbs" class="tb-sku-thumbs"></div>
-      <p id="tbDisclaimer" class="local-muted">只生成本机图。本地草稿 ≠ 淘宝草稿，没有淘宝发布接口，也不会写成「已进淘宝草稿 / 已发布」。尺寸是工作台可选尺寸，沿用现有 1024×1024、1536×1024、1024×1536，不是淘宝官方像素。自定义宽高和图上的文字位置都写进现在的生图要求，不另接画字模型。不承诺成图质量。</p>
+      <p id="tbDisclaimer" class="local-muted">图片和草稿保存在本机，不是淘宝草稿，也未发布。自定义宽高用于构图，实际尺寸会显示在成图旁；下载保留原图尺寸和格式。</p>
       <div class="tb-grid">
         <label>淘宝主图张数 <input id="tbMainCount" type="number" min="0" max="5" value="${defaults.mainCount}"></label>
         <label>主图尺寸 <select id="tbMainSize">${sizeOptions(defaults.sizes.main)}</select></label>
-        <label class="tb-custom">主图自定义宽 × 高 <span class="tb-pair"><input id="tbMainWidth" type="number" min="${layout.CUSTOM_MIN}" max="${layout.CUSTOM_MAX}" placeholder="宽"><input id="tbMainHeight" type="number" min="${layout.CUSTOM_MIN}" max="${layout.CUSTOM_MAX}" placeholder="高"></span></label>
+        <label class="tb-custom">主图构图目标宽 × 高（px） <span class="tb-pair"><input id="tbMainWidth" type="number" min="${layout.CUSTOM_MIN}" max="${layout.CUSTOM_MAX}" placeholder="宽"><input id="tbMainHeight" type="number" min="${layout.CUSTOM_MIN}" max="${layout.CUSTOM_MAX}" placeholder="高"></span></label>
         <label>SKU图张数 <input id="tbSkuCount" type="number" min="0" max="6" value="${defaults.skuCount}"></label>
         <label>SKU尺寸 <select id="tbSkuSize">${sizeOptions(defaults.sizes.sku)}</select></label>
-        <label class="tb-custom">SKU自定义宽 × 高 <span class="tb-pair"><input id="tbSkuWidth" type="number" min="${layout.CUSTOM_MIN}" max="${layout.CUSTOM_MAX}" placeholder="宽"><input id="tbSkuHeight" type="number" min="${layout.CUSTOM_MIN}" max="${layout.CUSTOM_MAX}" placeholder="高"></span></label>
+        <label class="tb-custom">SKU构图目标宽 × 高（px） <span class="tb-pair"><input id="tbSkuWidth" type="number" min="${layout.CUSTOM_MIN}" max="${layout.CUSTOM_MAX}" placeholder="宽"><input id="tbSkuHeight" type="number" min="${layout.CUSTOM_MIN}" max="${layout.CUSTOM_MAX}" placeholder="高"></span></label>
         <label>详情张数 <input id="tbDetailCount" type="number" min="0" max="7" value="${defaults.detailCount}"></label>
         <label>详情尺寸 <select id="tbDetailSize">${sizeOptions(defaults.sizes.detail)}</select></label>
-        <label class="tb-custom">详情自定义宽 × 高 <span class="tb-pair"><input id="tbDetailWidth" type="number" min="${layout.CUSTOM_MIN}" max="${layout.CUSTOM_MAX}" placeholder="宽"><input id="tbDetailHeight" type="number" min="${layout.CUSTOM_MIN}" max="${layout.CUSTOM_MAX}" placeholder="高"></span></label>
+        <label class="tb-custom">详情构图目标宽 × 高（px） <span class="tb-pair"><input id="tbDetailWidth" type="number" min="${layout.CUSTOM_MIN}" max="${layout.CUSTOM_MAX}" placeholder="宽"><input id="tbDetailHeight" type="number" min="${layout.CUSTOM_MIN}" max="${layout.CUSTOM_MAX}" placeholder="高"></span></label>
         <label class="tb-style">整套风格 <select id="tbSetStyle">${styleOptions(defaults.setStyle)}</select></label>
       </div>
       <p id="tbSizeHint" class="local-muted">${escapeHtml(sizeHint(defaults))}</p>
-      <p id="tbPlaceHint" class="local-muted">图生成之后，每张图上的「文字」可以拖到画面任意位置。靠上、居中、靠下只是快捷，不是限制。拖完再点「重绘这一张」，文案内容不变，位置写进现有生图要求。</p>
+      <p id="tbMainHint" class="local-muted">第一张主图可用场景或设计背景，按构思、整套风格和逐张要求安排；白底可按需选择。</p>
       <p id="tbStyleHint" class="local-muted">${escapeHtml(styleHint(defaults))}</p>
       <div class="tb-row">
         <label><input id="tbWhitespace" type="checkbox" checked> 详情底部留白</label>
@@ -310,81 +306,6 @@
       applySpec(readPanel());
     });
   }
-  function rememberTextPosition(index, position) {
-    const shell = window.__customLayout?.taobao;
-    if (!shell?.applied) return;
-    const next = layout.normalize({...shell, textPositions:{...(shell.textPositions || {}), [index]: position}});
-    shell.textPositions = next.textPositions;
-    if (typeof saveAppState === 'function') saveAppState();
-  }
-  function placePin(pin, position, committed) {
-    pin.style.left = position.x + '%';
-    pin.style.top = position.y + '%';
-    pin.textContent = committed ? `${position.x},${position.y}` : '文字';
-    pin.title = committed
-      ? `文字在水平 ${position.x}%、垂直 ${position.y}%。可拖到任意位置，不限于靠上、居中、靠下。`
-      : '拖动文字到画面任意位置。松手后记在这一张上，重绘时写进现有生图要求。';
-  }
-  function mountTextPlacement(slot, index, spec) {
-    const slotImage = typeof imageSlots === 'undefined' ? null : imageSlots?.[index];
-    if (!slotImage?.url) return;
-    const img = slot.querySelector('img');
-    if (!img || slot.querySelector('[data-taobao-text-pin]')) return;
-    const stage = document.createElement('div');
-    stage.className = 'taobao-text-stage';
-    img.parentNode.insertBefore(stage, img);
-    stage.appendChild(img);
-    const pin = document.createElement('button');
-    pin.type = 'button';
-    pin.className = 'taobao-text-pin';
-    pin.dataset.taobaoTextPin = String(index);
-    const stored = spec.textPositions?.[index] || null;
-    placePin(pin, stored || {x:50, y:50}, !!stored);
-    let current = stored;
-    const read = event => layout.textPositionFromPointer(event, stage.getBoundingClientRect?.());
-    const onMove = event => {
-      event.preventDefault?.();
-      const next = read(event);
-      if (!next) return;
-      current = next;
-      placePin(pin, next, true);
-    };
-    const onUp = event => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-      onMove(event);
-      if (current) rememberTextPosition(index, current);
-    };
-    pin.addEventListener('pointerdown', event => {
-      if (event.button != null && event.button !== 0) return;
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      onMove(event);
-      window.addEventListener('pointermove', onMove);
-      window.addEventListener('pointerup', onUp);
-    });
-    stage.appendChild(pin);
-    const bar = document.createElement('div');
-    bar.className = 'taobao-text-shortcuts';
-    for (const preset of layout.TEXT_PRESETS) {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'taobao-text-preset';
-      button.dataset.taobaoTextPreset = preset.id;
-      button.textContent = preset.label;
-      button.title = `快捷：文字${preset.label}（水平 ${preset.x}%，垂直 ${preset.y}%）。仍可再拖到别的位置。`;
-      button.addEventListener('click', event => {
-        event.preventDefault?.();
-        event.stopPropagation?.();
-        const pos = {x:preset.x, y:preset.y};
-        current = pos;
-        placePin(pin, pos, true);
-        rememberTextPosition(index, pos);
-      });
-      bar.appendChild(button);
-    }
-    stage.appendChild(bar);
-  }
   function redrawBackground() {
     const picked = document.querySelector('input[name="tbBg"]:checked')?.value;
     const mode = picked === 'transparent' ? 'transparent' : 'white';
@@ -440,9 +361,23 @@
     scope.before(details);
     details.appendChild(scope);
     const edit = $('customEditBtn');
-    if (edit) details.appendChild(edit);
+    if (edit) { edit.textContent = '逐张要求与参考图'; $('taobaoShell').appendChild(edit); }
   }
 
+  function showImageSize(slot, spec, zone) {
+    const image = slot.querySelector('img');
+    if (!image) return;
+    let line = slot.querySelector('.taobao-image-size');
+    if (!line) { line = document.createElement('div'); line.className = 'taobao-image-size'; image.after(line); }
+    const update = () => {
+      if (!image.naturalWidth) { line.textContent = '图片加载后显示实际尺寸'; return; }
+      const custom = spec.customSizes[zone];
+      line.textContent = `原图 ${image.naturalWidth}×${image.naturalHeight} px · 下载保留原尺寸` +
+        (custom ? `；构图目标 ${custom.width}×${custom.height} px` : '');
+    };
+    if (!image.complete) image.addEventListener('load', update, {once:true});
+    update();
+  }
   function decorateSlot(index) {
     const spec = currentSpec();
     const slot = $('slot-' + index);
@@ -454,6 +389,7 @@
     let caption = slot.querySelector('.taobao-slot-label');
     if (!caption) { caption = document.createElement('div'); caption.className = 'taobao-slot-label'; slot.prepend(caption); }
     caption.textContent = label;
+    showImageSize(slot, spec, item.zone);
     const idle = slot.querySelector('.opacity-30');
     if (idle) idle.innerHTML = `${escapeHtml(label)}<br><span class="text-[10px]">单张位 · 工作台可选尺寸</span>`;
     if (item.zone === 'detail' && spec.detailWhitespace && !slot.querySelector('.taobao-pad')) {
@@ -462,16 +398,87 @@
       pad.textContent = '详情底部留白';
       slot.appendChild(pad);
     }
-    mountTextPlacement(slot, index, spec);
+    const existingRedraw = slot.querySelector(`button[onclick="triggerGeneration(${index})"]`);
+    if (existingRedraw) existingRedraw.dataset.taobaoRedraw = String(index);
     if (!slot.querySelector('[data-taobao-redraw]')) {
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'taobao-redraw';
       button.dataset.taobaoRedraw = String(index);
       button.textContent = '重绘这一张';
-      button.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); triggerGeneration(index); });
+      button.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); if (typeof triggerGeneration === 'function') triggerGeneration(index); });
       (slot.querySelector('.slot-actions') || slot).appendChild(button);
     }
+  }
+
+  function imageItem(index, spec) {
+    const data = typeof imageSlots !== 'undefined' ? imageSlots[index] : null;
+    const url = data?.history?.[data.currentIndex] || data?.url;
+    return url ? {url, label:layout.customerLabel(index, spec)} : null;
+  }
+  if (typeof downloadSingle === 'function') {
+    const originalDownload = downloadSingle;
+    const downloading = new Set();
+    window.downloadSingle = async function (index) {
+      const spec = currentSpec();
+      if (!spec || !window.TaobaoFiles) return originalDownload(index);
+      const item = imageItem(index, spec);
+      if (!item || downloading.has(index)) return;
+      downloading.add(index);
+      try { await TaobaoFiles.download(item); }
+      catch (error) { notify(error.message, true); }
+      finally { downloading.delete(index); }
+    };
+  }
+  if (typeof batchDownloadAll === 'function') {
+    const originalBatch = batchDownloadAll;
+    let downloading = false;
+    window.batchDownloadAll = async function () {
+      const spec = currentSpec();
+      if (!spec || !window.TaobaoFiles) return originalBatch();
+      if (downloading) return;
+      const items = layout.activeSlots(spec).map(item => imageItem(item.slot, spec)).filter(Boolean);
+      if (!items.length) { notify('还没有可下载的成图。'); return; }
+      const pending = typeof activeKieTasks !== 'undefined' ? activeKieTasks.length : 0;
+      if (pending) notify(`还有 ${pending} 张在处理中，本次只下载已显示的 ${items.length} 张。`);
+      const subtitle = $('batchBtnContainer')?.querySelector('.btn-split-bottom');
+      const previous = subtitle?.textContent;
+      downloading = true;
+      try {
+        const result = await TaobaoFiles.bundle(items, (done, total) => { if (subtitle) subtitle.textContent = `正在打包 ${done}/${total} 张原图…`; });
+        notify(result.failed.length ? `已打包 ${result.count} 张；未下载：${result.failed.join('、')}。详见包内清单，可重试下载。` : `已打包 ${result.count} 张原图，保留实际尺寸和格式。`, !!result.failed.length);
+      } catch (error) { notify(error.message, true); }
+      finally { downloading = false; if (subtitle) subtitle.textContent = previous; }
+    };
+  }
+
+  if (typeof renderCustomCards === 'function') {
+    const originalCards = renderCustomCards;
+    window.renderCustomCards = function () {
+      originalCards();
+      const spec = currentSpec(), modal = $('customLayoutModal');
+      if (!modal) return;
+      modal.classList.toggle('taobao-directives', !!spec);
+      if (!spec) return;
+      modal.querySelector('h3').textContent = '逐张要求与参考图';
+      $('clTotalLine').parentElement.classList.add('taobao-counts');
+      const cards = Array.from($('customSlotCards').children);
+      const photos = skuMaterials();
+      layout.activeSlots(spec).forEach((item, i) => {
+        const heading = cards[i]?.querySelector('.font-bold');
+        if (heading) heading.textContent = layout.customerLabel(item.slot, spec);
+        if (item.zone === 'sku' && photos.length) {
+          const picker = cards[i]?.querySelector('[onclick^="toggleCustomRef"]')?.parentElement;
+          if (picker) {
+            picker.hidden = true;
+            picker.style.display = 'none';
+            picker.previousElementSibling.textContent = `参考图：${photos[Math.min(item.index - 1, photos.length - 1)].filename}（按上传顺序自动对应）`;
+          }
+        }
+      });
+      const hint = $('customSlotCards').previousElementSibling;
+      if (hint) hint.textContent = '数量和尺寸在工作台设置。每张要求可单独填写；主图、详情可勾参考图。已上传 SKU 图时，SKU 槽优先使用按顺序对应的规格图。';
+    };
   }
   function decorateGallery() {
     const gallery = $('galleryContainer');
@@ -540,6 +547,8 @@
   if (typeof confirmCustomLayout === 'function') {
     const originalConfirm = confirmCustomLayout;
     window.confirmCustomLayout = function () {
+      const previousSpec = currentSpec();
+      const previousImages = typeof imageSlots !== 'undefined' ? imageSlots.slice() : [];
       originalConfirm();
       const custom = window.__customLayout;
       if (custom?.taobao && !layout.countsMatch(custom)) {
@@ -547,6 +556,16 @@
         if (typeof buildGalleryLayout === 'function') buildGalleryLayout();
       }
       syncPanel(custom?.taobao || readPanel());
+      const spec = currentSpec();
+      if (previousSpec && spec && typeof imageSlots !== 'undefined') {
+        layout.activeSlots(spec).forEach(item => {
+          if (previousImages[item.slot] && layout.customerLabel(item.slot, previousSpec) === layout.customerLabel(item.slot, spec)) {
+            imageSlots[item.slot] = previousImages[item.slot];
+            if (typeof renderSlot === 'function') renderSlot(item.slot);
+          }
+        });
+        if (typeof saveAppState === 'function') saveAppState();
+      }
     };
   }
   if (typeof openEditModal === 'function') {

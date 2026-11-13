@@ -3220,13 +3220,13 @@ function _showSimpleToast(msg, color) {
             const displayUrl = data.history ? data.history[data.currentIndex] : data.url;
 
             slot.innerHTML = `
-                <img src="${cnImg(displayUrl, 1200)}" data-o="${displayUrl}" referrerpolicy="no-referrer" loading="lazy" onerror="if(cnFallback(this)) return; const r=+(this.dataset.r||0); if(r<2){ this.dataset.r=r+1; const s=this.src.split('?_r=')[0]; setTimeout(()=>{ this.src=s+'?_r='+(r+1); }, 1500*(r+1)); } else { this.parentElement.innerHTML='<div class=\\'text-red-500 text-xs font-mono p-4\\'>图片加载失败，请点击 RETRY 或刷新</div>'; }">
+                <img src="${cnImg(displayUrl, 1200)}" data-o="${displayUrl}" referrerpolicy="no-referrer" loading="lazy" onerror="if(cnFallback(this)) return; const r=+(this.dataset.r||0); if(r<2){ this.dataset.r=r+1; const s=this.src.split('?_r=')[0]; setTimeout(()=>{ this.src=s+'?_r='+(r+1); }, 1500*(r+1)); } else { this.parentElement.innerHTML='<div class=\\'text-red-500 text-xs font-mono p-4\\'>图片加载失败，请刷新后重试</div>'; }">
                 <div class="slot-actions" style="flex-direction: column; gap: 8px; padding: 10px;">
                     <div class="flex items-center justify-between gap-2 w-full">
                         
                         <div class="relative group flex-1">
                             <button onclick="openInpaintModal(${idx})" class="w-full py-1.5 border border-[#00D4FF] text-[#00D4FF] bg-transparent rounded-md font-black tracking-widest uppercase text-[10px] hover:bg-[#00D4FF]/20 transition-all duration-200">
-                                INPAINT
+                                修改图片
                             </button>
                             <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block w-[140px] bg-black/95 text-[#00D4FF] text-[10px] text-center py-2 px-2 rounded-lg border border-[#00D4FF]/40 z-50 font-['PingFang SC'] leading-relaxed shadow-[0_0_15px_rgba(0,212,255,0.3)]">
                                 在图片的基础上画圈写文字修复细节重新绘图
@@ -3235,10 +3235,10 @@ function _showSimpleToast(msg, color) {
                         
                         <div class="relative group flex-1">
                             <button onclick="triggerGeneration(${idx})" class="w-full py-1.5 border border-[#00D4FF] text-[#00D4FF] bg-transparent rounded-md font-black tracking-widest uppercase text-[10px] hover:bg-[#00D4FF]/20 transition-all duration-200">
-                                REDRAW
+                                重绘这一张
                             </button>
                             <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block w-[140px] bg-black/95 text-[#00D4FF] text-[10px] text-center py-2 px-2 rounded-lg border border-[#00D4FF]/40 z-50 font-['PingFang SC'] leading-relaxed shadow-[0_0_15px_rgba(0,212,255,0.3)]">
-                                总体没问题！氪金大佬直接抽卡
+                                按当前构思重新生成这一张，会使用图片服务额度
                             </div>
                         </div>
                     </div>
@@ -3246,14 +3246,14 @@ function _showSimpleToast(msg, color) {
                         <div class="relative group shrink-0">
                             <button id="dv-btn-${idx}" onclick="downvoteImage(${idx}, this)" class="py-1.5 px-2.5 border border-[#00D4FF] text-[#00D4FF] bg-transparent rounded-md text-[13px] leading-none hover:bg-red-500/20 hover:border-red-400 hover:text-red-400 transition-all duration-200">👎</button>
                             <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block w-[150px] bg-black/95 text-[#00D4FF] text-[10px] text-center py-2 px-2 rounded-lg border border-[#00D4FF]/40 z-50 font-['PingFang SC'] leading-relaxed shadow-[0_0_15px_rgba(0,212,255,0.3)]">
-                                这张不满意，记入飞书用于分析问题提示词
+                                记录这张图片的问题，评价保存在本机
                             </div>
                         </div>
                         <button onclick="downloadSingle(${idx})" class="flex-1 py-1.5 border border-[#00D4FF] text-[#00D4FF] bg-transparent rounded-md font-black tracking-widest uppercase text-[10px] hover:bg-[#00D4FF]/20 transition-all duration-200 flex items-center justify-center gap-2">
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                             </svg>
-                            DOWNLOAD
+                            下载原图
                         </button>
                     </div>
                 </div>`;
@@ -3423,7 +3423,7 @@ function _showSimpleToast(msg, color) {
                 }
                 actionsEl.innerHTML = `<button onclick="openCropModalFromSlot(${idx})" class="ultra-action-btn border-zonai-yellow text-zonai-yellow">✂️ 裁切</button>
                     <button onclick="downloadSingleImage(${idx})" class="ultra-action-btn" style="border-color:#00FFC5;color:#00FFC5;">⬇ 下载</button>
-                    <button onclick="openInpaintModal(${idx})" class="ultra-action-btn" style="border-color:#FFD700;color:#FFD700;">⚡ INPAINT</button>`;
+                    <button onclick="openInpaintModal(${idx})" class="ultra-action-btn" style="border-color:#FFD700;color:#FFD700;">⚡ 修改图片</button>`;
             }
             saveAppState();
         }
@@ -3768,7 +3768,7 @@ if (response.status === 402) { triggerError('点数不足', '剩余点数不够�
                 : '风格、排版都满意，但产品画错/漂移了？把那张图放这里当底图，再喂正确的产品素材图——<strong class="text-white">只换产品，其他全保留</strong>。📏 <strong class="text-white">只是大小不对？</strong>点「🖊️ 圈注底图」：红笔圈产品、青绿色笔画目标大小的圈，再点指令区「📏 大小修正」。想随便扔图自由生成？切「🎨 自由编辑」。';
             document.getElementById('editMatLabel').innerHTML = isFree
                 ? '① 图片素材 / IMAGES <span class="text-white/40">(1 张起步，最多 8 张，不分底图素材)</span>'
-                : '① 产品素材图 / MATERIALS <span class="text-white/40">(最多4张，产品替换必备)</span>';
+                : '① 产品素材图 <span class="text-white/40">(最多4张，产品替换必备)</span>';
             document.getElementById('editMatAddBtn').textContent = isFree
                 ? '📎 添加图片（想放几张放几张）'
                 : '📎 添加正确的产品素材图（多角度更稳）';

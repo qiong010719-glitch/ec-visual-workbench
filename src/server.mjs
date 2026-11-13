@@ -46,12 +46,14 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
     if(!task)return null;
     const {resultUrl,partialPlanText,...visible}=task;
     return {...visible,...(visible.error?{error:String(visible.error).replace(/算舟|suanzhou/gi,'图片服务')} : {}),
-      ...(visible.provider==='suanzhou'?{provider:'configured-image-api'}:{}),canRetryDownload:!!resultUrl && task.status==='failed'};
+      ...(visible.provider==='suanzhou'?{provider:'configured-image-api'}:{}),canRetryDownload:!!resultUrl && task.status==='failed' && task.phase!=='edit_rejected' && !task.textMove};
   };
   function retryDownload(taskId) {
     const key='hyrule_tasks/'+taskId,task=store.state.tasks[key];
     if(!task)throw fail(404,'图片任务不存在');
     if(task.status==='completed')return {task:publicTask(task),accepted:false};
+    if(task.phase==='edit_rejected')throw fail(409,'该结果未通过局部改字检查，重复下载无法修复；原图已保留。');
+    if(task.textMove)throw fail(410,'文字移动功能已移除；旧移字任务不能继续处理，请刷新页面。');
     if(!task.resultUrl)throw fail(409,'该任务没有保存生成结果地址，无法只重试下载');
     if(['pending','running'].includes(task.status))return {task:publicTask(task),accepted:true};
     store.task(key,{status:'pending',phase:'download_queued',error:null,downloadRecoveryRequestedAt:new Date().toISOString(),downloadAttempt:0});
@@ -101,6 +103,7 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
     ].filter(v => typeof v === 'string' && v))].slice(0,8);
   }
   function submitImages(payload, kind) {
+    if(payload.text_move === true)throw fail(410,'文字移动功能已移除，请刷新页面；没有提交出图请求。');
     const tasks = payload.mobile_reformat
       ? (Array.isArray(payload.tasks) ? payload.tasks.map((task,index) => ({...task,slot:index,aspect_ratio:'4:3'})) : [])
       : kind === 'inpaint' ? [{taskId:payload.task_id,slot:payload.slot_idx ?? 0,aspect_ratio:payload.aspect_ratio || '1:1'}] : payload.firebase_tasks;
@@ -143,7 +146,7 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
       enqueue(async () => {
         store.task(key, {status:'running',phase:'generating'});
         try {
-          const bytes = await imageProvider({prompt, references:refs, ratio:task.aspect_ratio || section?.ratio || '1:1', model, kind,onProgress:patch=>store.task(key,patch)});
+          const bytes=await imageProvider({prompt,references:refs,ratio:task.aspect_ratio || section?.ratio || '1:1',model,kind,onProgress:patch=>store.task(key,patch)});
           store.task(key, {status:'completed',phase:'completed', imageUrl:saveImage(bytes), provider:provider ? 'test-provider' : 'suanzhou', model});
         } catch (error) {
           store.task(key, {status:'failed',phase:store.state.tasks[key].resultUrl?'download_failed':'generation_failed', error: String(error.message).slice(0,500)});
@@ -167,7 +170,7 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
       response.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' data: blob:; font-src 'self' data:; media-src 'self' blob:; frame-src 'self' blob:; frame-ancestors 'none'; object-src 'none'; base-uri 'self'");
       if (pathname === '/api/session' && request.method === 'GET') return json(response,200,{token:csrf,user:{id:'local-owner',email:'local@workbench.local'}});
       if (pathname.startsWith('/api/') && !['GET','HEAD'].includes(request.method) && request.headers['x-workbench-token'] !== csrf) throw fail(403, '本地会话已过期，请刷新页面');
-      if (pathname === '/api/status') return json(response,200,{mode:'local', isolatedPreview:configuration.WORKBENCH_STYLE_PREVIEW==='true', imageProvider:provider ? 'test-fixture' : 'configured-image-api', imageConfigured:!!provider || !!configuration.SUANZHOU_IMAGE_API_KEY, model:resolveImageModel(undefined,configuration), imageModels, planner:configuration.PLANNER_API_KEY ? 'configured' : 'local-rules', active, queued:queue.length,downloadProxyConfigured:!!configuration.IMAGE_DOWNLOAD_PROXY,downloadRecoveryEnabled:true,recoverableDownloads:Object.values(store.state.tasks).filter(t=>t.resultUrl&&t.status==='failed').length, defaultProductStatus:'draft', paymentEnabled:false, publishEnabled:false});
+      if (pathname === '/api/status') return json(response,200,{mode:'local', isolatedPreview:configuration.WORKBENCH_STYLE_PREVIEW==='true', imageProvider:provider ? 'test-fixture' : 'configured-image-api', imageConfigured:!!provider || !!configuration.SUANZHOU_IMAGE_API_KEY, model:resolveImageModel(undefined,configuration), imageModels, planner:configuration.PLANNER_API_KEY ? 'configured' : 'local-rules', active, queued:queue.length,downloadProxyConfigured:!!configuration.IMAGE_DOWNLOAD_PROXY,downloadRecoveryEnabled:true,recoverableDownloads:Object.values(store.state.tasks).filter(t=>t.resultUrl&&t.status==='failed'&&t.phase!=='edit_rejected' && !t.textMove).length, defaultProductStatus:'draft', paymentEnabled:false, publishEnabled:false});
       if (pathname === '/api/research/status' && request.method === 'GET') return json(response,200,research.status());
       if (pathname === '/api/research/design-patterns' && request.method === 'GET') return json(response,200,designPatterns(research.library.state));
       if (pathname === '/api/research/products' && request.method === 'GET') return json(response,200,Object.values(research.library.state.products).map(p=>({id:p.id,title:p.title,brand:p.brand,asin:p.asin,url:p.url,category:p.category,categoryMemberships:p.categoryMemberships||[],styleProfileIds:p.styleProfileIds||[],collectionIds:p.collectionIds||[],rank:p.rank,rankBasis:p.rankBasis,provenance:p.provenance,aplusStatus:p.aplusStatus,images:p.assets.length,downloaded:p.assets.filter(a=>a.status==='downloaded').length,analysisStatus:p.analysis?.status || 'pending',analysisError:p.analysis?.error || null,thumbnail:p.assets.find(a=>a.localUrl)?.localUrl || null,warnings:p.warnings})));
@@ -211,7 +214,7 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
         if (!/^(agent_tasks|hyrule_tasks)\/[a-zA-Z0-9_-]{1,120}$/.test(key)) throw fail(400,'任务编号无效');
         return json(response,200,publicTask(store.state.tasks[key]));
       }
-      if(pathname==='/api/downloads' && request.method==='GET')return json(response,200,Object.values(store.state.tasks).filter(t=>t.resultUrl&&(t.status==='failed'||t.downloadRecoveryRequestedAt)).reverse().map(publicTask));
+      if(pathname==='/api/downloads' && request.method==='GET')return json(response,200,Object.values(store.state.tasks).filter(t=>!t.textMove&&t.resultUrl&&(t.status==='failed'||t.downloadRecoveryRequestedAt)).reverse().map(publicTask));
       if(pathname==='/api/downloads/retry' && request.method==='POST'){
         const payload=await body(request,4096);
         if(!validId(payload.taskId))throw fail(400,'任务编号无效');

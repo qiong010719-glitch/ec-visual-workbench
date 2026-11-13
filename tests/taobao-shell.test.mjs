@@ -6,6 +6,7 @@ import path from 'node:path';
 import vm from 'node:vm';
 import {fileURLToPath} from 'node:url';
 import {createWorkbench} from '../src/server.mjs';
+import {buildPlan} from '../src/planner.mjs';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const layoutSource = fs.readFileSync(path.join(root, 'public/local/taobao-layout.js'), 'utf8');
@@ -13,6 +14,24 @@ const context = {window:{}};
 vm.runInNewContext(layoutSource, context, {filename:'taobao-layout.js'});
 const layout = context.window.TaobaoLayout;
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aEt8AAAAASUVORK5CYII=', 'base64');
+
+test('Taobao selected ratios reach planning before image generation, including plain and custom sizes', () => {
+  const raw = [{slot:0, requirement:'主图'}, {slot:1}, {slot:7, requirement:'详情'}];
+  const base = {mainCount:1, skuCount:1, detailCount:1, detailWhitespace:false, setStyle:'original'};
+  for (const [customSizes, expected] of [[{}, ['1:1','1:1','3:4']],
+    [{main:{width:800,height:1200},sku:{width:1000,height:800},detail:{width:900,height:1600}}, ['2:3','5:4','9:16']]]) {
+    const slot_directives = layout.annotateDirectives(raw, {...base, customSizes}).directives;
+    for (const visual_style of ['original','scene_advertising']) {
+      const plan = buildPlan({design_scope:'custom',custom_layout:{main:1,sub:1,aplus:1},slot_directives,visual_style});
+      assert.deepEqual(plan.sections.map(s=>s.ratio), expected);
+      assert.match(plan.sections[2].detail, /竖版/);
+      assert.doesNotMatch(plan.text, /21:9|横幅|宽幅/);
+    }
+  }
+  const plain = layout.annotateDirectives(raw, base).directives;
+  assert.equal(plain[1].requirement, undefined);
+  assert.equal(raw[0].aspect_ratio, undefined, 'source directives are not mutated');
+});
 
 test('taobao zones map onto existing main, gallery and A+ slots', () => {
   const spec = layout.normalize(layout.DEFAULTS);
@@ -575,27 +594,8 @@ test('chosen set style is copied into every active slot prompt, including a one-
   assert.equal(captured.filter(item => /整套风格：纯白棚拍/.test(item.prompt)).length, 4);
 });
 
-test('free text coordinates and custom width height parse without collapsing to presets', () => {
+test('custom sizes remain available while legacy text coordinates are ignored', () => {
   const same = (actual, expected) => assert.equal(JSON.stringify(actual), JSON.stringify(expected));
-  same(layout.clampTextPosition({x:73.04, y:18}), {x:73, y:18});
-  same(layout.clampTextPosition({x:-5, y:140}), {x:0, y:100});
-  assert.equal(layout.clampTextPosition({x:'no', y:10}), null);
-  same(layout.textPositionFromPointer({clientX:146, clientY:72}, {left:0, top:0, width:200, height:400}), {x:73, y:18});
-  same(layout.textPositionFromPointer({clientX:-10, clientY:999}, {left:0, top:0, width:100, height:100}), {x:0, y:100});
-  assert.equal(layout.textPositionFromPointer({clientX:1, clientY:1}, {left:0, top:0, width:0, height:10}), null);
-  const free = layout.clampTextPosition({x:73, y:18});
-  assert.equal(layout.TEXT_PRESETS.some(item => item.x === free.x && item.y === free.y), false);
-  same(layout.normalize({textPositions:{0:{x:73, y:18}, 14:{x:1, y:1}, bad:{x:2, y:2}}}).textPositions, {0:{x:73, y:18}});
-  const note = layout.positionNote({x:73, y:18});
-  assert.match(note, /水平 73%/);
-  assert.match(note, /垂直 18%/);
-  assert.match(note, /不要改文案内容/);
-  assert.match(note, /产品仍完整留在画面里/);
-  assert.doesNotMatch(note, /水平 50%/);
-  for (const preset of layout.TEXT_PRESETS) {
-    assert.match(layout.positionNote(preset), new RegExp(`水平 ${preset.x}%`));
-    assert.match(layout.positionNote(preset), new RegExp(`垂直 ${preset.y}%`));
-  }
   assert.equal(layout.parseCustomSize({width:800, height:''}), null);
   assert.equal(layout.parseCustomSize({width:63, height:100}), null);
   assert.equal(layout.parseCustomSize({width:800.5, height:1200}), null);
@@ -630,11 +630,9 @@ test('free text coordinates and custom width height parse without collapsing to 
   ], {mainCount:1, skuCount:0, detailCount:1, setStyle:'morandi', textPositions:{0:{x:73, y:18}}, customSizes:{main:{width:800, height:1200}}});
   assert.match(kept.directives[0].requirement, /^主图要求；整套风格：胶片质感/);
   assert.match(kept.directives[0].requirement, /整套风格：莫兰迪低饱和/);
-  assert.match(kept.directives[0].requirement, /水平 73%/);
-  assert.match(kept.directives[0].requirement, /垂直 18%/);
   assert.match(kept.directives[0].requirement, /宽 800 像素，高 1200 像素，画幅 2:3/);
-  assert.match(kept.directives[0].requirement, /不要改文案内容/);
-  same(kept.directives[0].text_position, {x:73, y:18});
+  assert.equal(kept.directives[0].text_position,undefined);
+  assert.doesNotMatch(kept.directives[0].requirement,/文字位置|水平 73%|垂直 18%/);
   same(kept.directives[0].custom_size, {width:800, height:1200});
   assert.doesNotMatch(kept.directives[0].requirement, /水平 50%/);
   assert.match(kept.directives[1].requirement, /^详情要求/);
@@ -642,7 +640,7 @@ test('free text coordinates and custom width height parse without collapsing to 
   assert.equal(kept.directives[1].text_position, undefined);
 });
 
-test('dragged text position and custom width height go out on the existing generate path', async t => {
+test('custom width and height use generation while legacy text positions do not', async t => {
   const captured = [];
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ec-taobao-place-'));
   const app = createWorkbench({dataDirectory:directory, configuration:{}, provider:async request => { captured.push(request); return png; }});
@@ -693,24 +691,17 @@ test('dragged text position and custom width height go out on the existing gener
   assert.equal(sent.response.status, 202);
   for (const item of dirs) assert.equal((await wait('tb_place_' + item.slot)).status, 'completed');
   assert.equal(captured.length, 3);
+  for(const request of captured)assert.doesNotMatch(request.prompt,/文字位置|text_position|水平 73%|垂直 91%/);
   const main = captured.find(item => item.ratio === '2:3');
   const sku = captured.find(item => item.ratio === '5:4');
   const detail = captured.find(item => item.ratio === '9:16');
-  assert.match(main.prompt, /水平 73%/);
-  assert.match(main.prompt, /垂直 18%/);
   assert.match(main.prompt, /宽 800 像素，高 1200 像素/);
   assert.match(main.prompt, /主图要求：标题保持原句/);
   assert.match(main.prompt, /整套风格：胶片质感/);
-  assert.match(main.prompt, /不要改文案内容/);
-  assert.match(main.prompt, /产品仍完整留在画面里/);
   assert.match(main.prompt, /杯子/);
-  assert.match(sku.prompt, /水平 50%/);
-  assert.match(sku.prompt, /垂直 50%/);
   assert.match(sku.prompt, /宽 1000 像素，高 800 像素，画幅 5:4/);
   assert.match(sku.prompt, /SKU卖点原文/);
   assert.match(sku.prompt, /整套风格：胶片质感/);
-  assert.match(detail.prompt, /水平 12\.5%/);
-  assert.match(detail.prompt, /垂直 91%/);
   assert.match(detail.prompt, /宽 900 像素，高 1600 像素，画幅 9:16/);
   assert.match(detail.prompt, /详情要求：已有风格句不要清掉/);
   assert.match(detail.prompt, /详情图底部留出一条干净留白/);
@@ -826,7 +817,7 @@ test('SKU slot generate uses uploaded SKU photos and keeps the main-product path
   assert.match(captured.at(-1).prompt, /SKU图_1/);
 });
 
-test('the shell drag handle stores a non-preset point, and typed width height overrides shortcuts until a shortcut is chosen', () => {
+test('gallery has no text movement controls while custom sizes, SKU references and ordinary redraw remain', async () => {
   const ids = new Map();
   const all = [];
   const windowListeners = new Map();
@@ -892,6 +883,13 @@ test('the shell drag handle stores a non-preset point, and typed width height ov
       if (sibling.parentElement) sibling.parentElement.children = sibling.parentElement.children.filter(item => item !== sibling);
       parent.children.splice(index, 0, sibling);
       sibling.parentElement = parent;
+      if (!all.includes(sibling)) all.push(sibling);
+    };
+    el.after = sibling => {
+      const parent = el.parentElement;
+      const index = parent.children.indexOf(el);
+      if (sibling.parentElement) sibling.parentElement.children = sibling.parentElement.children.filter(item => item !== sibling);
+      parent.children.splice(index + 1, 0, sibling); sibling.parentElement = parent;
       if (!all.includes(sibling)) all.push(sibling);
     };
     el.remove = () => drop(el);
@@ -1062,25 +1060,6 @@ test('the shell drag handle stores a non-preset point, and typed width height ov
   const bare = sandbox.buildSlotDirectives();
   assert.equal(JSON.stringify(bare.find(item => item.slot === 5).ref_images), '[]');
   assert.equal(bare.find(item => item.slot === 5).requirement, 'SKU卖点原文');
-  const pin = document.querySelector('[data-taobao-text-pin]');
-  const stage = document.querySelector('.taobao-text-stage');
-  assert.ok(pin);
-  assert.equal(pin.textContent, '文字');
-  assert.equal(sandbox.buildSlotDirectives().find(item => item.slot === 0).requirement, '主图要求：标题保持原句');
-  stage._rect = {left:0, top:0, right:200, bottom:400, width:200, height:400};
-  pin.dispatchEvent(point('pointerdown', 146, 72));
-  for (const fn of [...(windowListeners.get('pointerup') || [])]) fn(point('pointerup', 146, 72));
-  assert.equal(JSON.stringify(sandbox.__customLayout.taobao.textPositions[0]), JSON.stringify({x:73, y:18}));
-  assert.equal(pin.textContent, '73,18');
-  assert.equal(layout.TEXT_PRESETS.some(item => item.x === 73 && item.y === 18), false);
-  assert.match(sandbox.buildSlotDirectives().find(item => item.slot === 0).requirement, /主图要求：标题保持原句/);
-  assert.match(sandbox.buildSlotDirectives().find(item => item.slot === 0).requirement, /水平 73%/);
-  assert.match(sandbox.buildSlotDirectives().find(item => item.slot === 0).requirement, /垂直 18%/);
-  document.querySelector('[data-taobao-text-preset="bottom"]').dispatchEvent({type:'click', preventDefault() {}, stopPropagation() {}});
-  assert.equal(JSON.stringify(sandbox.__customLayout.taobao.textPositions[0]), JSON.stringify({x:50, y:82}));
-  pin.dispatchEvent(point('pointerdown', 24, 364));
-  for (const fn of [...(windowListeners.get('pointerup') || [])]) fn(point('pointerup', 24, 364));
-  assert.equal(JSON.stringify(sandbox.__customLayout.taobao.textPositions[0]), JSON.stringify({x:12, y:91}));
   const typeSize = (widthId, heightId, width, height) => {
     document.getElementById(widthId).value = width;
     document.getElementById(widthId).dispatchEvent({type:'input'});
@@ -1107,7 +1086,7 @@ test('the shell drag handle stores a non-preset point, and typed width height ov
   assert.equal(sandbox._aspectForTitle('【主图】'), '16:9');
   assert.equal(sandbox._aspectForTitle('【卖点图5】'), '5:4');
   assert.equal(sandbox._aspectForTitle('【高级A+模块1】'), '9:16');
-  assert.equal(JSON.stringify(sandbox.__customLayout.taobao.textPositions[0]), JSON.stringify({x:12, y:91}));
+  assert.equal(sandbox.__customLayout.taobao.textPositions, undefined);
   document.getElementById('tbSetStyle').value = 'morandi';
   document.getElementById('tbSetStyle').dispatchEvent({type:'change'});
   const dirs = sandbox.buildSlotDirectives();
@@ -1115,14 +1094,14 @@ test('the shell drag handle stores a non-preset point, and typed width height ov
   const detail = dirs.find(item => item.slot === 7);
   assert.match(main.requirement, /^主图要求：标题保持原句/);
   assert.match(main.requirement, /整套风格：莫兰迪低饱和/);
-  assert.match(main.requirement, /水平 12%/);
-  assert.match(main.requirement, /垂直 91%/);
   assert.doesNotMatch(main.requirement, /宽 800/);
   assert.match(detail.requirement, /^详情要求：已有风格句不要清掉/);
   assert.match(detail.requirement, /整套风格：莫兰迪低饱和/);
   assert.match(detail.requirement, /宽 900 像素，高 1600 像素/);
   assert.equal(sandbox.__customLayout.taobao.setStyle, 'morandi');
-  assert.equal(document.querySelector('[data-taobao-text-pin]').textContent, '12,91');
+  assert.equal(document.querySelector('[data-taobao-text-pin]'),null);
+  assert.equal(document.querySelector('[data-taobao-text-origin]'),null);
+  assert.equal(document.querySelector('.taobao-text-stage'),null);
   assert.equal(sandbox.saved, true);
   const materials = [];
   sandbox.__workbenchMaterials = () => materials;
@@ -1171,6 +1150,12 @@ test('the shell drag handle stores a non-preset point, and typed width height ov
   assert.equal(JSON.stringify(sandbox.buildSlotDirectives().find(item => item.slot === 5).ref_images), JSON.stringify(['SKU图_2']));
   assert.equal(document.getElementById('tbSkuUploadCount').textContent, '已上传 1 张 SKU 图');
   assert.match(sandbox.buildSlotDirectives().find(item => item.slot === 0).requirement, /^主图要求：标题保持原句/);
-  assert.match(sandbox.buildSlotDirectives().find(item => item.slot === 0).requirement, /水平 12%/);
   assert.equal(sandbox._aspectForTitle('【卖点图5】'), '5:4');
+  const generated=[];
+  sandbox.triggerGeneration=index=>generated.push(index);
+  sandbox.__customLayout.taobao.textPositions={0:{x:12,y:91}};
+  sandbox.__customLayout.taobao.textAnchors={0:{x:50,y:12}};
+  document.querySelector('[data-taobao-redraw]').dispatchEvent({type:'click',preventDefault(){},stopPropagation(){}});
+  assert.deepEqual(generated,[0],'old movement state cannot hijack ordinary redraw');
+  assert.equal(document.querySelector('[data-taobao-text-pin]'),null);
 });
