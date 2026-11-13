@@ -866,6 +866,13 @@ test('gallery has no text movement controls while custom sizes, SKU references a
       sibling.parentElement = parent;
       if (!all.includes(sibling)) all.push(sibling);
     };
+    el.after = sibling => {
+      const parent = el.parentElement;
+      const index = parent.children.indexOf(el);
+      if (sibling.parentElement) sibling.parentElement.children = sibling.parentElement.children.filter(item => item !== sibling);
+      parent.children.splice(index + 1, 0, sibling); sibling.parentElement = parent;
+      if (!all.includes(sibling)) all.push(sibling);
+    };
     el.remove = () => drop(el);
     el.addEventListener = (type, fn) => { (el._on ||= {})[type] ||= []; el._on[type].push(fn); };
     el.dispatchEvent = event => { for (const fn of el._on?.[event.type] || []) fn(event); };
