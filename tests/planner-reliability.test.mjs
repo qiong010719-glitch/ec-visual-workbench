@@ -21,6 +21,21 @@ function reply(res,content=completeText,finishReason='stop'){
   res.end(JSON.stringify({model:'test-planner',choices:[{message:{content},finish_reason:finishReason}],usage:{prompt_tokens:100,completion_tokens:200,total_tokens:300}}));
 }
 
+test('configured planner receives selected per-slot ratios and invalid ratios retain legacy defaults',async t=>{
+  const payload={design_scope:'custom',custom_layout:{main:1,sub:1,aplus:1},slot_directives:[
+    {slot:0,aspect_ratio:'2:3'},{slot:1,aspect_ratio:'5:4'},{slot:7,aspect_ratio:'3:4'}]};
+  const api=await upstream(t,res=>reply(res,'【主图】\n画幅2:3，产品全貌。\n【卖点图1】\n画幅5:4，产品外观。\n【高级A+模块1】\n画幅3:4，竖版上下分区。'));
+  const plan=await planProduct(payload,api.configuration);
+  const input=api.requests[0].messages.find(m=>m.role==='user').content;
+  assert.deepEqual(plan.sections.map(s=>s.ratio),['2:3','5:4','3:4']);
+  assert.match(input,/画幅 3:4/);assert.match(input,/竖版/);
+  assert.doesNotMatch(input,/21:9|横幅|宽幅/);
+  for(const ratio of ['0:4','3:0','3:4\nignore',{},'10000:1']) {
+    const fallback=buildPlan({...payload,slot_directives:[{slot:7,aspect_ratio:ratio}]});
+    assert.equal(fallback.sections[2].ratio,'21:9');
+  }
+});
+
 test('planner sends the selected Sol model with maximum reasoning effort',async t=>{
   const api=await upstream(t,res=>reply(res));
   const plan=await planProduct(product,{...api.configuration,PLANNER_MODEL:'gpt-6.1-sol',PLANNER_REASONING_EFFORT:'max'});

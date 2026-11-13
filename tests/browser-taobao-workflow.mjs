@@ -78,6 +78,10 @@ try {
   checks.push('真实界面填写资料、上传主体/SKU图、选择风格/尺寸、逐张要求和参考图');
   await page.locator('#agentBtn').click();await page.locator('#agentConfirmOk').click();
   await page.waitForFunction(()=>document.querySelector('#sopText').value.includes('详情专属'));
+  const plannedText=await page.locator('#sopText').inputValue();
+  assert.match(plannedText,/画幅 2:3/);
+  assert.match(plannedText,/画幅 3:4/);
+  assert.doesNotMatch(plannedText,/21:9|横幅|宽幅/);
   await page.waitForFunction(()=>!document.querySelector('#championsOverlay').classList.contains('show'));
   await page.locator('#mainBtn').click();
   await page.waitForFunction(()=>[0,1,7].every(i=>imageSlots[i]?.url) && activeKieTasks.length===0);

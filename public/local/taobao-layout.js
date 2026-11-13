@@ -237,8 +237,13 @@
       if (zone && style) notes.push(style);
       const size = sizeNote(zone, spec);
       if (size) notes.push(size);
-      if (!notes.length) return item;
-      const next = {...item, requirement:[item.requirement, ...notes].filter(Boolean).join('；')};
+      if (!zone && !notes.length) return item;
+      const next = {...item};
+      if (zone) {
+        next.aspect_ratio = ratioForZone(zone, spec);
+        if (item.title) next.title = item.slot === 0 ? '【主图】' : item.slot < 7 ? `【卖点图${item.slot}】` : `【高级A+模块${item.slot - 6}】`;
+      }
+      if (notes.length) next.requirement = [item.requirement, ...notes].filter(Boolean).join('；');
       const custom = zone === 'main' || zone === 'sku' || zone === 'detail' ? customSizesOf(spec)[zone] : null;
       if (custom) next.custom_size = {width: custom.width, height: custom.height};
       return next;

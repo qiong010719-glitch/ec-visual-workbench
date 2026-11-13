@@ -6,6 +6,7 @@ import path from 'node:path';
 import vm from 'node:vm';
 import {fileURLToPath} from 'node:url';
 import {createWorkbench} from '../src/server.mjs';
+import {buildPlan} from '../src/planner.mjs';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const layoutSource = fs.readFileSync(path.join(root, 'public/local/taobao-layout.js'), 'utf8');
@@ -13,6 +14,24 @@ const context = {window:{}};
 vm.runInNewContext(layoutSource, context, {filename:'taobao-layout.js'});
 const layout = context.window.TaobaoLayout;
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aEt8AAAAASUVORK5CYII=', 'base64');
+
+test('Taobao selected ratios reach planning before image generation, including plain and custom sizes', () => {
+  const raw = [{slot:0, requirement:'主图'}, {slot:1}, {slot:7, requirement:'详情'}];
+  const base = {mainCount:1, skuCount:1, detailCount:1, detailWhitespace:false, setStyle:'original'};
+  for (const [customSizes, expected] of [[{}, ['1:1','1:1','3:4']],
+    [{main:{width:800,height:1200},sku:{width:1000,height:800},detail:{width:900,height:1600}}, ['2:3','5:4','9:16']]]) {
+    const slot_directives = layout.annotateDirectives(raw, {...base, customSizes}).directives;
+    for (const visual_style of ['original','scene_advertising']) {
+      const plan = buildPlan({design_scope:'custom',custom_layout:{main:1,sub:1,aplus:1},slot_directives,visual_style});
+      assert.deepEqual(plan.sections.map(s=>s.ratio), expected);
+      assert.match(plan.sections[2].detail, /竖版/);
+      assert.doesNotMatch(plan.text, /21:9|横幅|宽幅/);
+    }
+  }
+  const plain = layout.annotateDirectives(raw, base).directives;
+  assert.equal(plain[1].requirement, undefined);
+  assert.equal(raw[0].aspect_ratio, undefined, 'source directives are not mutated');
+});
 
 test('taobao zones map onto existing main, gallery and A+ slots', () => {
   const spec = layout.normalize(layout.DEFAULTS);

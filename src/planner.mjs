@@ -22,7 +22,12 @@ export function slotPlan(payload) {
     if (/main|thd/.test(scope)) for (let i = 0; i < 7; i++) slots.push({slot: i, title: i ? `【卖点图${i}】` : '【主图】', ratio: '1:1'});
     if (/aplus/.test(scope)) for (let i = 0; i < 5; i++) slots.push({slot: i + 7, title: `【${scope.includes('old') ? '老版' : '高级'}A+模块${i + 1}】`, ratio: scope.includes('old') ? '16:9' : '21:9'});
   }
-  return slots.map(slot => ({...slot, detail: slot.slot === 0 ? mainDirection : '围绕一个已提供的卖点展开，以清晰视觉层级呈现；避免重复构图。'}));
+  return slots.map(slot => {
+    const directives = payload.slot_directives;
+    const directive = Array.isArray(directives) ? directives.find(item => Number(item.slot ?? item.index) === slot.slot) : directives?.[slot.slot];
+    const ratio = typeof directive?.aspect_ratio === 'string' && /^[1-9]\d{0,3}:[1-9]\d{0,3}$/.test(directive.aspect_ratio) ? directive.aspect_ratio : slot.ratio;
+    return {...slot, ratio, detail: slot.slot === 0 ? mainDirection : '围绕一个已提供的卖点展开，以清晰视觉层级呈现；避免重复构图。'};
+  });
 }
 
 const layouts = [
@@ -35,6 +40,7 @@ const layouts = [
   {name:'收尾展示',view:'以产品轮廓和留白为主，简短总结一个已提供卖点，避免再次使用同一使用场景'}
 ];
 const aplusLayouts=['宽幅环境与产品关系，标题留在一侧','横向三分区解释已提供信息，各区图像各有用途','材质或结构的横幅近景，文字与主体分列','使用流程或用途组合；没有步骤资料时改用不同已知用途视角','产品整体收尾，简洁总结已有信息，不编造品牌故事和认证'];
+const portraitDetailLayouts=['竖版上下分区，上方展示产品与环境关系，下方展开已知细节','竖向分区解释已提供信息，各区图像各有用途','材质或结构近景与完整产品上下对照，文字不遮挡主体','沿竖向阅读顺序展示已知用途；没有步骤资料时不编造使用步骤','竖版产品整体收尾，简洁总结已有信息，不编造品牌故事和认证'];
 // shortcut: one-image phrases are scoped here; explicit slots and larger counts use per-slot directives.
 function requirementsForSet(text,sections,blocks) {
   const clauses=String(text || '').split(/[；;，。\n]+|,\s*(?=(?:every|each|all|one|a single)\b)/i).map(s=>s.trim()).filter(Boolean);
@@ -88,11 +94,19 @@ export function buildPlan(payload, designReferences = []) {
     const styleOnly=borrowed?.matchType==='style-only';
     const designNote=borrowed?(styleOnly?`跨类目风格观察：${crossCategoryGuidance(borrowed)}。只借鉴这些通用方法，当前产品场景与动作按本图分镜。`:`参考库设计观察（仅借鉴设计方法）：${borrowed.layout}；镜头：${borrowed.camera}；光影：${borrowed.lighting}；配色：${borrowed.palette}；文字层级：${borrowed.textDensity}；${borrowed.transferableGuidance}。同类目观察仍须适配当前商品；配色以当前素材和整套风格为准，不复制参考商品的结构与功效。`):'';
     const main=index===0;
+    const [ratioWidth,ratioHeight]=section.ratio.split(':').map(Number);
+    const detailLayout=(ratioWidth<ratioHeight?portraitDetailLayouts:aplusLayouts)[(index-7)%aplusLayouts.length];
     const storyboard=styled&&!main&&!thd?storyboardFor(payload,index,primary):null;
+    if (storyboard && ratioWidth<ratioHeight) {
+      // Adapt generated layout suggestions, never the user's product facts or copy.
+      for (const key of ['scene','camera','composition']) {
+        if (storyboard[key]) storyboard[key]=storyboard[key].replace(/宽幅|横幅/g,'竖版').replace(/横向/g,'竖向').replace(/侧边一幅/g,'下方一幅');
+      }
+    }
     if(storyboard)primary=storyboard.primaryFact;
     const detail=main?[section.detail,designNote].filter(Boolean).join('\n'):[
       `本图职责：${index>=7?'A+ 模块 '+(index-6):layout.name}；本图重点资料：${primary}。`,
-      storyboard?describe(storyboard):`本图构图：${!styleOnly&&borrowed?.layout || (index>=7?aplusLayouts[(index-7)%aplusLayouts.length]:layout.view)}。`,
+      storyboard?describe(storyboard):`本图构图：${!styleOnly&&borrowed?.layout || (index>=7?detailLayout:layout.view)}。`,
       !styled?(master?'视觉执行：少字、大留白、强调产品光影与摄影质感。':'视觉执行：清晰的信息层级，图标与文字围绕本图重点组织。'):'',
       !styled&&!master?`信息密度 ${payload.info_density || 'high'}；场景倾向 ${payload.scene_intensity || 'original'}，不改变已确认商品事实。`:'',
       designNote,
