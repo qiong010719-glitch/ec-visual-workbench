@@ -12,6 +12,7 @@ import {generationMode} from './visual-style.mjs';
 import {SCENE_STYLE_VERSION} from './rich-storytelling.mjs';
 import {imageModels,resolveImageModel} from './image-models.mjs';
 import {TaobaoBenchmarks} from './taobao-benchmarks.mjs';
+import {validateTaobaoDraft} from './taobao-drafts.mjs';
 
 export const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const mimes = {'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json; charset=utf-8','.jpg':'image/jpeg','.png':'image/png','.webp':'image/webp','.svg':'image/svg+xml','.ico':'image/x-icon','.woff2':'font/woff2'};
@@ -281,6 +282,11 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
         return json(response,200,{ok:true,savedLocally:true});
       }
       if (pathname === '/api/drafts' && request.method === 'GET') return json(response,200,store.state.drafts);
+      if (pathname.startsWith('/api/drafts/') && request.method === 'GET') {
+        const draft=store.state.drafts.find(d=>d.id===pathname.slice('/api/drafts/'.length));
+        if(!draft?.workbench)throw fail(404,'这个草稿没有完整的工作台记录，仍可查看或导出原资料。');
+        return json(response,200,{...draft,workbench:validateTaobaoDraft(draft.workbench,{mediaDirectory,benchmarks,store,verifyHashes:true})});
+      }
       if (pathname === '/api/drafts' && request.method === 'POST') {
         const payload = await body(request);
         if (!payload.title?.trim()) throw fail(400,'请填写商品标题');
@@ -291,7 +297,8 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
         if (media.some(x => !/^\/media\/[a-f0-9-]+\.(png|jpg|webp)$/.test(x) || !fs.existsSync(path.join(mediaDirectory,path.basename(x))))) throw fail(400,'草稿引用了不存在的本地图片');
         const existing = payload.id ? store.state.drafts.find(d => d.id === payload.id) : null;
         if (payload.id && !existing) throw fail(404,'草稿不存在');
-        const draft = {id:existing?.id || uuid(),title:payload.title.trim(),description:payload.description || '',platform:payload.platform || '通用',skus:payload.skus,images:media,sop:payload.sop || '',status:'draft',published:false,createdAt:existing?.createdAt || new Date().toISOString(),updatedAt:new Date().toISOString()};
+        const workbench=payload.workbench?validateTaobaoDraft(payload.workbench,{mediaDirectory,benchmarks,store}):existing?.workbench;
+        const draft = {id:existing?.id || uuid(),title:payload.title.trim(),description:payload.description || '',platform:payload.platform || '通用',skus:payload.skus,images:media,sop:payload.sop || '',...(workbench?{workbench}:{}),status:'draft',published:false,createdAt:existing?.createdAt || new Date().toISOString(),updatedAt:new Date().toISOString()};
         if (existing) Object.assign(existing,draft); else store.state.drafts.unshift(draft);
         store.save(); return json(response,200,draft);
       }

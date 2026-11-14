@@ -41,8 +41,10 @@
   async function poll(){
     clearTimeout(timer);
     if(!state.jobId)return;
+    const currentJobId=state.jobId;
     try{
-      job=await api('/api/taobao/benchmarks/'+encodeURIComponent(state.jobId));
+      const latest=await api('/api/taobao/benchmarks/'+encodeURIComponent(currentJobId));
+      if(state.jobId!==currentJobId)return;job=latest;
       busy=['pending','running'].includes(job.status);
       if(busy)message(`正在读取对标：已保存 ${job.assets.filter(a=>a.status==='downloaded').length} 张；没有启动分析或生图。`);
       else if(job.status==='failed')message(job.error);
@@ -52,9 +54,9 @@
         if(busy)message(`正在分析版式 ${run.completed}/${run.assetIds.length}，没有启动生图。`);
         else if(run.status==='failed'){message(run.error+' 已完成的分析保留。');state.analysisId=null;save();}
         else{job=await api('/api/taobao/benchmarks/'+encodeURIComponent(state.jobId));state.enabled=true;state.analysisId=null;save();message('版式分析完成，已用于所选图片。现在可以“一键构思”，审看方案后再生成。');}
-      }else message('对标原图已取得。为需要参考的图片选择对应原图，再分析版式。未绑定的图片仍沿用本站构思。');
+      }else message(state.enabled?'已恢复对标选择与版式分析，可继续查看方案；恢复草稿没有再次抓取、分析或生图。':'对标原图已取得。为需要参考的图片选择对应原图，再分析版式。未绑定的图片仍沿用本站构思。');
       render();if(busy)timer=setTimeout(poll,1500);
-    }catch(error){busy=false;message(error.message+' 可点“刷新状态”核对原任务，不会重新提交。');render();}
+    }catch(error){if(state.jobId!==currentJobId)return;busy=false;message(error.message+' 可点“刷新状态”核对原任务，不会重新提交。');render();}
   }
   function comparisons(){
     if(typeof imageSlots==='undefined')return;
@@ -72,6 +74,10 @@
     if(chosen.some(s=>!asset(s.assetId)?.layout))throw Error('对标图尚未读取或分析完成，请先完成分析，或关闭“使用本次对标”。');
     const bindings=new Map(chosen.map(s=>[s.slot,s.assetId]));
     return {...payload,slot_directives:(payload.slot_directives||[]).map(d=>bindings.has(Number(d.slot))?{...d,benchmark:{job_id:state.jobId,asset_id:bindings.get(Number(d.slot))}}:d)};
+  };
+  window.TaobaoBenchmarkState={
+    capture(){if(busy)throw Error('请等待当前抓取或分析完成后保存草稿。');return {jobId:state.jobId,mapping:structuredClone(state.mapping),enabled:state.enabled,sourceUrl:job?.sourceUrl||$('tbBenchmarkLink')?.value||''};},
+    async restore(value){clearTimeout(timer);state={jobId:null,analysisId:null,mapping:{},enabled:false,comparisons:{},...structuredClone(value)};job=null;busy=false;save();$('tbBenchmarkLink').value=value.sourceUrl||'';$('taobaoBenchmarks').open=!!state.jobId;render();if(state.jobId)await poll();comparisons();}
   };
   window.addEventListener('local-image-task-update',({detail:t})=>{
     if(t?.status==='completed'&&t.imageUrl&&t.benchmark){state.comparisons[t.imageUrl]=t.benchmark;save();setTimeout(comparisons,100);}

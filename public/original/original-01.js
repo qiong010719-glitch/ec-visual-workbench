@@ -971,9 +971,8 @@ window.addEventListener('DOMContentLoaded', function () {
         }
 
         function isTextDepthOn() { const el = document.getElementById('textDepth'); return !!(el && el.checked); }
-        function saveAppState() {
-            if (!__idbRestored) return; // Do not overwrite stored state during startup.
-            const state = { 
+        function captureAppState() {
+            return {
                 generationMode: document.getElementById('generationMode').value,
                 designScope: document.getElementById('designScope').value,
                 targetMarket: document.getElementById('targetMarket').value, 
@@ -1001,6 +1000,10 @@ window.addEventListener('DOMContentLoaded', function () {
                 customLayout: window.__customLayout || null,
                 mobileSlots: (Array.isArray(mobileSlots) ? mobileSlots.map(s => s ? { url: s.url, id: s.id } : null) : [])
             };
+        }
+        function saveAppState() {
+            if (!__idbRestored) return; // Do not overwrite stored state during startup.
+            const state = captureAppState();
             // ⛑️ localStorage 超配额兜底：存档失败绝不能抛异常掐死构思/生图流程（这正是"点一键构思没反应"的根因）。
             //    降级顺序：完整存 → 丢图片 base64 只存 url 等轻量字段 → 彻底放弃本次存档但流程照常。
             try { __idbSaveDebounced(state); } catch (_e) {}
