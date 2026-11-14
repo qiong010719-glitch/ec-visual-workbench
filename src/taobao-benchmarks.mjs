@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import {createTaobaoSource,taobaoLink} from './taobao-source.mjs';
+import {taobaoLink} from './taobao-source.mjs';
+import {createApifyTaobaoSource} from './taobao-apify.mjs';
 import {downloadImage,imageType} from './provider.mjs';
 import {visionSettings} from './reference-analysis.mjs';
 import {slotPlan} from './planner.mjs';
@@ -38,7 +39,7 @@ export async function analyzeBenchmark(bytes,mime,configuration,fetcher=fetch){
 export class TaobaoBenchmarks{
   constructor({directory,mediaDirectory,configuration={},source,download,analyze}={}){
     this.mediaDirectory=mediaDirectory;this.configuration=configuration;
-    this.source=source||createTaobaoSource({configuration});
+    this.source=source||createApifyTaobaoSource({configuration});
     this.download=download||((url)=>downloadImage(url,{attempts:1}));
     this.analyze=analyze||((bytes,mime)=>analyzeBenchmark(bytes,mime,configuration));
     fs.mkdirSync(directory,{recursive:true});this.file=path.join(directory,'benchmarks.json');
@@ -47,7 +48,7 @@ export class TaobaoBenchmarks{
     this.save();
   }
   save(){fs.writeFileSync(this.file+'.tmp',JSON.stringify(this.state,null,2));fs.renameSync(this.file+'.tmp',this.file);}
-  async status(){const s=visionSettings(this.configuration);return {sourceConfigured:await this.source.configured(),analysisConfigured:!!(s.base&&s.key&&s.model),supported:['淘宝','天猫'],maxImagesPerGroup:20};}
+  async status(){const s=visionSettings(this.configuration);return {sourceProvider:this.source.provider||'custom',sourceApi:this.source.api,maxChargeUsd:this.source.maxChargeUsd,sourceConfigured:await this.source.configured(),analysisConfigured:!!(s.base&&s.key&&s.model),supported:['淘宝','天猫'],maxImagesPerGroup:20};}
   get(id){const job=this.state.jobs[id];if(!job)throw fail('对标任务不存在。',404);return job;}
   analysis(id){const job=this.state.analyses[id];if(!job)throw fail('分析任务不存在。',404);return job;}
   createImport(payload,enqueue){
@@ -55,25 +56,38 @@ export class TaobaoBenchmarks{
     const canonical=taobaoLink(payload.link),fingerprint=hash(canonical.url);
     const prior=this.state.jobs[id];if(prior){if(prior.fingerprint!==fingerprint)throw fail('请求编号已用于其他链接。',409);return prior;}
     if(Object.values(this.state.jobs).some(j=>j.fingerprint===fingerprint&&['pending','running'].includes(j.status)))throw fail('这个链接正在读取，请等待已有任务。',409);
-    const job={id,fingerprint,sourceUrl:canonical.url,itemId:canonical.itemId,status:'pending',assets:[],warnings:[],createdAt:new Date().toISOString()};
+    const job={id,fingerprint,provider:this.source.provider||'custom',sourceUrl:canonical.url,itemId:canonical.itemId,status:'pending',assets:[],warnings:[],createdAt:new Date().toISOString()};
     this.state.jobs[id]=job;this.save();
+    this.enqueueImport(job,enqueue);return job;
+  }
+  resumeImport(id,enqueue){
+    const job=this.get(id);
+    if(['pending','running','completed','partial'].includes(job.status))return job;
+    if(job.provider!=='apify'||!job.acquisition?.runId)throw fail('没有可同步的 Apify 运行编号；结果未知时请先核对控制台，不会重新下单。');
+    this.enqueueImport(job,enqueue);return job;
+  }
+  enqueueImport(job,enqueue){
+    const id=job.id;job.status='pending';delete job.error;this.save();
     enqueue(async()=>{
       job.status='running';this.save();
       try{
-        const resolved=await this.source.resolve(canonical.url);job.itemId=resolved.itemId;job.sourceUrl=resolved.url;
+        const resolved=await this.source.resolve(job.sourceUrl);job.itemId=resolved.itemId;job.sourceUrl=resolved.url;
+        if(Object.values(this.state.jobs).some(j=>j.id!==id&&j.itemId===job.itemId&&j.provider===job.provider&&['submitting','submission_unknown','READY','RUNNING'].includes(j.acquisition?.status)))throw fail('这个商品已有未确认的 Apify 任务，请同步或核对原运行，未再次付费提交。');
         const cached=Object.values(this.state.jobs).find(j=>{
-          if(j.id===id||j.itemId!==job.itemId||j.status!=='completed')return false;
+          if(job.acquisition||j.id===id||j.itemId!==job.itemId||j.provider!==job.provider||j.status!=='completed')return false;
           try{j.assets.filter(a=>a.status==='downloaded').forEach(a=>this.bytes(a));return true;}catch{return false;}
         });
-        if(cached){job.title=cached.title;job.assets=structuredClone(cached.assets);job.warnings=[...cached.warnings];job.cachedFrom=cached.id;job.fetchedAt=cached.fetchedAt;}
+        if(cached){job.title=cached.title;job.api=cached.api;job.assets=structuredClone(cached.assets);job.warnings=[...cached.warnings];job.cachedFrom=cached.id;job.fetchedAt=cached.fetchedAt;}
         else{
-          const product=await this.source.getItem(resolved.itemId);job.title=product.title;job.fetchedAt=new Date().toISOString();job.api='taobao.item_get_pro';this.save();
+          const product=await this.source.getItem(resolved.itemId,{record:job.acquisition,checkpoint:record=>{job.acquisition=record;this.save();}});job.title=product.title;job.fetchedAt=new Date().toISOString();job.api=this.source.api||'custom';job.warnings=[];this.save();
           // Group membership stays distinct; missing detail images never borrow main images.
           for(const group of ['main','sku','detail']){
             const urls=product.groups[group]||[];
             if(!urls.length)job.warnings.push(`${{main:'主图',sku:'SKU',detail:'详情'}[group]}未返回独立参考图，可保留本站原有构思。`);
             for(const [index,url] of urls.slice(0,20).entries()){
-              const asset={id:group+'_'+(index+1),group,index:index+1,sourceUrl:url,status:'pending'};job.assets.push(asset);
+              let asset=job.assets.find(a=>a.id===group+'_'+(index+1));
+              if(asset?.status==='downloaded'){try{this.bytes(asset);continue;}catch{}}
+              if(!asset){asset={id:group+'_'+(index+1),group,index:index+1,sourceUrl:url,status:'pending'};job.assets.push(asset);}
               try{const bytes=await this.download(url);const [mime,ext]=imageType(bytes);if(bytes.length>25*1024*1024)throw Error('图片超过25MB');
                 const name=crypto.randomUUID()+ext;fs.writeFileSync(path.join(this.mediaDirectory,name),bytes);
                 Object.assign(asset,{status:'downloaded',localUrl:'/media/'+name,mime,sha256:hash(bytes),sizeBytes:bytes.length});
@@ -86,7 +100,7 @@ export class TaobaoBenchmarks{
         job.status=job.assets.some(a=>a.status==='failed')?'partial':'completed';
       }catch(error){job.status='failed';job.error=error.message;}
       job.finishedAt=new Date().toISOString();this.save();
-    });return job;
+    });
   }
   bytes(asset){
     if(!/^\/media\/[a-f0-9-]+\.(png|jpg|webp)$/.test(asset.localUrl||''))throw fail('对标图片本地路径无效。');

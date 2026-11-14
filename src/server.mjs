@@ -188,6 +188,7 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
       if (pathname.startsWith('/api/') && !['GET','HEAD'].includes(request.method) && request.headers['x-workbench-token'] !== csrf) throw fail(403, '本地会话已过期，请刷新页面');
       if(pathname==='/api/taobao/benchmarks/status'&&request.method==='GET')return json(response,200,await benchmarks.status());
       if(pathname==='/api/taobao/benchmarks'&&request.method==='POST')return json(response,202,benchmarks.createImport(await body(request,16000),enqueue));
+      if(pathname==='/api/taobao/benchmarks/resume'&&request.method==='POST')return json(response,202,benchmarks.resumeImport((await body(request,16000)).job_id,enqueue));
       if(pathname==='/api/taobao/benchmark-analyses'&&request.method==='POST')return json(response,202,benchmarks.createAnalysis(await body(request,16000),enqueue));
       if(pathname.startsWith('/api/taobao/benchmarks/')&&request.method==='GET')return json(response,200,benchmarks.get(pathname.slice('/api/taobao/benchmarks/'.length)));
       if(pathname.startsWith('/api/taobao/benchmark-analyses/')&&request.method==='GET')return json(response,200,benchmarks.analysis(pathname.slice('/api/taobao/benchmark-analyses/'.length)));

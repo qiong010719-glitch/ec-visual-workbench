@@ -21,7 +21,10 @@
     $('tbBenchmarkEnabled').disabled=busy||!selected().length||selected().some(s=>!asset(s.assetId)?.layout);
     $('tbBenchmarkFetch').disabled=busy;$('tbBenchmarkAnalyze').disabled=busy||!selected().length;
     $('tbBenchmarkClear').disabled=busy;
+    $('tbBenchmarkResume').hidden=!(job?.status==='failed'&&job.acquisition?.runId);$('tbBenchmarkResume').disabled=busy;
     $('tbBenchmarkTitle').textContent=job?`${job.title||'正在读取'} · ${job.assets.filter(a=>a.status==='downloaded').length}张已保存${job.cachedFrom?'（复用已抓取资料）':''}`:'';
+    const cost=job?.acquisition?.usageTotalUsd;
+    $('tbBenchmarkCost').textContent=job?.cachedFrom?'本次复用已保存图片，没有新增抓取请求。':Number.isFinite(cost)?`Apify 已记录抓取费用：${cost.toFixed(4)} 美元（分析与生图另计）。`:'';
     $('tbBenchmarkWarnings').textContent=(job?.warnings||[]).join(' ');
     const downloaded=job?.assets.filter(a=>a.status==='downloaded')||[];
     $('tbBenchmarkAssets').innerHTML=downloaded.map(a=>`<a href="${escape(a.localUrl)}" target="_blank" rel="noopener"><img loading="lazy" src="${escape(a.localUrl)}" alt="${label[a.group]}参考${a.index}"><span>${label[a.group]} ${a.index}${a.layout?' · 已分析':''}</span></a>`).join('');
@@ -88,8 +91,9 @@
     const panel=document.createElement('details');panel.id='taobaoBenchmarks';panel.innerHTML=`<summary>对标链接与版式参考</summary>
       <p>粘贴淘宝／天猫链接或分享文案，提取对标图片。参考其布局，用你的商品、SKU和真实卖点重新制作；张数与尺寸仍以上方设置为准。</p>
       <textarea id="tbBenchmarkLink" rows="3" placeholder="淘宝／天猫商品链接或分享文案" aria-label="对标商品链接"></textarea>
-      <button type="button" id="tbBenchmarkFetch">读取链接图片（使用抓取额度）</button><button type="button" id="tbBenchmarkRefresh">刷新状态</button>
-      <p id="tbBenchmarkConnection"></p><p id="tbBenchmarkTitle"></p><p id="tbBenchmarkWarnings"></p><div id="tbBenchmarkAssets"></div><div id="tbBenchmarkBindings"></div>
+      <button type="button" id="tbBenchmarkFetch">Apify 读取链接图片</button><button type="button" id="tbBenchmarkRefresh">刷新状态</button><button type="button" id="tbBenchmarkResume" hidden>同步已有抓取</button>
+      <p>每次只抓一个商品，不抓评论；Apify 单次费用上限 0.05 美元。分析与生图费用另计。</p>
+      <p id="tbBenchmarkConnection"></p><p id="tbBenchmarkTitle"></p><p id="tbBenchmarkCost"></p><p id="tbBenchmarkWarnings"></p><div id="tbBenchmarkAssets"></div><div id="tbBenchmarkBindings"></div>
       <button type="button" id="tbBenchmarkAnalyze">分析并用于构思（使用视觉额度）</button><button type="button" id="tbBenchmarkClear">清除本次对标</button>
       <label><input type="checkbox" id="tbBenchmarkEnabled"> 使用本次对标版式</label>
       <p id="tbBenchmarkMessage" role="status"></p><p>读取和分析不会生图。对标未返回的分类不会用其他图冒充；没有绑定的图片使用原有构思。结果保存在本机，不自动发布。</p>`;
@@ -113,8 +117,9 @@
     };
     $('tbBenchmarkEnabled').onchange=event=>{state.enabled=event.target.checked;save();message('对标设置已更改，请重新构思后生成。已有成图不会被改写。');};
     $('tbBenchmarkRefresh').onclick=poll;
+    $('tbBenchmarkResume').onclick=async()=>{busy=true;render();try{await api('/api/taobao/benchmarks/resume',{job_id:state.jobId});await poll();}catch(error){busy=false;message(error.message);render();}};
     $('tbBenchmarkClear').onclick=()=>{clearTimeout(timer);state={...state,jobId:null,analysisId:null,mapping:{},enabled:false};job=null;save();render();message('已清除对标绑定，本品素材和已有成图保留。');};
-    api('/api/taobao/benchmarks/status').then(s=>{$('tbBenchmarkConnection').textContent=`抓取服务：${s.sourceConfigured?'已配置':'未配置'}；视觉分析：${s.analysisConfigured?'已配置':'未配置'}。`}).catch(e=>{$('tbBenchmarkConnection').textContent=e.message;});
+    api('/api/taobao/benchmarks/status').then(s=>{$('tbBenchmarkConnection').textContent=`${s.sourceProvider==='apify'?'Apify 抓取':'抓取服务'}：${s.sourceConfigured?'已配置':'未配置'}；视觉分析：${s.analysisConfigured?'已配置':'未配置'}。`}).catch(e=>{$('tbBenchmarkConnection').textContent=e.message;});
     render();if(state.jobId)poll();
     setInterval(()=>{const next=JSON.stringify(slots());if(next!==signature){signature=next;render();}comparisons();},1700);
   }

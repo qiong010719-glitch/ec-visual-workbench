@@ -6,6 +6,7 @@ import path from 'node:path';
 import {createWorkbench} from '../src/server.mjs';
 import {taobaoLink,resolveTaobaoLink,referenceGroups,createTaobaoSource} from '../src/taobao-source.mjs';
 import {validateBenchmarkLayout,analyzeBenchmark,TaobaoBenchmarks} from '../src/taobao-benchmarks.mjs';
+import {createApifyTaobaoSource} from '../src/taobao-apify.mjs';
 
 const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aEt8AAAAASUVORK5CYII=','base64');
 const layout={background:'暖色背景',palette:['米色'],typography:'上方大标题，下方小标签',reading_order:['title','product'],regions:[{id:'title',kind:'text',box:[0.05,0.02,0.9,0.15],description:'顶部标题',style:'大字，左对齐',max_chars:16},{id:'product',kind:'product',box:[0.1,0.2,0.8,0.7],description:'下方完整产品'}]};
@@ -28,6 +29,36 @@ async function ready(app){
   assert.equal((await app.call('/api/taobao/benchmark-analyses',{request_id:'analyze_test',job_id:job.id,asset_ids:job.assets.map(a=>a.id)})).status,202);
   assert.equal((await app.wait('/api/taobao/benchmark-analyses/analyze_test')).status,'completed');return (await app.call('/api/taobao/benchmarks/'+job.id)).data;
 }
+
+test('Apify resume endpoint recovers a saved run after a read failure without a second paid start',async t=>{
+  let starts=0,reads=0;
+  const source=createApifyTaobaoSource({client:{configured:true,
+    start:async()=>{starts++;return {id:'saved_run',status:'RUNNING',defaultDatasetId:'saved_data'};},
+    run:async id=>{assert.equal(id,'saved_run');if(++reads===1)throw Error('temporary read failure');return {status:'SUCCEEDED',defaultDatasetId:'saved_data',usageTotalUsd:0.0178};},
+    items:async()=>[{itemId:'12345678901234567890',title:'captured',pictures:groups.main,propsImages:{one:groups.sku[0]},descriptionImages:groups.detail}]
+  }});
+  const app=await fixture(t,{source});
+  await app.call('/api/taobao/benchmarks',{request_id:'resume_original',link});
+  const failed=await app.wait('/api/taobao/benchmarks/resume_original');
+  assert.equal(failed.status,'failed');assert.equal(failed.acquisition.runId,'saved_run');
+  assert.equal((await app.call('/api/taobao/benchmarks/resume',{job_id:failed.id})).status,202);
+  const recovered=await app.wait('/api/taobao/benchmarks/resume_original');
+  assert.equal(recovered.status,'completed');assert.equal(recovered.assets.length,3);assert.equal(starts,1);
+  assert.equal(recovered.acquisition.usageTotalUsd,0.0178);assert.equal(app.calls.generate.length,0);
+  await app.call('/api/taobao/benchmarks/resume',{job_id:failed.id});assert.equal(starts,1);
+});
+
+test('an uncertain Apify submission blocks a new request ID for the same product',async t=>{
+  let starts=0;const source=createApifyTaobaoSource({client:{configured:true,start:async()=>{starts++;throw Object.assign(Error('unknown submission'),{submissionUnknown:true});}}});
+  const app=await fixture(t,{source});
+  await app.call('/api/taobao/benchmarks',{request_id:'unknown_original',link});
+  assert.equal((await app.wait('/api/taobao/benchmarks/unknown_original')).acquisition.status,'submission_unknown');
+  await app.call('/api/taobao/benchmarks',{request_id:'unknown_new_id',link});
+  const blocked=await app.wait('/api/taobao/benchmarks/unknown_new_id');
+  assert.equal(blocked.status,'failed');assert.match(blocked.error,/已有未确认/);assert.equal(starts,1);
+  assert.equal((await app.call('/api/taobao/benchmarks/resume',{job_id:'unknown_original'})).status,400);
+  assert.equal(app.calls.analyze,0);assert.equal(app.calls.generate.length,0);
+});
 test('Taobao intake keeps long IDs as strings, restricts hosts and rejects multi-link input',()=>{
   assert.equal(taobaoLink('分享 '+link+'。').itemId,'12345678901234567890');
   assert.equal(taobaoLink('https://detail.tmall.com/item.htm?id=123456').itemId,'123456');
