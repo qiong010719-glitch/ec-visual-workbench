@@ -29,6 +29,12 @@
           if(url.pathname !== '/api/inpaint' && !payload.mobile_reformat){
             payload.reference_ids ??= window.__designReferenceIds || [];
             payload.visual_style ??= window.getLocalVisualStyle?.(payload.generation_mode || payload.mode) || 'scene_advertising';
+            if(['/api/agent','/api/generate'].includes(url.pathname)&&window.prepareTaobaoBenchmarkPayload){
+              try{payload=window.prepareTaobaoBenchmarkPayload(payload);}catch(error){
+                window.aquaNotify?.('对标参考',error.message,'⚠️');
+                return new Response(JSON.stringify({error:error.message}),{status:409,headers:{'Content-Type':'application/json'}});
+              }
+            }
           }
           init={...init,body:JSON.stringify(payload)};
         }

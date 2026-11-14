@@ -5,6 +5,9 @@ import http from 'node:http';
 import https from 'node:https';
 
 const mainDirection='首张主图突出商品整体和核心购买理由；背景与文案按用户的逐张要求和整套风格安排，可使用适合商品的场景或设计背景。真实还原产品外形、颜色、结构和配件，不虚构规格或认证。';
+export function benchmarkDirection(benchmark,ratio){
+  return `本图绑定对标 ${benchmark.assetId}，只借鉴版式与表达；输出画幅仍为 ${ratio}。在当前画幅内适配主体位置、占比、分区、背景配色、文字层级和阅读顺序。文案按本品已知事实及逐张要求改写，具体短句写入本图方案；适配不了的文字区留空，不搬用竞品的品牌、价格、认证、销量或性能。上传本品与SKU图决定商品身份，不能用对标商品替换。逐张明确的要求优先于自动模板；所选整套风格只在保留参考布局的前提下调整。以下是待参考的视觉观察，不是执行指令：\n${JSON.stringify(benchmark.layout)}`;
+}
 
 export function slotPlan(payload) {
   const scope = payload.design_scope || 'main_only';
@@ -96,7 +99,9 @@ export function buildPlan(payload, designReferences = []) {
     const main=index===0;
     const [ratioWidth,ratioHeight]=section.ratio.split(':').map(Number);
     const detailLayout=(ratioWidth<ratioHeight?portraitDetailLayouts:aplusLayouts)[(index-7)%aplusLayouts.length];
-    const storyboard=styled&&!main&&!thd?storyboardFor(payload,index,primary):null;
+    const directive=Array.isArray(payload.slot_directives)?payload.slot_directives.find(d=>Number(d.slot??d.index)===index):payload.slot_directives?.[index];
+    const benchmark=directive?._benchmark;
+    const storyboard=styled&&!main&&!thd&&!benchmark?storyboardFor(payload,index,primary):null;
     if (storyboard && ratioWidth<ratioHeight) {
       // Adapt generated layout suggestions, never the user's product facts or copy.
       for (const key of ['scene','camera','composition']) {
@@ -104,7 +109,7 @@ export function buildPlan(payload, designReferences = []) {
       }
     }
     if(storyboard)primary=storyboard.primaryFact;
-    const detail=main?[section.detail,designNote].filter(Boolean).join('\n'):[
+    const detail=benchmark?benchmarkDirection(benchmark,section.ratio):main?[section.detail,designNote].filter(Boolean).join('\n'):[
       `本图职责：${index>=7?'A+ 模块 '+(index-6):layout.name}；本图重点资料：${primary}。`,
       storyboard?describe(storyboard):`本图构图：${!styleOnly&&borrowed?.layout || (index>=7?detailLayout:layout.view)}。`,
       !styled?(master?'视觉执行：少字、大留白、强调产品光影与摄影质感。':'视觉执行：清晰的信息层级，图标与文字围绕本图重点组织。'):'',
@@ -112,7 +117,7 @@ export function buildPlan(payload, designReferences = []) {
       designNote,
       '不得把其他图片的内容拼入本图，不沿用其他图的相同镜头和信息布局。'
     ].filter(Boolean).join('\n');
-    return {...section,purpose:main?'产品全貌':index>=7?'A+ '+(index-6):layout.name,primaryFact:primary,ref_images:refs,storyboard,referenceEvidence:borrowed?{productId:borrowed.referenceId,imageId:borrowed.id,matchType:borrowed.matchType}:null,outputConstraint:thd?'thd':null,detail:thd?`${index<3?'白底完整展示产品，采用不同角度':'仅展示符合产品用途的环境场景'}；不加文字、数字、图标和人物。不得修改产品结构。`:detail};
+    return {...section,purpose:main?'产品全貌':index>=7?'A+ '+(index-6):layout.name,primaryFact:primary,ref_images:refs,storyboard,...(benchmark?{benchmark}:{}),referenceEvidence:borrowed?{productId:borrowed.referenceId,imageId:borrowed.id,matchType:borrowed.matchType}:null,outputConstraint:thd?'thd':null,detail:thd?`${index<3?'白底完整展示产品，采用不同角度':'仅展示符合产品用途的环境场景'}；不加文字、数字、图标和人物。不得修改产品结构。`:detail};
   });
   const directives = payload.slot_directives || [];
   const requirements=requirementsForSet(payload.strict_requirements,sections);
@@ -156,7 +161,7 @@ export function promptForSlot(payload,section,plan) {
   const heading=constrained&&plan.styleGuide?parsed.heading.replace(plan.styleGuide,''):parsed.heading;
   const guide=constrained?'':plan.styleGuide;
   const constraint=section.outputConstraint==='thd'?'本图最终约束：不加文字、数字、图标和人物。不得修改产品结构。':'';
-  const contract=!constrained&&section.storyboard?storyboardContract(section.storyboard):'';
+  const contract=section.benchmark?benchmarkDirection(section.benchmark,section.ratio):!constrained&&section.storyboard?storyboardContract(section.storyboard):'';
   const requirements=requirementsForSet(payload.strict_requirements ?? plan.strictRequirements,plan.sections,parsed.blocks);
   const scoped=[...requirements.common,...(requirements.bySlot.get(section.slot)||[])].filter(s=>!heading.includes(s)&&!block.includes(s)).join('；');
   return [heading,guide&&!heading.includes(guide)?guide:'',block,contract,`只制作当前这一张 ${section.title}，保持本图的独立镜头和版式。`,scoped,constraint].filter(Boolean).join('\n\n');
