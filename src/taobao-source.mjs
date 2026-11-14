@@ -83,6 +83,7 @@ export function createTaobaoSource({configuration={},fetcher=fetch,keyReader}={}
       if(!response.ok)throw Error(`万邦返回 HTTP ${response.status}，未自动重试。`);
       for(const value of [key,secret])for(const token of new Set([value,encodeURIComponent(value),JSON.stringify(value).slice(1,-1)]))if(token)raw=raw.split(token).join('[REDACTED]');
       let data;try{data=JSON.parse(raw,(_k,v,c)=>typeof v==='number'&&Number.isInteger(v)&&!Number.isSafeInteger(v)?c.source:v);}catch{throw Error('万邦没有返回有效JSON。');}
+      if(String(data.error_code)==='4013')throw Error('万邦调用次数已达上限（4013）。请在万邦检查淘宝高级详情接口的调用配额；未自动重试，也未启动视觉分析或生图。');
       if(data.error_code!=null&&!['','0','0000','200'].includes(String(data.error_code)))throw Error(`万邦业务错误 ${String(data.error_code).replace(/[^\w-]/g,'').slice(0,20)}；请检查接口权限、额度或商品状态。`);
       if(!data.item||typeof data.item!=='object'||Array.isArray(data.item))throw Error('万邦没有返回商品数据。');
       return {title:String(data.item.title||'淘宝对标商品').slice(0,300),groups:referenceGroups(data.item)};
