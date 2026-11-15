@@ -42,7 +42,7 @@ export function validateTaobaoDraft(value,{mediaDirectory,benchmarks,store,verif
   }
   for(const task of Object.values(store.state.tasks))if(media[task.imageUrl]&&task.benchmark){image(task.benchmark.localUrl);benchmark.comparisons[task.imageUrl]=task.benchmark;}
   const referenceIds=Array.isArray(value.referenceIds)?value.referenceIds.filter(id=>typeof id==='string'&&/^[\w-]{1,120}$/.test(id)).slice(0,20):[];
-  const modelIdentity=hydrateModelIdentity(value.modelIdentity,mediaDirectory,{draft:true}) || {version:1,enabled:false};
+  const modelIdentity=hydrateModelIdentity(value.modelIdentity,mediaDirectory,{draft:true,tasks:store.state.tasks}) || {version:1,enabled:false};
   for(const ref of modelIdentity.references || [])image(ref.url);
   return {version:1,app,benchmark,modelIdentity,visualStyle:value.visualStyle==='original'?'original':'scene_advertising',referenceIds,media};
 }

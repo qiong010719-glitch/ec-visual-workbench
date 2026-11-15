@@ -1,17 +1,21 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import {generatedModelIdentity} from './taobao-model-generation.mjs';
 
 export const MODEL_IDENTITY_VERSION=1;
 const fail=message=>{throw Object.assign(Error(message),{status:400});};
 
-export function hydrateModelIdentity(value,mediaDirectory,{draft=false}={}) {
+export function hydrateModelIdentity(value,mediaDirectory,{draft=false,tasks}={}) {
   if(value===undefined)return undefined;
   if(!value||typeof value.enabled!=='boolean'||(value.version!==undefined&&value.version!==1))fail('模特设置无效，请重新选择是否出镜。');
   if(!value.enabled&&!draft)return {version:1,enabled:false};
   const refs=value.references || [];
+  if(!Array.isArray(refs))fail('模特参考格式无效。');
+  // A draft may remember an unfinished choice, but generation must still reject it.
+  if(draft&&!refs.length&&!value.id)return {version:1,enabled:value.enabled};
   if(!value.enabled&&!refs.length)return {version:1,enabled:false};
-  if(!/^[\w-]{1,120}$/.test(value.id || '')||!Array.isArray(refs)||refs.length!==1)fail('选择模特出镜后，请先上传一张固定模特参考图。');
+  if(!/^[\w-]{1,120}$/.test(value.id || '')||!Array.isArray(refs)||refs.length!==1)fail('选择模特出镜后，请先上传或生成并选定一张固定模特参考图。');
   const references=refs.map(ref=>{
     if(!/^\/media\/[a-f0-9-]+\.(png|jpg|webp)$/.test(ref?.url || ''))fail('模特参考必须是已上传到本项目的图片。');
     let bytes;try{bytes=fs.readFileSync(path.join(mediaDirectory,path.basename(ref.url)));}catch{fail('模特参考图已丢失，请重新上传；没有提交生成。');}
@@ -19,11 +23,17 @@ export function hydrateModelIdentity(value,mediaDirectory,{draft=false}={}) {
     if(ref.sha256!==sha256)fail('模特参考图已变化，请重新上传并构思；没有提交生成。');
     return {url:ref.url,sha256,filename:typeof ref.filename==='string'?ref.filename.slice(0,255):'模特参考图'};
   });
-  return {version:1,enabled:value.enabled,id:value.id,name:typeof value.name==='string'?value.name.slice(0,100):'固定模特',references};
+  if(value.source!==undefined&&!['upload','generated'].includes(value.source))fail('模特来源无效。');
+  if(value.source==='generated'){
+    const original=generatedModelIdentity(tasks?.['hyrule_tasks/'+value.generationTaskId]);
+    if(!original||original.id!==value.id||original.references[0].url!==references[0].url||original.references[0].sha256!==references[0].sha256)fail('系统模特与已完成的生成任务不一致，请重新选择原结果。');
+  }
+  return {version:1,enabled:value.enabled,id:value.id,name:typeof value.name==='string'?value.name.slice(0,100):'固定模特',references,
+    ...(value.source?{source:value.source}:{}),...(value.source==='generated'?{generationTaskId:value.generationTaskId}:{})};
 }
 
-export function hydrateModelPayload(payload,mediaDirectory) {
-  const identity=hydrateModelIdentity(payload.model_identity,mediaDirectory);
+export function hydrateModelPayload(payload,mediaDirectory,tasks) {
+  const identity=hydrateModelIdentity(payload.model_identity,mediaDirectory,{tasks});
   if(!identity)return payload;
   if(identity.enabled&&/^thd|^ultra/.test(payload.design_scope || ''))fail('固定模特用于淘宝主图、SKU与详情，请使用快速或大师模式。');
   return {...payload,model_identity:identity};
