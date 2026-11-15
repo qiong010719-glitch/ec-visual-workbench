@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import crypto from 'node:crypto';
 import {createWorkbench} from '../src/server.mjs';
 const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aEt8AAAAASUVORK5CYII=','base64');
 async function fixture(t){
@@ -22,6 +23,17 @@ test('complete drafts retain editable requirements and local material hashes wit
   assert.equal(restored.data.workbench.app.materialMeta[0].base64,undefined);
   assert.equal(restored.data.workbench.app.activeAgentTask,null);assert.deepEqual(restored.data.workbench.app.activeKieTasks,[]);
   assert.match(restored.data.workbench.media[app.url],/^[a-f0-9]{64}$/);assert.equal(app.calls(),0);
+});
+
+test('drafts retain the same model identity and validate even a disabled saved portrait',async t=>{
+  const app=await fixture(t),actor=app.saveImage(png);
+  app.payload.workbench.modelIdentity={version:1,enabled:false,id:'saved_model',references:[{url:actor,filename:'portrait.png',sha256:crypto.createHash('sha256').update(png).digest('hex')}]};
+  const saved=await app.call('/api/drafts',app.payload);assert.equal(saved.status,200);
+  const restored=await app.call('/api/drafts/'+saved.data.id);
+  assert.equal(restored.data.workbench.modelIdentity.id,'saved_model');assert.equal(restored.data.workbench.modelIdentity.enabled,false);
+  assert.equal(restored.data.workbench.modelIdentity.references[0].url,actor);
+  fs.unlinkSync(path.join(app.mediaDirectory,path.basename(actor)));
+  const missing=await app.call('/api/drafts/'+saved.data.id);assert.equal(missing.status,400);assert.match(missing.data.error,/模特参考图已丢失/);assert.equal(app.calls(),0);
 });
 test('deleted or changed draft assets stop restoration while preserving the saved record',async t=>{
   const app=await fixture(t),saved=(await app.call('/api/drafts',app.payload)).data;

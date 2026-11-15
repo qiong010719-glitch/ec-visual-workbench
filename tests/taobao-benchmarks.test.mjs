@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import {createWorkbench} from '../src/server.mjs';
 import {taobaoLink,resolveTaobaoLink,referenceGroups,createTaobaoSource} from '../src/taobao-source.mjs';
 import {validateBenchmarkLayout,analyzeBenchmark,TaobaoBenchmarks} from '../src/taobao-benchmarks.mjs';
@@ -132,6 +133,20 @@ test('explicit re-import replaces an unusable cached image instead of returning 
   assert.equal(app.calls.collect,2);assert.equal(app.calls.analyze,3);assert.equal(app.calls.generate.length,0);
   assert.notEqual(replacement.assets[0].localUrl,job.assets[0].localUrl);
   assert.equal(replacement.assets[0].layout,undefined);
+});
+
+test('product, selected model and benchmark remain three distinct roles in provider order',async t=>{
+  const app=await fixture(t),job=await ready(app),own=app.saveImage(png),actor=app.saveImage(png);
+  const payload={agent_task_id:'actor_benchmark',product_name:'本品柜子',product_desc:'白色柜体',design_scope:'custom',custom_layout:{main:1,sub:0,aplus:0},
+    model_identity:{version:1,enabled:true,id:'same_actor',references:[{url:actor,filename:'actor.png',sha256:crypto.createHash('sha256').update(png).digest('hex')}]},
+    categorized_images:[{filename:'产品主体图_1',url:own}],slot_directives:[{slot:0,ref_images:['产品主体图_1'],benchmark:{job_id:job.id,asset_id:'main_1'}}]};
+  await app.call('/api/agent',payload);const agent=await app.wait('/api/tasks/agent_tasks/actor_benchmark');
+  const submitted=await app.call('/api/generate',{agent_task_id:payload.agent_task_id,sop_text:agent.result,firebase_tasks:[{slot:0,taskId:'three_roles'}]});
+  assert.equal(submitted.status,202);const task=await app.wait('/api/tasks/hyrule_tasks/three_roles');
+  assert.deepEqual(task.referenceRoles.map(r=>r.role),['own-product','model-identity','benchmark-layout']);
+  assert.deepEqual(app.calls.generate[0].references,[own,actor,job.assets[0].localUrl]);
+  assert.match(app.calls.generate[0].prompt,/前1张只定义本品/);assert.match(app.calls.generate[0].prompt,/其后1张为固定模特/);
+  assert.equal(task.modelIdentity.id,'same_actor');
 });
 test('unanalysed, tampered, cross-category or identity-free benchmark use stops before image calls',async t=>{
   const app=await fixture(t);await app.call('/api/taobao/benchmarks',{request_id:'raw_import',link});await app.wait('/api/taobao/benchmarks/raw_import');

@@ -15,7 +15,7 @@
     saveAppState();
     const app=structuredClone(captureAppState());
     app.materialMeta=app.materialMeta.map(({id,filename,category,url})=>({id,filename,category,url}));
-    return {version:1,app,benchmark,visualStyle:window.getLocalVisualStyle(),referenceIds:window.__designReferenceIds||[]};
+    return {version:1,app,benchmark,modelIdentity:window.TaobaoModelState.capture(),visualStyle:window.getLocalVisualStyle(),referenceIds:window.__designReferenceIds||[]};
   }
   async function restore(id){
     await idle();
@@ -36,6 +36,7 @@
     $('mobileGalleryContainer')?.replaceChildren();
     window.__loadAppStateFrom(JSON.stringify(app));
     window.restoreLocalVisualStyle(snapshot.visualStyle,app.generationMode);
+    window.TaobaoModelState.restore(snapshot.modelIdentity);
     await window.TaobaoBenchmarkState.restore(snapshot.benchmark);
     saveAppState();
     window.aquaNotify?.('草稿已恢复','本品素材、对标绑定、逐图要求和成图已载入。'+(backedUp?'切换前内容已自动备份。':''),'✓');

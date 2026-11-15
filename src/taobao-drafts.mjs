@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import {hydrateModelIdentity} from './taobao-model.mjs';
 const fail=message=>{throw Object.assign(Error(message),{status:400});};
 const text=(value,max=120000)=>typeof value==='string'?value.slice(0,max):'';
 const scalars=['generationMode','designScope','targetMarket','modelEthnicity','prodName','prodDesc','strictReq','sopText','lastAgentTaskId','lastAgentTask','modelChoice','infoDensity','sceneIntensity','genChannel','categoryChoice'];
@@ -41,5 +42,7 @@ export function validateTaobaoDraft(value,{mediaDirectory,benchmarks,store,verif
   }
   for(const task of Object.values(store.state.tasks))if(media[task.imageUrl]&&task.benchmark){image(task.benchmark.localUrl);benchmark.comparisons[task.imageUrl]=task.benchmark;}
   const referenceIds=Array.isArray(value.referenceIds)?value.referenceIds.filter(id=>typeof id==='string'&&/^[\w-]{1,120}$/.test(id)).slice(0,20):[];
-  return {version:1,app,benchmark,visualStyle:value.visualStyle==='original'?'original':'scene_advertising',referenceIds,media};
+  const modelIdentity=hydrateModelIdentity(value.modelIdentity,mediaDirectory,{draft:true}) || {version:1,enabled:false};
+  for(const ref of modelIdentity.references || [])image(ref.url);
+  return {version:1,app,benchmark,modelIdentity,visualStyle:value.visualStyle==='original'?'original':'scene_advertising',referenceIds,media};
 }

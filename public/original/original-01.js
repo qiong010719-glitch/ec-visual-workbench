@@ -2010,8 +2010,11 @@ if (!headers) return
 const response = await fetch('/api/agent', { method: 'POST', headers: headers, body: JSON.stringify(payload) });
 rememberChargeId(agentTaskId, response.headers.get('X-Request-Id'));   // 构思失败时凭它退款
 if (response.status === 402) { clearInterval(progressInterval); document.getElementById('championsOverlay').classList.remove('show'); activeAgentTask = null; saveAppState(); triggerError('点数不足', '剩余点数不够用了，请充值后继续。'); return; }
-if (!response.ok) throw new Error(`HTTP 错误: ${response.status}`);
-            } catch (err) { clearInterval(progressInterval); document.getElementById('championsOverlay').classList.remove('show'); activeAgentTask = null; saveAppState(); db.ref('agent_tasks/' + agentTaskId).off(); triggerError('NETWORK ERROR', '无法连接到远端智脑节点。'); }
+if (!response.ok) {
+    const detail = await response.json().catch(() => ({}));
+    throw new Error(detail.error || `构思请求未完成（HTTP ${response.status}）`);
+}
+            } catch (err) { clearInterval(progressInterval); document.getElementById('championsOverlay').classList.remove('show'); activeAgentTask = null; saveAppState(); db.ref('agent_tasks/' + agentTaskId).off(); triggerError('构思未完成', String(err.message || '服务暂时无法连接，请先核对任务记录。').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))); }
         }
 
         // 各槽位的画幅（重绘/加工时随任务带上，避免比例丢失变方图；与内部版一致）

@@ -36,6 +36,16 @@ test('configured text planner cannot turn the SKU specification into a marketing
   assert.match(prompt,/SKU规格确认/);assert.match(prompt,/清晰可辨/);
 });
 
+test('configured planning preserves the selected model identity and explicit presence policy',async t=>{
+  const identity={version:1,enabled:true,id:'chosen_actor',references:[{url:'/media/actor.png',sha256:'fixture-hash',filename:'actor.png'}]};
+  const payload={...product,visual_style:'scene_advertising',model_identity:identity};
+  const api=await upstream(t,res=>reply(res));const plan=await planProduct(payload,api.configuration);
+  assert.deepEqual(plan.modelIdentity,identity);
+  assert.match(api.requests[0].messages.filter(m=>m.role==='system').at(-1).content,/模特出镜：是/);
+  assert.doesNotMatch(api.requests[0].messages.find(m=>m.role==='user').content,/至少三张不出现完整人物/);
+  for(const section of plan.sections)assert.match(promptForSlot(payload,section,plan),/参考图中的同一位模特/);
+});
+
 test('configured planner receives selected per-slot ratios and invalid ratios retain legacy defaults',async t=>{
   const payload={design_scope:'custom',custom_layout:{main:1,sub:1,aplus:1},slot_directives:[
     {slot:0,aspect_ratio:'2:3'},{slot:1,aspect_ratio:'5:4'},{slot:7,aspect_ratio:'3:4'}]};

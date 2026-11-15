@@ -1,0 +1,69 @@
+// Isolated UI/data-flow verification. Portrait and outputs are labeled image fixtures, not real AI results.
+import fs from 'node:fs';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import assert from 'node:assert/strict';
+import {createWorkbench,root} from '../src/server.mjs';
+const output=path.join(root,'tests/results/taobao-model');fs.mkdirSync(path.join(output,'tmp'),{recursive:true});
+process.env.TEMP=path.join(output,'tmp');process.env.TMP=process.env.TEMP;
+const {chromium}=await import(process.env.PLAYWRIGHT_MODULE_URL || 'playwright');
+const calls=[],requests=[],errors=[],external=[],checks=[];
+let fixture;
+const app=createWorkbench({dataDirectory:fs.mkdtempSync(path.join(output,'data-')),configuration:{},provider:async p=>{calls.push(p);return fixture;}});
+await new Promise(r=>app.server.listen(0,'127.0.0.1',r));assert.notEqual(app.server.address().port,4185);
+const base='http://127.0.0.1:'+app.server.address().port;
+const context=await chromium.launchPersistentContext(fs.mkdtempSync(path.join(output,'profile-')),{channel:'msedge',headless:true,viewport:{width:1600,height:1400},acceptDownloads:true,downloadsPath:path.join(output,'downloads'),env:{...process.env,LOCALAPPDATA:path.join(output,'browser-local'),APPDATA:path.join(output,'browser-roaming')}});
+await context.addInitScript(()=>{localStorage.setItem('aplus_newbie_tour_v1','true');localStorage.setItem('hyrule_result_tour_done','true');});
+await context.route('**/*',route=>{const req=route.request(),url=new URL(req.url());if(url.origin!==base&&!['blob:','data:'].includes(url.protocol)){external.push(url.origin);return route.abort();}if(req.method()==='POST'&&['/api/agent','/api/generate','/api/inpaint'].includes(url.pathname))requests.push({path:url.pathname,body:req.postDataJSON()});return route.continue();});
+const page=context.pages()[0]||await context.newPage();page.setDefaultTimeout(30000);page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.accept());
+const field=async(id,value)=>{await page.locator('#'+id).click();await page.locator('#feTextarea').fill(value);await page.locator('#fieldEditorModal .modal-btn-confirm').click();};
+const plan=async()=>{const before=requests.filter(r=>r.path==='/api/agent').length;await page.locator('#agentBtn').click();await page.locator('#agentConfirmOk').click();await page.waitForFunction(()=>!activeAgentTask&&document.querySelector('#sopText').value.includes('模特出镜'));assert.equal(requests.filter(r=>r.path==='/api/agent').length,before+1);await page.waitForFunction(()=>!document.querySelector('#championsOverlay').classList.contains('show'));};
+try{
+  await page.goto(base,{waitUntil:'networkidle'});await page.waitForFunction(()=>__idbRestored&&window.__customLayout?.taobao?.applied&&document.querySelector('#tbModelPresence'));
+  fixture=Buffer.from(await page.evaluate(()=>{const c=document.createElement('canvas');c.width=600;c.height=600;const x=c.getContext('2d');x.fillStyle='#a3bdc5';x.fillRect(0,0,600,600);x.fillStyle='#253b44';x.font='24px sans-serif';x.fillText('模特流程测试素材（非真实人像）',80,280);return c.toDataURL('image/png').split(',')[1];}),'base64');
+  await page.locator('#modeBtn_fast').click();
+  for(const id of ['tbMainCount','tbSkuCount','tbDetailCount']){await page.locator('#'+id).fill('1');await page.locator('#'+id).dispatchEvent('change');}
+  await field('prodName','固定模特验收商品');await field('prodDesc','白色柜体，仅有已提供外观');
+  const chooser=page.waitForEvent('filechooser');await page.locator('[onclick="openUploader(\'产品主体图\')"]').click();await(await chooser).setFiles({name:'own.png',mimeType:'image/png',buffer:fixture});
+  await page.locator('#tbSkuFile').setInputFiles({name:'sku.png',mimeType:'image/png',buffer:fixture});await page.waitForFunction(()=>__workbenchMaterials().length===2);
+  assert.equal(await page.locator('#tbModelPresence').inputValue(),'no');
+  await page.locator('#tbModelPresence').selectOption('yes');
+  await page.locator('#agentBtn').click();
+  await page.locator('#tbModelMessage').filter({hasText:'请先上传'}).waitFor();assert.equal(requests.length,0);
+  await page.locator('#tbModelFile').setInputFiles({name:'固定人物测试图.png',mimeType:'image/png',buffer:fixture});
+  await page.locator('#tbModelMessage').filter({hasText:'模特参考已保存'}).waitFor();
+  const identity=await page.evaluate(()=>TaobaoModelState.capture());assert.equal(identity.references[0].sha256,crypto.createHash('sha256').update(fixture).digest('hex'));
+  assert.equal(await page.evaluate(()=>__workbenchMaterials().length),2,'actor is not mixed into product materials');
+  checks.push('默认否；选是无人物图时提前阻断；上传独立人物参考，不污染本品或SKU素材');
+  await plan();await page.locator('#mainBtn').click();await page.waitForFunction(()=>[0,1,7].every(i=>imageSlots[i]?.url)&&activeKieTasks.length===0);
+  await page.locator('#_ratingSkip').waitFor({state:'visible'});await page.locator('#_ratingSkip').click();assert.equal(calls.length,3);
+  for(const call of calls){assert.equal(call.references.at(-1),identity.references[0].url);assert.match(call.prompt,/模特出镜：是/);}
+  const urls=await page.evaluate(()=>imageSlots.map(i=>i?.url));
+  await page.reload({waitUntil:'networkidle'});await page.waitForFunction(()=>__idbRestored&&imageSlots[7]?.url);await page.locator('#nav-dash').click();
+  assert.equal(await page.locator('#tbModelPresence').inputValue(),'yes');assert.deepEqual(await page.evaluate(()=>TaobaoModelState.capture()),identity);
+  checks.push('主图/SKU/详情实际模拟请求使用同一模特URL和身份；刷新保留开关、参考与已有图');
+  await page.locator('#localDraftButton').click();await page.locator('#draftNew').click();await page.locator('#draftTitle').fill('模特草稿');await page.locator('#draftForm button[type="submit"]').click();await page.locator('#draftError').filter({hasText:'已保存'}).waitFor();
+  const saved=app.store.state.drafts.find(d=>d.title==='模特草稿');assert.equal(saved.workbench.modelIdentity.id,identity.id);
+  await page.locator('#localDraftEditor [data-close]').click();await page.locator('#tbModelClear').click();await page.locator('#tbModelPresence').selectOption('no');
+  await page.locator('#localDraftButton').click();await page.locator('#draftCards .local-card').filter({hasText:'模特草稿'}).locator('[data-restore]').click();await page.waitForFunction(()=>!document.querySelector('#localDraftList').open&&document.querySelector('#tbModelPresence').value==='yes');
+  assert.equal((await page.evaluate(()=>TaobaoModelState.capture())).id,identity.id);assert.equal(calls.length,3);
+  checks.push('草稿恢复同一人物身份、参考及开关；切换前备份；恢复不触发生图');
+  await page.locator('#nav-dash').click();assert.equal(await page.locator('#modelEthnicity').isVisible(),false);
+  const [zip]=await Promise.all([page.waitForEvent('download'),page.locator('#tbModelExport').click()]);await zip.saveAs(path.join(output,'model-pack.zip'));
+  const pack=await page.evaluate(async b64=>{const z=await JSZip.loadAsync(b64,{base64:true}),manifest=JSON.parse(await z.file('model-identity.json').async('string'));return {manifest,bytes:await z.file(manifest.references[0].file).async('base64')};},fs.readFileSync(path.join(output,'model-pack.zip')).toString('base64'));
+  assert.equal(pack.manifest.id,identity.id);assert.equal(pack.manifest.videoReview,'not_reviewed');assert.deepEqual(Buffer.from(pack.bytes,'base64'),fixture);
+  await page.locator('#taobaoModel').screenshot({path:path.join(output,'model-option.png')});
+  checks.push('图片/视频共用参考包包含同一原图、身份及SHA256，未冒称视频已生成或已验收');
+  await page.locator('#tbModelPresence').selectOption('no');await plan();await page.locator('#mainBtn').click();await page.waitForFunction(old=>activeKieTasks.length===0&&[0,1,7].every(i=>imageSlots[i]?.url&&imageSlots[i].url!==old[i]),urls);
+  assert.equal(calls.length,6);for(const call of calls.slice(3)){assert.ok(!call.references.includes(identity.references[0].url));assert.match(call.prompt,/模特出镜：否/);}
+  assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
+  checks.push('切换否并重新构思后，全部图片请求不再携带模特图并明确不出镜');
+  const oldStatus=await(await fetch(base+'/api/status')).json();delete oldStatus.modelIdentityVersion;
+  await page.route(base+'/api/status',route=>route.fulfill({json:oldStatus}));
+  await page.reload({waitUntil:'networkidle'});await page.waitForFunction(()=>__idbRestored);await page.locator('#nav-dash').click();
+  const requestCount=requests.length;await page.locator('#agentBtn').click();
+  await page.locator('#tbModelMessage').filter({hasText:'请重启本项目服务'}).waitFor();assert.equal(requests.length,requestCount);assert.equal(calls.length,6);
+  checks.push('旧后端缺少模特能力时提前阻断，不允许界面选了模特而服务静默忽略');
+  fs.writeFileSync(path.join(output,'report.json'),JSON.stringify({passed:true,checks,realModelCalls:0,fixtureImageCalls:calls.length,videoCalls:0,errors,external},null,2));console.log(JSON.stringify({passed:true,checks,realModelCalls:0,fixtureImageCalls:calls.length,videoCalls:0}));
+}catch(error){await page.screenshot({path:path.join(output,'failure.png'),fullPage:true});fs.writeFileSync(path.join(output,'failure.json'),JSON.stringify({error:error.message,checks,errors,requests:requests.map(r=>r.path)},null,2));throw error;}
+finally{await context.close();app.server.closeAllConnections();await new Promise(r=>app.server.close(r));}
