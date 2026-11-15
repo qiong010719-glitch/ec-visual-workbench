@@ -1,6 +1,7 @@
 import {extractProductFacts} from './product-facts.mjs';
 import {visualStyleId,generationMode,styleGuideFor,storyboardFor,crossCategoryGuidance} from './visual-style.mjs';
 import {SCENE_STYLE_VERSION,describeStoryboard,storyboardContract} from './rich-storytelling.mjs';
+import {isSkuSlot,skuSection,assertCurrentSkuPlan} from './taobao-sku.mjs';
 import http from 'node:http';
 import https from 'node:https';
 
@@ -55,7 +56,7 @@ function requirementsForSet(text,sections,blocks) {
     else if(shared.test(clause)||!singleScope){common.push(clause);singleScope=false;}
     else once[once.length-1].text+='；'+clause;
   }
-  const preferred=sections.filter(s=>s.slot!==0&&!s.outputConstraint),targets=preferred.length?preferred:sections,bySlot=new Map();
+  const preferred=sections.filter(s=>s.slot!==0&&!s.outputConstraint&&s.outputRole!=='sku'),targets=preferred.length?preferred:sections,bySlot=new Map();
   if(once.length&&!targets.length)throw new Error('请先选择需要生成的图片范围。');
   once.forEach((requirement,i)=>{
     const assigned=sections.find(s=>blocks?.get(s.title)?.includes(requirement.anchor)) || targets[i%targets.length];
@@ -81,6 +82,7 @@ export function buildPlan(payload, designReferences = []) {
       });
       return {...section,panels,detail:section.detail+'\n'+panels.map((p,i)=>`分镜${i+1}（独立画面）：${p.detail}`).join('\n\n')};
     }
+    if(isSkuSlot(payload,section.slot))return skuSection(payload,section);
     const index=section.slot,layout=layouts[index%layouts.length];
     let primary=factFor(index);
     const candidates=(payload.categorized_images || []).filter(m=>index===0?/主体/.test(m.filename):index===2?/材质|细节/.test(m.filename):index===4?/尺寸|参数|结构/.test(m.filename):index===3?/功能|互动/.test(m.filename):/主体/.test(m.filename));
@@ -130,6 +132,7 @@ export function buildPlan(payload, designReferences = []) {
     `视觉方向：${master ? '场景光影、材质质感、品牌一致性' : '清楚呈现卖点、图文层级、信息易读'}`,
     !master&&!thd?`信息密度：${payload.info_density || 'high'}；场景倾向：${payload.scene_intensity || 'original'}`:'',
     styleGuide,
+    sections.some(s=>s.outputRole==='sku')?'SKU规格图例外：只执行该段的规格确认要求。通用卖点表达、信息密度和镜头多样性只用于主图与详情，不得改写SKU为营销拼版。':'',
     `品类：${payload.category || 'general'}；人物：${payload.model_ethnicity || '按目标市场'}`,
     `文字穿插：${payload.text_depth ? '允许文字与产品前后穿插' : '文字不遮挡产品'}`,
     `全套通用要求：${requirements.common.join('；') || '无'}`,
@@ -152,11 +155,24 @@ export function splitPlan(text) {
   return {heading:matches.length?text.slice(0,matches[0].index).trim():text,blocks};
 }
 export function promptForSlot(payload,section,plan) {
+  assertCurrentSkuPlan(payload,section);
   const sop=String(payload.sop_text || plan.text);
   const parsed=splitPlan(sop);
   if(parsed.blocks.size && !parsed.blocks.has(section.title))throw new Error('设计方案缺少当前图片的独立段落：'+section.title);
   if(plan.visualStyle?.id==='scene_advertising'&&parsed.blocks.has(section.title)&&!parsed.blocks.get(section.title).replace(/^[^\n]*(?:\n|$)/,'').trim())throw new Error('当前图片的方案内容为空，请补齐或重新构思后再生成：'+section.title);
   const block=parsed.blocks.get(section.title) || `${section.title}\n画幅 ${section.ratio}。${section.detail}`;
+  if(section.outputRole==='sku') {
+    if(payload.sop_text&&!block.includes('本图职责：SKU规格确认'))throw Object.assign(new Error('当前SKU段落缺少规格图要求，请重新构思后再生成；没有提交出图请求。'),{status:409});
+    // Do not leak the shared advertising brief or another slot's story into SKU output.
+    const requirements=requirementsForSet(payload.strict_requirements ?? plan.strictRequirements,plan.sections,parsed.blocks);
+    return [
+      `产品：${payload.product_name || '以本张上传图为准'}；文字语言：${payload.target_lang || '简体中文'}。`,
+      block,
+      [...requirements.common,...(requirements.bySlot.get(section.slot)||[])].join('；'),
+      section.detail,
+      `只制作当前这一张 ${section.title}，输出一张SKU规格图。`
+    ].filter(Boolean).join('\n\n');
+  }
   const constrained=section.outputConstraint==='thd';
   const heading=constrained&&plan.styleGuide?parsed.heading.replace(plan.styleGuide,''):parsed.heading;
   const guide=constrained?'':plan.styleGuide;
@@ -213,6 +229,12 @@ export async function planProduct(payload, configuration = process.env, designRe
     diagnostics.emptyTitles=plan.sections.filter(s=>parsed.blocks.has(s.title)&&!parsed.blocks.get(s.title).replace(/^[^\n]*(?:\n|$)/,'').trim()).map(s=>s.title);
     if(choice.finish_reason==='length')throw failure('PLANNER_TRUNCATED','构思服务返回的方案被截断，已保存返回内容；尚未作为完整方案使用。');
     if(diagnostics.missingTitles.length||diagnostics.emptyTitles.length)throw failure('PLANNER_INCOMPLETE','构思方案缺少完整段落：'+[...diagnostics.missingTitles,...diagnostics.emptyTitles].join('、')+'。已保存返回内容，请补齐方案后再生图。');
+    // SKU layout is deterministic. Text-only planning cannot read the uploaded SKU
+    // dimensions and must not invent them or replace the specification with a sales pitch.
+    if(plan.sections.some(s=>s.outputRole==='sku')) {
+      const canonical=splitPlan(plan.text);
+      generated=[parsed.heading,...plan.sections.map(s=>(s.outputRole==='sku'?canonical:parsed).blocks.get(s.title))].filter(Boolean).join('\n\n');
+    }
     return {...plan, source: designReferences.length?'reference-planner':'configured-planner', text:generated,diagnostics:diagnosticSnapshot()};
   } catch(error) {
     if(String(error.code).startsWith('PLANNER_'))throw error;

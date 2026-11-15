@@ -42,6 +42,33 @@ test('stale scene plans require replanning before image charges or provider call
   assert.equal(calls,0);assert.equal(app.store.state.balance,before);
 });
 
+test('legacy SKU collage is rejected before any image charge; replanning binds the real SKU reference',async t=>{
+  const calls=[];const app=await fixture(t,{provider:async p=>{calls.push(p);return png;}});
+  const payload={agent_task_id:'sku_fix',product_name:'玄关柜子',product_desc:'耐看耐用',generation_mode:'fast',visual_style:'scene_advertising',
+    custom_layout:{main:1,sub:5,aplus:3},categorized_images:[{filename:'产品主体图_1',url:'/media/main.png'},{filename:'SKU图_1',url:'/media/sku.png'}],
+    slot_directives:[{slot:5,ref_images:['SKU图_1'],aspect_ratio:'1:1'}]};
+  const old=buildPlan(payload),section=old.sections.find(s=>s.slot===5);
+  delete section.outputRole;delete section.skuContractVersion;
+  app.store.task('agent_tasks/sku_fix',{status:'completed',payload,plan:old});
+  const before=app.store.state.balance;
+  const request={agent_task_id:'sku_fix',sop_text:old.text,firebase_tasks:[{slot:5,taskId:'sku_fixed_image'}]};
+  const blocked=await app.call('/api/generate',request);
+  assert.equal(blocked.response.status,409);assert.match(blocked.data.error,/重新构思/);
+  assert.equal(calls.length,0);assert.equal(app.store.state.balance,before);
+  assert.equal(app.store.state.tasks['hyrule_tasks/sku_fixed_image'],undefined);
+  // An old SOP without its agent ID must not bypass the guard by building a new plan.
+  const orphaned=await app.call('/api/generate',{...payload,agent_task_id:undefined,
+    sop_text:'【卖点图5】\n完整SKU商品占约10%—20%，主标题：要点，一眼看清。',firebase_tasks:request.firebase_tasks});
+  assert.equal(orphaned.response.status,409);assert.equal(calls.length,0);assert.equal(app.store.state.balance,before);
+  await app.call('/api/agent',{...payload,agent_task_id:'sku_replanned'});
+  const agent=await app.settled('agent_tasks/sku_replanned');assert.equal(agent.status,'completed');
+  const result=await app.call('/api/generate',{...request,agent_task_id:'sku_replanned',sop_text:agent.result});
+  assert.equal(result.response.status,202);
+  assert.equal((await app.settled('hyrule_tasks/sku_fixed_image')).status,'completed');
+  assert.equal(calls.length,1);assert.deepEqual(calls[0].references,['/media/sku.png']);
+  assert.match(calls[0].prompt,/SKU规格确认/);assert.doesNotMatch(calls[0].prompt,/10%—20%|要点，一眼看清/);
+});
+
 test('saved original plans remain usable and new scene evidence reaches the provider',async t=>{
   const captured=[];const app=await fixture(t,{provider:async p=>{captured.push(p);return png;}});
   for(const style of ['original','scene_advertising']){

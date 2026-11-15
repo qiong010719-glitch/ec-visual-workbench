@@ -90,6 +90,10 @@ try {
   const payload=requests.find(r=>r.path==='/api/generate').body;
   const sku=payload.categorized_images.find(item=>item.filename==='SKU图_1');
   assert.ok(sku?.url);assert.deepEqual(generated.find(r=>r.prompt.includes('只制作当前这一张 【卖点图1】')).references,[sku.url]);
+  assert.equal(payload.slot_directives.find(d=>d.slot===1).taobao_role,'sku');
+  const skuPrompt=generated.find(r=>r.references[0]===sku.url).prompt;
+  assert.match(skuPrompt,/SKU规格确认/);assert.match(skuPrompt,/尺寸、单位、颜色和款式/);
+  assert.doesNotMatch(skuPrompt,/10%—20%|要点，一眼看清/);
   for(const request of generated)assert.match(request.prompt,/整套风格：暖色氛围/);
   assert.match(generated.find(r=>r.prompt.includes('只制作当前这一张 【主图】')).prompt,/主图专属/);
   for(const [slot,size] of [[0,'600×600'],[1,'640×800'],[7,'750×1100']]) {
@@ -144,6 +148,24 @@ try {
   await page.locator('#nav-dash').click();await page.locator('#taobaoShell').screenshot({path:path.join(output,'panel.png')});
   await page.locator('#customEditBtn').click();
   await page.locator('#customLayoutModal .prompt-modal-box').screenshot({path:path.join(output,'requirements.png')});
+  await page.locator('#customLayoutModal button[onclick="cancelCustomLayout()"]').click();
+  const planId=payload.agent_task_id;
+  delete app.store.state.tasks['agent_tasks/'+planId].plan.sections.find(s=>s.slot===1).skuContractVersion;
+  const existingSlots=await page.evaluate(()=>imageSlots.map(s=>s?.url));
+  const balanceBefore=app.store.state.balance;
+  // Test both the single-SKU redraw and whole-set submission through actual controls.
+  await page.locator('#nav-notes').click();
+  await page.locator('#slot-1 [data-taobao-redraw]').click();
+  await page.waitForFunction(()=>document.querySelector('#logContent').textContent.includes('请重新构思'));
+  assert.deepEqual(await page.evaluate(()=>imageSlots.map(s=>s?.url)),existingSlots);
+  await page.locator('#nav-dash').click();
+  await page.locator('#mainBtn').click();
+  await page.waitForFunction(()=>document.querySelector('#logContent').textContent.includes('请重新构思'));
+  assert.deepEqual(await page.evaluate(()=>imageSlots.map(s=>s?.url)),existingSlots);
+  assert.equal(await page.evaluate(()=>activeKieTasks.length),0);
+  assert.equal(app.store.state.balance,balanceBefore);assert.equal(generated.length,3);
+  assert.doesNotMatch(await page.locator('#logContent').textContent(),/大概率已抵达|慢通道|超时/);
+  checks.push('旧SKU方案的单张/整套提交在扣点前阻断，显示重新构思原因，已有图片与任务状态保留');
   assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
   fs.writeFileSync(path.join(output,'report.json'),JSON.stringify({passed:true,checks,errors,external,simulatedGenerations:generated.length,realModelCalls:0},null,2));
   console.log(JSON.stringify({passed:true,checks,simulatedGenerations:generated.length,realModelCalls:0,output}));

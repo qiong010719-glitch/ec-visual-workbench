@@ -115,6 +115,10 @@ try {
   assert.ok(sku?.url);const benchmarkState=await page.evaluate(()=>JSON.parse(localStorage.getItem('taobao-benchmark-v1')));
   const benchmarkJob=app.benchmarks.get(benchmarkState.jobId);
   assert.deepEqual(generated.find(r=>r.prompt.includes('只制作当前这一张 【卖点图1】')).references,[sku.url,benchmarkJob.assets.find(a=>a.id==='sku_1').localUrl]);
+  assert.equal(payload.slot_directives.find(d=>d.slot===1).taobao_role,'sku');
+  const skuPrompt=generated.find(r=>r.references[0]===sku.url).prompt;
+  assert.match(skuPrompt,/SKU规格确认/);assert.match(skuPrompt,/对标图，仅参考适合SKU/);
+  assert.doesNotMatch(skuPrompt,/10%—20%|要点，一眼看清/);
   for(const request of generated)assert.match(request.prompt,/最后1张只定义本图版式/);
   for(const request of generated)assert.match(request.prompt,/整套风格：暖色氛围/);
   assert.match(generated.find(r=>r.prompt.includes('只制作当前这一张 【主图】')).prompt,/主图专属/);

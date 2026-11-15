@@ -205,7 +205,7 @@
     return `本张自定义宽高：宽 ${custom.width} 像素，高 ${custom.height} 像素，画幅 ${ratio}。按这个宽高安排构图，产品完整留在画面里。`;
   }
   function skuReferenceNote(filename) {
-    return `本张 SKU 图以已上传的规格图「${filename}」为参考。按这张规格图的颜色和外观出图，不要只按产品主体图来画，也不要换成其他规格。`;
+    return `本张 SKU 图以已上传的规格图「${filename}」为参考。完整展示这一款商品，保留清晰可辨的尺寸、单位、颜色和款式；清理截图界面，不做卖点拼版。不要只按产品主体图来画，也不要换成其他规格。`;
   }
   function attachSkuRefs(directives, spec, photos) {
     const names = [];
@@ -221,7 +221,7 @@
     const next = source.map(item => {
       const filename = bySlot.get(item.slot);
       if (!filename) return item;
-      return {...item, ref_images: [filename], requirement: [item.requirement, skuReferenceNote(filename)].filter(Boolean).join('；')};
+      return {...item, taobao_role:'sku', ref_images: [filename], requirement: [item.requirement, skuReferenceNote(filename)].filter(Boolean).join('；')};
     });
     return {directives: next, attached: true};
   }
@@ -240,6 +240,7 @@
       if (!zone && !notes.length) return item;
       const next = {...item};
       if (zone) {
+        next.taobao_role = zone;
         next.aspect_ratio = ratioForZone(zone, spec);
         if (item.title) next.title = item.slot === 0 ? '【主图】' : item.slot < 7 ? `【卖点图${item.slot}】` : `【高级A+模块${item.slot - 6}】`;
       }

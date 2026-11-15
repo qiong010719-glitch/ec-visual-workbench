@@ -178,7 +178,7 @@
         <input id="tbSkuFile" type="file" accept="image/*" multiple>
         <span id="tbSkuUploadCount">还没有 SKU 图</span>
       </div>
-      <p id="tbSkuUploadHint" class="local-muted">规格或颜色各传一张，按顺序对应 SKU图 1、2、3。照片进现有参考图（最多 8 张）。生成 SKU 图时用对应的这张，不再只按产品主体图。没传则仍走原来的生图。照片比 SKU 槽少时，多出来的槽用最后一张规格图。只在本机工作台使用，不会上传到淘宝。</p>
+      <p id="tbSkuUploadHint" class="local-muted">规格或颜色各传一张，按顺序对应 SKU图 1、2、3。照片进现有参考图（最多 8 张）。SKU图完整展示对应商品，保留清晰的尺寸、颜色和款式；清理截图界面，不做卖点拼版。没传规格图时只按本品外观生成，不编造规格。上传数量不改变出图张数，请在下方设置。照片比 SKU 槽少时，多出来的槽用最后一张规格图。只在本机工作台使用，不会上传到淘宝。</p>
       <div id="tbSkuThumbs" class="tb-sku-thumbs"></div>
       <p id="tbDisclaimer" class="local-muted">图片和草稿保存在本机，不是淘宝草稿，也未发布。自定义宽高用于构图，实际尺寸会显示在成图旁；下载保留原图尺寸和格式。</p>
       <div class="tb-grid">
