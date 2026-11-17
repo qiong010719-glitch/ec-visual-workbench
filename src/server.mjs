@@ -22,6 +22,7 @@ import {createSettings} from './settings.mjs';
 import {createProductBatches} from './product-batches.mjs';
 import {createSingleDesign,SINGLE_DESIGN_REVISION} from './single-design.mjs';
 import {TEMU_DESIGN_REVISION} from './image-scope.mjs';
+import {createSourcing,SOURCING_REVISION} from './sourcing.mjs';
 
 export const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const mimes = {'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json; charset=utf-8','.jpg':'image/jpeg','.png':'image/png','.webp':'image/webp','.svg':'image/svg+xml','.ico':'image/x-icon','.woff2':'font/woff2'};
@@ -29,7 +30,7 @@ const validId = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,120}$/.t
 const uuid = () => crypto.randomUUID();
 const fail = (status, message) => Object.assign(new Error(message), {status});
 
-export function createWorkbench({dataDirectory = path.join(root, 'data'), configuration = process.env, provider, download, planner, directionPlanner, titlePlanner, chineseTranslator, productRecognizer, copyRewriter, erpAdapter, legacyUi = false, researchOptions = {}, settingsCodec} = {}) {
+export function createWorkbench({dataDirectory = path.join(root, 'data'), configuration = process.env, provider, download, planner, directionPlanner, titlePlanner, chineseTranslator, productRecognizer, copyRewriter, erpAdapter, sourcingClient, collectionAdapter, legacyUi = false, researchOptions = {}, settingsCodec} = {}) {
   configuration={...configuration};
   const preferences=createSettings({directory:path.join(dataDirectory,'preferences'),configuration,legacyDirectory:configuration.WORKBENCH_FRESH==='true'?null:path.join(root,'../config'),codec:settingsCodec});
   const store = new Store(dataDirectory);
@@ -211,6 +212,7 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
   const multisets=createMultiSetService({store,configuration,mediaDirectory,enqueue,submitPlan,submitImages,publicTask,retryDownload,directionPlanner,copyRewriter});
   const erp=createErpService({directory:path.join(dataDirectory,'erp'),mediaDirectory,store,multisets,configuration,adapter:erpAdapter,preferences});
   const products=createProductBatches({store,mediaDirectory,saveImage,multisets,erp,preferences,configuration,titlePlanner,chineseTranslator,productRecognizer,imageAvailable:()=>!!provider||!!configuration.SUANZHOU_IMAGE_API_KEY});
+  const sourcing=createSourcing({directory:path.join(dataDirectory,'sourcing'),configuration,preferences,client:sourcingClient,adapter:collectionAdapter,isOtherBusy:()=>erp.isBusy()||products.isBusy()});
 
   const server = http.createServer(async (request, response) => {
     try {
@@ -221,10 +223,33 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
       const pathname = decodeURIComponent(url.pathname);
       response.setHeader('X-Content-Type-Options', 'nosniff');
       response.setHeader('Referrer-Policy', 'same-origin');
-      response.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' data: blob:; font-src 'self' data:; media-src 'self' blob:; frame-src 'self' blob:; frame-ancestors 'none'; object-src 'none'; base-uri 'self'");
+      response.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.kwcdn.com; connect-src 'self' data: blob:; font-src 'self' data:; media-src 'self' blob:; frame-src 'self' blob:; frame-ancestors 'none'; object-src 'none'; base-uri 'self'");
       if (pathname === '/api/session' && request.method === 'GET') return json(response,200,{token:csrf,user:{id:'local-owner',email:'local@workbench.local'}});
       if (pathname === '/api/temu/config' && request.method === 'GET') return json(response,200,{platform:'temu',workspacePlatform:legacyUi?'legacy':'temu',generationWorkflow:'shared',formats:{'1:1':temuFormats['1:1']},maxImages:14,maxSets:TEMU_MAX_SETS,detailImages:'same-as-main-images-in-order',fissionEnabled:true,publishEnabled:false});
       if (pathname.startsWith('/api/') && !['GET','HEAD'].includes(request.method) && request.headers['x-workbench-token'] !== csrf) throw fail(403, '本地会话已过期，请刷新页面');
+      if(sourcing.isBusy()&&request.method==='POST'&&['/api/settings','/api/temu/erp/','/api/products'].some(p=>pathname.startsWith(p)))throw fail(409,'选品或采集任务正在运行，请完成后再修改连接或操作ERP');
+      if(pathname.startsWith('/api/sourcing')){
+        const route=pathname.slice('/api/sourcing'.length);
+        if(request.method==='GET'){
+          if(!route)return json(response,200,sourcing.view());
+          const item=/^\/(searches|batches)\/([a-zA-Z0-9_-]+)$/.exec(route);
+          if(item)return json(response,200,item[1]==='searches'?sourcing.getSearch(item[2]):sourcing.getBatch(item[2]));
+        }
+        if(request.method==='POST'){
+          const payload=await body(request,200000);
+          if(route==='/sites')return json(response,200,await sourcing.sites());
+          if(route==='/categories')return json(response,200,await sourcing.categories(payload.parentCatId));
+          if(route==='/parse')return json(response,200,await sourcing.parse(payload.prompt));
+          if(route==='/searches')return json(response,202,sourcing.startSearch(payload));
+          if(route==='/batches')return json(response,202,sourcing.startBatch(payload));
+          if(route==='/open')return json(response,200,await sourcing.open(payload.erpKey));
+          const reconcile=/^\/batches\/([a-zA-Z0-9_-]+)\/reconcile$/.exec(route);
+          if(reconcile)return json(response,200,await sourcing.reconcile(reconcile[1]));
+          const stop=/^\/batches\/([a-zA-Z0-9_-]+)\/stop$/.exec(route);
+          if(stop)return json(response,200,sourcing.stop(stop[1]));
+        }
+        throw fail(404,'选品接口不存在');
+      }
       if(pathname==='/api/settings'){
         if(request.method==='GET')return json(response,200,preferences.view());
         if(request.method==='POST'){
@@ -303,7 +328,7 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
         if(!operations[action])throw fail(404,'接口不存在');
         return json(response,['directions','plan-text'].includes(action)?200:202,multisets[operations[action]](groupId,payload));
       }
-      if (pathname === '/api/status') return json(response,200,{workbenchVersion:'merchant-1',copyRepairRevision:COPY_REPAIR_REVISION,erpAutomationRevision:ERP_AUTOMATION_REVISION,singleDesignRevision:SINGLE_DESIGN_REVISION,temuDesignRevision:TEMU_DESIGN_REVISION,workbenchRevision:'chinese-review-mother-selector-20261110',busy:active>0||queue.length>0||products.isBusy()||erp.isBusy(),erpPublishEnabled:true,mode:'local', isolatedPreview:configuration.WORKBENCH_STYLE_PREVIEW==='true', imageProvider:provider ? 'test-fixture' : 'configured-image-api', imageConfigured:!!provider || !!configuration.SUANZHOU_IMAGE_API_KEY, model:resolveImageModel(undefined,configuration), imageModels, planner:configuration.PLANNER_API_KEY ? 'configured' : 'local-rules', active, queued:queue.length,queueConcurrency:concurrency,downloadProxyConfigured:!!configuration.IMAGE_DOWNLOAD_PROXY,downloadRecoveryEnabled:true,recoverableDownloads:Object.values(store.state.tasks).filter(t=>t.resultUrl&&t.status==='failed').length, defaultProductStatus:'draft', paymentEnabled:false, publishEnabled:false});
+      if (pathname === '/api/status') return json(response,200,{workbenchVersion:'merchant-1',sourcingRevision:SOURCING_REVISION,copyRepairRevision:COPY_REPAIR_REVISION,erpAutomationRevision:ERP_AUTOMATION_REVISION,singleDesignRevision:SINGLE_DESIGN_REVISION,temuDesignRevision:TEMU_DESIGN_REVISION,workbenchRevision:'chinese-review-mother-selector-20261110',busy:active>0||queue.length>0||products.isBusy()||erp.isBusy()||sourcing.isBusy(),erpPublishEnabled:true,mode:'local', isolatedPreview:configuration.WORKBENCH_STYLE_PREVIEW==='true', imageProvider:provider ? 'test-fixture' : 'configured-image-api', imageConfigured:!!provider || !!configuration.SUANZHOU_IMAGE_API_KEY, model:resolveImageModel(undefined,configuration), imageModels, planner:configuration.PLANNER_API_KEY ? 'configured' : 'local-rules', active, queued:queue.length,queueConcurrency:concurrency,downloadProxyConfigured:!!configuration.IMAGE_DOWNLOAD_PROXY,downloadRecoveryEnabled:true,recoverableDownloads:Object.values(store.state.tasks).filter(t=>t.resultUrl&&t.status==='failed').length, defaultProductStatus:'draft', paymentEnabled:false, publishEnabled:false});
       if (pathname === '/api/research/status' && request.method === 'GET') return json(response,200,research.status());
       if (pathname === '/api/research/design-patterns' && request.method === 'GET') return json(response,200,designPatterns(research.library.state));
       if (pathname === '/api/research/products' && request.method === 'GET') return json(response,200,Object.values(research.library.state.products).map(p=>({id:p.id,title:p.title,brand:p.brand,asin:p.asin,url:p.url,category:p.category,categoryMemberships:p.categoryMemberships||[],styleProfileIds:p.styleProfileIds||[],collectionIds:p.collectionIds||[],rank:p.rank,rankBasis:p.rankBasis,provenance:p.provenance,aplusStatus:p.aplusStatus,images:p.assets.length,downloaded:p.assets.filter(a=>a.status==='downloaded').length,analysisStatus:p.analysis?.status || 'pending',analysisError:p.analysis?.error || null,thumbnail:p.assets.find(a=>a.localUrl)?.localUrl || null,warnings:p.warnings})));
@@ -411,7 +436,7 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
         return response.end(request.method==='HEAD'?undefined:html);
       }
       const base = pathname.startsWith('/media/') ? mediaDirectory : path.join(root,'public');
-      const relative = pathname.startsWith('/media/') ? pathname.slice(7) : pathname==='/settings'?'merchant.html':['/','/index.html'].includes(pathname) ? (legacyUi?'index.html':'temu.html') : ['/temu','/temu/'].includes(pathname)?'temu.html':['/temu/listings','/temu/listings/'].includes(pathname)?'temu-listings.html':pathname.slice(1);
+      const relative = pathname.startsWith('/media/') ? pathname.slice(7) : pathname==='/sourcing'?'sourcing.html':pathname==='/settings'?'merchant.html':['/','/index.html'].includes(pathname) ? (legacyUi?'index.html':'temu.html') : ['/temu','/temu/'].includes(pathname)?'temu.html':['/temu/listings','/temu/listings/'].includes(pathname)?'temu-listings.html':pathname.slice(1);
       const file = path.resolve(base,relative);
       if (!file.startsWith(path.resolve(base) + path.sep)) throw fail(403,'路径不可访问');
       if (!fs.existsSync(file) || !fs.statSync(file).isFile()) throw fail(404,'文件不存在');
@@ -420,7 +445,7 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
     } catch(error) {json(response,error.status || 400,{error:error.message || '请求失败'});}
   });
   server.on('close',()=>{products.close();research.close();});
-  return {server,store,mediaDirectory,saveImage,research,erp,preferences,products,isBusy:()=>active>0||queue.length>0||products.isBusy()||erp.isBusy()};
+  return {server,store,mediaDirectory,saveImage,research,erp,preferences,products,sourcing,isBusy:()=>active>0||queue.length>0||products.isBusy()||erp.isBusy()||sourcing.isBusy()};
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

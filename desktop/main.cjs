@@ -17,8 +17,9 @@ else {
     const {SINGLE_DESIGN_REVISION}=await import(pathToFileURL(path.join(root,'src/single-design.mjs')).href);
     const {TEMU_DESIGN_REVISION}=await import(pathToFileURL(path.join(root,'src/image-scope.mjs')).href);
     const {COPY_REPAIR_REVISION}=await import(pathToFileURL(path.join(root,'src/copy-review.mjs')).href);
+    const {SOURCING_REVISION}=await import(pathToFileURL(path.join(root,'src/sourcing.mjs')).href);
     let reused=false;
-    if(profile.reuseService){try{const r=await fetch('http://127.0.0.1:'+port+'/api/status',{signal:AbortSignal.timeout(1200)});const s=await r.json();if(s.workbenchVersion==='merchant-1'&&s.copyRepairRevision===COPY_REPAIR_REVISION&&s.erpAutomationRevision===ERP_AUTOMATION_REVISION&&s.singleDesignRevision===SINGLE_DESIGN_REVISION&&s.temuDesignRevision===TEMU_DESIGN_REVISION){reused=true;origin='http://127.0.0.1:'+port;}else throw new Error('旧版本工作台服务仍在运行，请完成当前任务并关闭旧工作台及旧服务，再启动新版。');}catch(e){if(e.message.startsWith('旧版本'))throw e;}}
+    if(profile.reuseService){try{const r=await fetch('http://127.0.0.1:'+port+'/api/status',{signal:AbortSignal.timeout(1200)});const s=await r.json();if(s.workbenchVersion==='merchant-1'&&s.sourcingRevision===SOURCING_REVISION&&s.copyRepairRevision===COPY_REPAIR_REVISION&&s.erpAutomationRevision===ERP_AUTOMATION_REVISION&&s.singleDesignRevision===SINGLE_DESIGN_REVISION&&s.temuDesignRevision===TEMU_DESIGN_REVISION){reused=true;origin='http://127.0.0.1:'+port;}else throw new Error('旧版本工作台服务仍在运行，请完成当前任务并关闭旧工作台及旧服务，再启动新版。');}catch(e){if(e.message.startsWith('旧版本'))throw e;}}
     if(!reused){
       workbench=createWorkbench({dataDirectory,configuration});
       await new Promise((resolve,reject)=>{workbench.server.once('error',error=>reject(profile.isolated&&error.code==='EADDRINUSE'?new Error('测试工作台端口 '+port+' 已被占用。请关闭占用该端口的程序后重开；本次没有连接其他工作台。'):error));workbench.server.listen(port,'127.0.0.1',resolve);});

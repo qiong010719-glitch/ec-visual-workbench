@@ -19,7 +19,7 @@ body.has-workbench-header {padding-top:var(--workbench-header-height);}
   background:var(--ui-accent);color:white;border-radius:10px;font-size:24px;font-weight:800;
 }
 .workbench-header .workbench-nav {
-  display:grid;grid-template-columns:repeat(3,112px);align-items:center;gap:4px;
+  display:grid;grid-template-columns:repeat(4,112px);align-items:center;gap:4px;
   margin:0 0 0 auto;padding:4px;border-radius:10px;background:var(--ui-page);
 }
 .workbench-header .workbench-nav a {
@@ -47,6 +47,6 @@ body.has-workbench-header {padding-top:var(--workbench-header-height);}
   .workbench-header {padding:10px 16px;gap:8px;flex-wrap:wrap;align-content:center;}
   .workbench-header .workbench-brand {font-size:17px;}
   .workbench-header .workbench-logo {width:30px;height:30px;font-size:22px;border-radius:8px;}
-  .workbench-header .workbench-nav {width:100%;grid-template-columns:repeat(3,minmax(0,1fr));gap:2px;}
+  .workbench-header .workbench-nav {width:100%;grid-template-columns:repeat(4,minmax(0,1fr));gap:2px;}
   .workbench-header .workbench-nav a {font-size:12px;line-height:20px;padding:6px 0;}
 }

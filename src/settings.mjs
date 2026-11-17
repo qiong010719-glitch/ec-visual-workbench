@@ -6,7 +6,7 @@ import {resolveImageModel} from './image-models.mjs';
 import {erpProviders,erpProviderFor,requireListingProvider} from './erp-providers.mjs';
 
 const fail=message=>Object.assign(new Error(message),{status:400});
-const secrets=['SUANZHOU_IMAGE_API_KEY','PLANNER_API_KEY'];
+const secrets=['SUANZHOU_IMAGE_API_KEY','PLANNER_API_KEY','GB_APP_KEY','GB_APP_SECRET'];
 const fields=['SUANZHOU_IMAGE_BASE_URL','SUANZHOU_IMAGE_MODEL','PLANNER_BASE_URL','PLANNER_API_FORMAT','PLANNER_MODEL','PLANNER_REASONING_EFFORT','PLANNER_TIMEOUT_MS','TITLE_MODEL','TITLE_API_FORMAT'];
 const defaults={SUANZHOU_IMAGE_BASE_URL:'https://api.suanzhou.vip/v1',SUANZHOU_IMAGE_MODEL:'gpt-image-2',PLANNER_BASE_URL:'https://api.suanzhou.vip/v1',PLANNER_API_FORMAT:'responses',PLANNER_MODEL:'gpt-6.1-sol',PLANNER_TIMEOUT_MS:'600000',TITLE_MODEL:'gpt-6.1-sol',TITLE_API_FORMAT:'responses'};
 const text=(v,max=240)=>typeof v==='string'?v.trim().slice(0,max):'';

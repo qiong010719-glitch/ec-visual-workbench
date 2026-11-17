@@ -9,7 +9,7 @@ const browser=await chromium.launch({channel:'msedge',headless:true}),page=await
 page.on('pageerror',e=>errors.push(e.message));
 try{
   await page.goto(f.base+'/app');assert.equal(page.url(),f.base+'/temu/listings');
-  assert.deepEqual(await page.locator('.workbench-nav a').allTextContents(),['单品设计','店铺上架','连接设置']);
+  assert.deepEqual(await page.locator('.workbench-nav a').allTextContents(),['单品设计','店铺上架','自动选品上架','连接设置']);
   assert.equal(await page.locator('#folderPath').count(),1);assert.equal(await page.locator('#targetStore').count(),1);
   assert.deepEqual(await page.evaluate(()=>{const ids=[...document.querySelectorAll('[id]')].map(el=>el.id);return ids.filter((id,i)=>ids.indexOf(id)!==i);}),[]);
   const customOutput=path.join(f.input,'裂变');fs.mkdirSync(customOutput);
