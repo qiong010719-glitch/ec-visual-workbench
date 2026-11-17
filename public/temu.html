@@ -13,8 +13,8 @@
 <body>
   <header class="topbar">
     <a class="brand" href="/temu"><span class="brand-icon">T</span><span>Temu <b>做图工作台</b></span></a>
-    <nav aria-label="平台入口"><a href="/">亚马逊</a><a href="/temu" aria-current="page">Temu</a></nav>
-    <div class="header-actions"><button id="draftsButton" type="button">Temu 草稿箱</button><button id="statusButton" type="button">通道状态</button></div>
+    <nav aria-label="工作流程"><a href="/temu" aria-current="page">做图裂变</a></nav>
+    <div class="header-actions"><a href="/temu/listings">店铺上架</a><button id="draftsButton" type="button">Temu 草稿箱</button><button id="statusButton" type="button">通道状态</button></div>
   </header>
   <main class="workspace">
     <aside class="brief">
@@ -30,7 +30,6 @@
         <p class="hint">请使用同一商品的主体、细节或使用图，保持商品身份一致。</p>
         <fieldset><legend>整套图片比例</legend><div class="ratio-options">
           <label><input type="radio" name="ratio" value="1:1" checked><span class="ratio-shape square"></span><strong>1:1</strong><small>1024 × 1024</small></label>
-          <label><input type="radio" name="ratio" value="3:4"><span class="ratio-shape portrait"></span><strong>3:4</strong><small>1152 × 1536</small></label>
         </div></fieldset>
         <div class="form-row"><div><label for="imageCount">每套图片张数</label><select id="imageCount"><option value="1">1 张</option><option value="2">2 张</option><option value="3">3 张</option><option value="4">4 张</option><option value="5">5 张</option><option value="6">6 张</option><option value="7" selected>7 张</option></select></div><div><label for="generationMode">设计模式</label><select id="generationMode"><option value="fast">快速设计</option><option value="master">大师设计</option></select></div></div>
         <div class="form-row"><div><label for="targetMarket">目标市场</label><input id="targetMarket" value="加拿大"></div><div><label for="targetLang">图片文案语言</label><select id="targetLang"><option>English</option><option>Français</option><option>Deutsch</option><option>Español</option><option>中文</option></select></div></div>

@@ -28,6 +28,38 @@ async function fixture(t,options={}) {
   return {...app,base,token,call,settled,directory};
 }
 
+test('three shared slots bound mixed work and a failed request releases capacity without resubmitting',async t=>{
+  const pending=[];let calls=0;
+  const gate=()=>new Promise((resolve,reject)=>{calls++;pending.push({resolve,reject});});
+  const app=await fixture(t,{provider:async()=>{await gate();return png;},planner:async payload=>{await gate();return buildPlan(payload);}});
+  const payload={prompt:'Queue test',firebase_tasks:Array.from({length:4},(_,slot)=>({slot,taskId:'queue_image_'+slot}))};
+  assert.equal((await app.call('/api/generate',payload)).response.status,202);
+  assert.equal((await app.call('/api/generate',payload)).response.status,202);
+  await app.call('/api/agent',{agent_task_id:'queue_plan',product_name:'Queue test',product_desc:'Blue box'});
+  let state=(await app.call('/api/status')).data;
+  assert.equal(state.queueConcurrency,3);assert.equal(state.active,3);assert.equal(state.queued,2);assert.equal(calls,3);
+  pending[0].reject(new Error('simulated uncertain timeout'));
+  assert.equal((await app.settled('hyrule_tasks/queue_image_0')).status,'failed');
+  state=(await app.call('/api/status')).data;
+  assert.equal(state.active,3);assert.equal(state.queued,1);assert.equal(calls,4);
+  pending[1].resolve();await app.settled('hyrule_tasks/queue_image_1');
+  state=(await app.call('/api/status')).data;
+  assert.equal(state.active,3);assert.equal(state.queued,0);assert.equal(calls,5);
+  for(const job of pending.slice(2))job.resolve();
+  for(const key of ['hyrule_tasks/queue_image_2','hyrule_tasks/queue_image_3','agent_tasks/queue_plan'])assert.equal((await app.settled(key)).status,'completed');
+  state=(await app.call('/api/status')).data;
+  assert.equal(state.active,0);assert.equal(state.queued,0);assert.equal(calls,5);
+});
+
+test('shared queue preserves a two-slot rollback and the four-slot ceiling',async t=>{
+  for(const [configured,expected] of [['2',2],['99',4]]){
+    await t.test(configured,async t=>{
+      const app=await fixture(t,{configuration:{IMAGE_CONCURRENCY:configured}});
+      assert.equal((await app.call('/api/status')).data.queueConcurrency,expected);
+    });
+  }
+});
+
 test('stale scene plans require replanning before image charges or provider calls',async t=>{
   let calls=0;
   const app=await fixture(t,{provider:async()=>{calls++;return png;}});
@@ -59,7 +91,7 @@ test('saved original plans remain usable and new scene evidence reaches the prov
 });
 test('source interface is served and original service keys are absent',async t=>{
   const app=await fixture(t);const response=await fetch(app.base+'/');
-  assert.equal(response.status,200);assert.match(await response.text(),/本地复刻/);
+  assert.equal(response.status,200);assert.match(await response.text(),/Temu 工作台/);
   const source=await(await fetch(app.base+'/original/original-01.js')).text();
   assert.doesNotMatch(source,/sb_publishable_|sapient-hub-485206|vxlwmeonxrvntwwdqcew|6d70ba77dad1fd3e/);
 });
@@ -217,9 +249,10 @@ test('local service blocks cross-origin mutations, missing token and traversal',
   assert.equal((await fetch(app.base+'/%2e%2e%2fpackage.json')).status,403);
   assert.equal((await app.call('/api/publish',{})).response.status,404);
 });
-test('feedback is saved locally and payment fails explicitly',async t=>{
+test('image reports stay local, removed ratings cannot be submitted, and payment fails explicitly',async t=>{
   const app=await fixture(t);
-  const result=await app.call('/api/feedback',{action:'rating',score:5,task_id:'test'});assert.equal(result.data.savedLocally,true);
+  const result=await app.call('/api/feedback',{action:'report',task_id:'test'});assert.equal(result.data.savedLocally,true);
+  for(const action of ['rating','downvote'])assert.equal((await app.call('/api/feedback',{action,task_id:'test'})).response.status,410);
   assert.equal(app.store.state.feedback.length,1);assert.equal((await app.call('/api/alipay/create',{amount:10})).response.status,501);
 });
 test('server restart marks uncertain jobs failed instead of auto-resubmitting',async t=>{

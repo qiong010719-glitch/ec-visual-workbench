@@ -2,6 +2,7 @@
 import {extractProductFacts} from './product-facts.mjs';
 import {richStoryboard} from './rich-storytelling.mjs';
 import {directStoryboard,creativeSystem} from './creative-direction.mjs';
+import {isAplusSlot,isSharedTemuDesign} from './image-scope.mjs';
 export const SCENE_STYLE='scene_advertising';
 export const visualStyleId=payload=>payload.visual_style==='original'?'original':SCENE_STYLE;
 export const generationMode=payload=>payload.generation_mode==='master'?'master':/^ultra/.test(payload.generation_mode || payload.mode || '')?'ultra':'fast';
@@ -44,11 +45,12 @@ export function styleGuideFor(payload) {
   if(visualStyleId(payload)==='original' || /^thd(?:_|$)/.test(payload.design_scope || ''))return '';
   const master=generationMode(payload)==='master';
   const creative=payload.creative_direction?creativeSystem(payload.creative_direction):null;
+  const mainGroupOnly=payload.design_scope==='main_count'||(payload.platform==='temu'&&payload.image_workflow!=='shared');
   return [
     '场景广告风格：每张图用真实画面解释一个购买问题，整套保持可识别的视觉语言。',
     '丰富来自内容关系：先规划购买问题，再选择可支持的事实、具体情境、人物动作、微距或外观图解。画面有主次，二至三处互相关联的细节比无关装饰更有用；不强制每张用巨大产品、图标和勋章。痛点表现为具体生活需求或选购疑问，不制造恐惧、虚假前后对比或未证实结果。',
-    payload.platform==='temu'?'Temu 只制作一组商品图，主图和详情页共用相同图片与顺序。首图清楚展示完整商品，其余图片分别解释卖点、细节、使用场景和已知选购信息。每张明确新增信息，镜头与版式交替变化，按指定比例重新组织画面，不套用宽幅详情模块。':'主图组负责快速识别与单点理由；A+ 独立展开完整情境、整体与局部关系、连续过程和选购答案。七个 A+ 主题可各自成立，不重复前五张循环，不把方图加宽或换背景当新内容。每张明确新增信息，镜头与版式交替变化。',
-    '整套展示按卖点混合：人物环境中景、无人物实物微距、仅手部的操作特写、俯拍关系图、事实信息版面、连续动作与视觉索引各有用途。'+(payload.platform==='temu'?'其余商品图达到六张时':'副图和 A+ 达到六张时')+'，至少安排四种展示方式，至少三张不出现完整人物；相邻图片在地点、动作、镜头距离、产品比例、版式中至少改变两项。人物不是每个卖点的默认主角，不反复使用同一女性、厨房岛台、持包装姿势和大号正面包装。统一品牌色与字体，不等于统一房间、镜头和动作。',
+    mainGroupOnly?'Temu 只制作一组商品图，主图和详情页共用相同图片与顺序。首图清楚展示完整商品，其余图片分别解释卖点、细节、使用场景和已知选购信息。每张明确新增信息，镜头与版式交替变化，按指定比例重新组织画面，不套用宽幅详情模块。':'主图组负责快速识别与单点理由；A+ 独立展开完整情境、整体与局部关系、连续过程和选购答案。七个 A+ 主题可各自成立，不重复前五张循环，不把方图加宽或换背景当新内容。每张明确新增信息，镜头与版式交替变化。',
+    '整套展示按卖点混合：人物环境中景、无人物实物微距、仅手部的操作特写、俯拍关系图、事实信息版面、连续动作与视觉索引各有用途。'+(mainGroupOnly?'其余商品图达到六张时':'副图和 A+ 达到六张时')+'，至少安排四种展示方式，至少三张不出现完整人物；相邻图片在地点、动作、镜头距离、产品比例、版式中至少改变两项。人物不是每个卖点的默认主角，不反复使用同一女性、厨房岛台、持包装姿势和大号正面包装。统一品牌色与字体，不等于统一房间、镜头和动作。',
     master
       ? '大师模式：以摄影叙事、光影质感和材质表现组织画面；先设计完整空间、主体动作和镜头，再安排精简标题与必要说明。文字跟随摄影节奏，不套用快速模式的信息密度或场景控制。'
       : `快速设计模式：以卖点信息和清楚演示组织画面；先确定标题、说明和视觉证据，再安排产品与情境。${payload.info_density==='low'?'低信息密度：一个标题与一项解释':payload.info_density==='medium'?'中等信息密度：一个标题、短副标题与两项解释':'中高信息密度：一个大标题、短副标题与二至三组图文说明'}；每组均有明确用途。场景倾向 ${payload.scene_intensity || 'original'}；密度与场景比重分别控制。`,
@@ -65,8 +67,16 @@ const galleryCompositions=['中景动作主画面与单一重点信息区','大�
 const aplusQuestions=['这个产品适合怎样的日常？','已知特点分别有什么直观依据？','关键细节值得怎样看？','怎样理解已确认的使用方式？','购买前需要记住哪些已知信息？'];
 const aplusCompositions=['宽幅生活场景开篇，产品和动作形成明确视线中心','横向二至三组图文，分别解释不同已知事实','横幅质地微距，完整产品小比例定位','按已提供步骤展示动作关系，无步骤资料时展示不同已知用途','宽幅整体收尾与已知信息索引，不虚构品牌历史'];
 export function storyboardFor(payload,slot,primaryFact) {
+  const originalPayload=payload,originalSlot=slot;
+  const squareNarrative=isSharedTemuDesign(payload)&&payload.design_scope==='main_count'&&slot>0;
+  // Reuse the full single-design story sequence inside square listing slots.
+  // Slots and export counts remain unchanged; only the narrative selection changes.
+  if(squareNarrative){
+    payload={...payload,design_scope:'custom',custom_layout:null};
+    slot=slot<=7?slot+6:slot-7;
+  }
   const [, ,scene,action,proof]=context(payload);
-  const aplus=slot>=7,i=aplus?(slot-7)%5:(Math.max(1,slot)-1)%6;
+  const aplus=isAplusSlot(payload,slot),i=aplus?(slot-7)%5:(Math.max(1,slot)-1)%6;
   const master=generationMode(payload)==='master';
   const baseLayout=aplus?aplusCompositions[i]:galleryCompositions[i];
   const sceneIndexes=payload.scene_intensity==='low'?[2]:payload.scene_intensity==='medium'?[0,2,5]:payload.scene_intensity==='high'?[0,1,2,3,4,5]:[2,5];
@@ -79,7 +89,12 @@ export function storyboardFor(payload,slot,primaryFact) {
     composition:master?`摄影主导：${baseLayout}；主体和光线先建立叙事，文字置于自然留白处，不堆成参数卡片`:`信息主导：${baseLayout}；标题、说明与对应证据一一关联，适配快速模式所选信息密度`,
     copy:master?'一个精简主题标题，必要时加一句依据，文案不遮挡关键动作与质地':'一个明确标题，辅以所选密度的短说明；图标只解释已知事实'
   };
-  return directStoryboard(richStoryboard(payload,slot,extractProductFacts(payload.product_desc),base,productCategory(payload)),payload.creative_direction,payload,slot);
+  let board=richStoryboard(payload,slot,extractProductFacts(payload.product_desc),base,productCategory(payload));
+  if(squareNarrative){
+    board={...board};
+    for(const key of ['buyerQuestion','scene','action','camera','composition','informationIncrement'])if(typeof board[key]==='string')board[key]=board[key].replace(/宽幅|横幅/g,'方幅').replace(/A\+/g,'商品图');
+  }
+  return directStoryboard(board,originalPayload.creative_direction,originalPayload,originalSlot);
 }
 
 export const visualTraits=['complete_scene','human_interaction','material_macro','headline_hierarchy','information_graphics','coherent_palette','product_in_use','studio_hero'];

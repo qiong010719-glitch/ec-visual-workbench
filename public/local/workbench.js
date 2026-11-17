@@ -50,7 +50,7 @@
     try {
       const status = await api('/api/status');
       const dialog = modal('localStatus',`<div class="local-head"><h2>本地工作台</h2><button data-close>关闭</button></div>
-        <p>已复刻原站的公开页面和交互。任务、素材、评价与草稿保存在这台电脑。</p>
+        <p>已复刻原站的公开页面和交互。任务、素材与草稿保存在这台电脑。</p>
         <div class="local-card"><div>图片通道：<b>${escape($('modelChoice')?.selectedOptions[0]?.textContent?.replace(/^模型 · /,'') || status.model)}</b></div><div>专用图片密钥：${status.imageConfigured?'已配置':'未配置'}</div><div>图片下载：${status.downloadProxyConfigured?'已配置代理':'直接连接'}</div><div>待恢复下载：${status.recoverableDownloads || 0} 张</div><div>构思：${status.planner==='local-rules'?'本地规则方案，可手动修改':'已配置的文本模型'}</div><div>任务：${status.active} 个运行中 · ${status.queued} 个排队中</div></div>
         <p class="local-muted" style="margin-top:15px">点击生图会使用图片服务额度。页面测试点数仅用于记录流程；本地版不充值。原站的私有模型工作流与付费账户未复制。</p>
         <p class="local-muted">图片生成 / 编辑接口已接线，实际图片质量与比例取决于服务商。商品保存为本地草稿，可导出资料包供上架流程使用。</p>`);
@@ -178,6 +178,7 @@
     row.querySelector('button').onclick=()=>row.remove();return row;
   }
   async function openDraftEditor(draft) {
+    if(window.TemuWorkbench?.sharedUi)return window.TemuWorkbench.openDraftEditor(draft);
     currentDraft=draft || null;
     const images=draft?.images || currentImages();
     const dialog=modal('localDraftEditor',`<div class="local-head"><h2>${draft?'编辑':'保存'}商品草稿</h2><button data-close>关闭</button></div>
@@ -224,6 +225,7 @@
     link.href=url;link.download=draft.title.replace(/[<>:"/\\|?*]/g,'_')+'-草稿.zip';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
   }
   async function openDraftList() {
+    if(window.TemuWorkbench?.sharedUi)return window.TemuWorkbench.openDrafts();
     try {
       const drafts=await api('/api/drafts');
       const dialog=modal('localDraftList',`<div class="local-head"><h2>本地草稿箱 · ${drafts.length}</h2><button data-close>关闭</button></div><div class="local-row"><button id="draftNew" class="primary">从当前工作台新建草稿</button></div><div id="draftCards"></div>`);
@@ -249,7 +251,9 @@
     const header=$('view-dashboard').querySelector('header');
     const actions=document.createElement('div');actions.className='local-row';
     actions.innerHTML='<span class="local-pill" id="localPlanLabel">本地复刻</span><button class="local-action" id="localDraftButton">草稿箱</button><button class="local-action" id="localReferenceButton">设计参考库</button><button class="local-action" id="localDownloadsButton">恢复下载</button>';
-    actions.insertAdjacentHTML('afterbegin','<a class="local-action" href="/temu" id="temuEntry">Temu 做图入口</a>');
+    if(window.WorkbenchPlatform==='temu'){
+      $('nav-notes').insertAdjacentHTML('afterend','<a class="category-icon" href="/temu/listings" id="temuListingsEntry" data-label="上架" aria-label="Temu 上架任务" title="Temu 上架任务"><svg width="45" height="45" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M12 15V3m-4 4 4-4 4 4M5 11H3v9a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1v-9h-2"/></svg></a>');
+    }else actions.insertAdjacentHTML('afterbegin','<a class="local-action" href="/temu" id="temuEntry">Temu 做图入口</a>');
     header?.appendChild(actions);$('localDraftButton').onclick=openDraftList;$('localDownloadsButton').onclick=openDownloadRecovery;
     const referenceScript=document.createElement('script');referenceScript.src='/local/research.js';
     referenceScript.onload=()=>{$('localReferenceButton').onclick=()=>window.openReferenceLibrary();};document.head.appendChild(referenceScript);
@@ -267,7 +271,7 @@
     $('modelChoice').dispatchEvent(new Event('change',{bubbles:true}));
     for(const id of ['genChannel','editChannel']) $(id)?.dispatchEvent(new Event('change',{bubbles:true}));
     const note=document.createElement('p');note.className='local-muted';note.style.margin='12px 0';
-    note.textContent='本地版：先生成可编辑的设计方案，再提交图片任务。新增商品在草稿箱保存与导出。';
+    note.textContent=window.WorkbenchPlatform==='temu'?'点击“开始生成”自动完成构思与生图；也可先单独构思并修改方案。':'本地版：先生成可编辑的设计方案，再提交图片任务。新增商品在草稿箱保存与导出。';
     $('agentBtn')?.parentElement?.appendChild(note);
     const confirmation=$('agentConfirmModal');
     if(confirmation) {

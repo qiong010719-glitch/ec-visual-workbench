@@ -30,6 +30,7 @@
             payload.reference_ids ??= window.__designReferenceIds || [];
             payload.visual_style ??= window.getLocalVisualStyle?.(payload.generation_mode || payload.mode) || 'scene_advertising';
           }
+          if(window.decorateWorkbenchPayload)payload=window.decorateWorkbenchPayload(payload,url.pathname);
           init={...init,body:JSON.stringify(payload)};
         }
       }

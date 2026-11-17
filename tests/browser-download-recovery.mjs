@@ -11,7 +11,7 @@ const output=path.join(root,'../runs/image-download-fix-20261101');fs.mkdirSync(
 const ultra=process.argv.includes('--ultra'),slotPrefix=ultra?'#ultra-slot-':'#slot-';
 let generations=0,downloads=0;
 const bytes=fs.readFileSync(path.join(root,'public/mode-samples/ultra_1.jpg'));
-const app=createWorkbench({dataDirectory:directory,configuration:{},provider:async()=>{generations++;throw new Error('Generation must not run during download recovery');},download:async()=>{downloads++;return bytes;}});
+const app=createWorkbench({legacyUi:true,dataDirectory:directory,configuration:{},provider:async()=>{generations++;throw new Error('Generation must not run during download recovery');},download:async()=>{downloads++;return bytes;}});
 app.store.task('hyrule_tasks/recovery_fixture',{taskId:'recovery_fixture',slot:0,status:'failed',phase:'download_failed',resultUrl:'https://generated.example/result.png',error:'图片下载超时',createdAt:new Date().toISOString()});
 app.store.task('hyrule_tasks/queued_fixture',{taskId:'queued_fixture',slot:1,status:'pending',phase:'queued'});
 await new Promise(resolve=>app.server.listen(0,'127.0.0.1',resolve));

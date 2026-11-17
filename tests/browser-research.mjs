@@ -8,7 +8,7 @@ import {normalizeProduct,hash} from '../src/reference-library.mjs';
 import {createClickPacer} from '../tools/interaction.mjs';
 const directory=fs.mkdtempSync(path.join(os.tmpdir(),'ec-reference-ui-')),output=path.join(root,'tests/results');
 fs.mkdirSync(output,{recursive:true});
-const app=createWorkbench({dataDirectory:directory,configuration:{},researchOptions:{client:{configured:false}}});
+const app=createWorkbench({legacyUi:true,dataDirectory:directory,configuration:{},researchOptions:{client:{configured:false}}});
 const bytes=fs.readFileSync(path.join(root,'public/mode-samples/fast_case2.jpg')),url=app.saveImage(bytes);
 const p=normalizeProduct({url:'https://www.amazon.com/dp/B000000001',title:'界面测试参考资料',brand:'测试品牌',images:['https://m.media-amazon.com/fixture.jpg']});
 Object.assign(p.assets[0],{status:'downloaded',localUrl:url,sha256:hash(bytes),mime:'image/jpeg'});

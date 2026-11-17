@@ -1,5 +1,6 @@
 import {genericHeadlines} from './rich-storytelling.mjs';
 import {temuExtraStyles} from './temu-creative-styles.mjs';
+import {isAplusSlot,isSharedTemuDesign} from './image-scope.mjs';
 export const CREATIVE_DIRECTION_VERSION=2;
 const style = (id,label,palette,lighting,layout,tone) => ({id,label,palette,lighting,layout,tone});
 export const creativeStyles = Object.freeze([
@@ -39,9 +40,31 @@ export function normalizeDirection(value) {
   if(!stylesForPlatform('temu').some(s=>s.id===value.styleId))throw fail('请选择支持的视觉风格');
   return {name:field(value.name,'方案名称',80),audience:field(value.audience,'目标人群'),motivation:field(value.motivation,'购买关注点'),scene:field(value.scene,'场景方向'),styleId:value.styleId};
 }
-export function directionGuide(value) {
+// Style changes the visual language, never the single-design shot's content.
+const narrativeLayouts={
+  'temu-documentary':'纪实照片与短图注形成连续阅读节奏',
+  'temu-gallery':'展陈式留白、小图签与大小照片呼应，人物情境仍完整保留',
+  'temu-hands':'动作照片与接触点细节相互定位，保留环境与人物主画面',
+  'temu-flatlay':'以清楚的几何对齐和真实局部建立关系，不把全套改成俯拍',
+  'temu-macro':'局部与整体相互定位，细节服务于原有情境，不把全套改成微距',
+  'temu-monochrome':'同色系背景与明暗留白串联不同尺度的照片',
+  'temu-grid':'大小不等的实拍照片与事实配对，人物、动作和局部各有位置',
+  'temu-panoramic':'前中后景、环境主照片与局部构成空间阅读路径',
+  'temu-diagonal':'斜向光影与错位照片形成节奏，保留完整叙事情境',
+  'temu-sequence':'主场景与有依据的动作细节按阅读顺序衔接'
+};
+const narrativeLayout=s=>narrativeLayouts[s.id]||s.layout;
+export function directionGuide(value,payload={}) {
   if(!value)return '';
   const d=normalizeDirection(value),s=creativeSystem(d);
+  if(isSharedTemuDesign(payload))return [
+    `本套独立创意方向：${d.name}。目标人群：${d.audience}。购买关注点：${d.motivation}。`,
+    `本套场景灵感：${d.scene}。仅用于适配已有分镜，不将每张图改成同一场景。`,
+    `本套视觉风格：${s.label}。背景与配色：${s.palette}。光线：${s.lighting}。字体：${s.type}。文案语气：${s.tone}。版面节奏：${narrativeLayout(s)}。`,
+    '每套都是完整的单品设计：保留逐图人物情境、真实使用动作、细节关系、多场景拼图与选购信息的分工。风格只改变视觉语言，不删除模特、不缩减证据照片、不把整套降为单件静物加一句标题。',
+    '逐图的镜头距离、人物出镜、产品比例、内容层次和信息密度优先于风格标签。简约、画廊、微距等是视觉气质，不代表全套禁用人物或只拍静物；无人物及仅手部的细节图也不能被强行加上完整人物。',
+    '各套在配色、光线、字体、照片排列和留白节奏上形成可辨识差异；同一套内部按主题变化镜头与构图。参考库继续贡献内容组织方法，当前商品身份、数量、结构、事实及用户明确要求始终优先。'
+  ].join('\n');
   return [`本套独立创意方向：${d.name}。目标人群：${d.audience}。购买关注点：${d.motivation}。`,
     `本套场景方向：${d.scene}。仅在已知用途和本图展示方式允许时采用；无人物、仅手部、微距等分镜安排继续生效。`,
     `本套视觉风格：${s.label}。背景与配色：${s.palette}。光线：${s.lighting}。版式：${s.layouts.join('；')}。字体：${s.type}。文案语气：${s.tone}。`,
@@ -50,7 +73,16 @@ export function directionGuide(value) {
 }
 export function directStoryboard(board,value,payload={},slot=1) {
   if(!value)return board;
-  const d=normalizeDirection(value),s=creativeSystem(d),index=Math.max(0,slot>=7?slot-7:slot-1);
+  const aplus=isAplusSlot(payload,slot);
+  const d=normalizeDirection(value),s=creativeSystem(d),index=Math.max(0,aplus?slot-7:slot-1);
+  if(isSharedTemuDesign(payload)){
+    const {headline,...original}=board;
+    return {...original,
+      buyerQuestion:`从“${d.audience}”的“${d.motivation}”关注点理解：${board.buyerQuestion}`,
+      composition:`${board.composition}\n视觉编排：${narrativeLayout(s)}。保留上述全部内容关系与人物安排，按本图主题调整照片位置和大小；字体：${s.type}；光线：${s.lighting}。`,
+      copy:`面向${d.audience}，针对本图事实独立创作 ${payload.target_lang||'English'} 标题与必要说明；采用${s.tone}的语气和${s.type}。保持单品设计的信息密度与图文对应，不套通用口号，不将人群需求写成商品事实。设计说明不印入图片。`
+    };
+  }
   const noPeople=board.humanPresence==='none'||s.studio;
   const hands=board.humanPresence==='hands';
   const humanPresence=hands?'hands':noPeople?'none':board.humanPresence;
@@ -63,20 +95,32 @@ export function directStoryboard(board,value,payload={},slot=1) {
     humanPresence,
     camera:humanPresence==='hands'?`${s.camera[index%s.camera.length]}；镜头裁切到手部与实际接触点，不出现完整人物`:noPeople?`${board.intent==='detail'?'100mm真实表面微距':s.studio?s.camera[index%s.camera.length]:'实物斜俯拍中近景，整体和可见局部共同构图'}；实物为主，不出现人物`:s.camera[index%s.camera.length],
     productScale:s.scale,
-    composition:`${s.layouts[index%s.layouts.length]}。本图内容职责仍为：${board.informationIncrement}。${slot>=7?'按宽幅完整编排，展开整体与细节关系，不是方图加宽。':''}字体：${s.type}；光线：${s.lighting}。保留${humanPresence==='hands'?'仅手部':humanPresence==='none'?'无人物':'合理人物情境'}安排。`,
+    composition:`${s.layouts[index%s.layouts.length]}。本图内容职责仍为：${board.informationIncrement}。${aplus?'按宽幅完整编排，展开整体与细节关系，不是方图加宽。':''}字体：${s.type}；光线：${s.lighting}。保留${humanPresence==='hands'?'仅手部':humanPresence==='none'?'无人物':'合理人物情境'}安排。`,
     copy:`面向${d.audience}，回应${d.motivation}，针对本图事实独立创作 ${payload.target_lang||'English'} 的简短标题和必要说明。采用${s.tone}的语气与${s.type}。标题应点明本产品或本图具体问题，不套固定通用口号，不把人群需求写成产品事实。数字、单位与事实可以重复，营销标题应有本套自己的表达。设计说明不印入图片。`,
     informationIncrement:board.informationIncrement+` 用已有依据回应“${d.motivation}”，不能把人群需求写成商品已经具备的能力。`
   };
 }
 
 export const normalizeHeadline=text=>String(text||'').normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu,'');
-export function readCreativeCopy(blocks,sections,requirements='') {
+// Keep source offsets while ignoring Markdown emphasis, so validation and repairs
+// read the same field even when only part of the printed title is bold.
+export function headlineField(raw) {
+  let text='';const offsets=[];
+  for(let i=0;i<raw.length;i++){
+    if(raw.slice(i,i+2)==='**'){i++;continue;}
+    offsets.push(i);text+=raw[i];
+  }
+  const match=text.match(/画面主标题[^\S\r\n]*[：:][^\S\r\n]*([^\r\n]+?)(?=\r?\n|(?:[。；;]\s*)?(?:画面副文案|参考素材用途|事实边界)\s*[：:]|$)/d);
+  if(!match)return null;
+  const [start,end]=match.indices[1];
+  return {headline:match[1].trim().replace(/^[“「"‘']|[”」"’']$/g,''),start:start?offsets[start-1]+1:0,end:end<offsets.length?offsets[end]:raw.length};
+}
+export function readCreativeCopy(blocks,sections,requirements='',{allowDuplicates=false}={}) {
   const headlines=[];
   for(const section of sections.filter(s=>!s.outputConstraint)){
-    const block=(blocks.get(section.title)||'').replace(/\*\*/g,'');
-    const match=block.match(/画面主标题\s*[：:]\s*([^\r\n]+?)(?=\r?\n|(?:[。；;]\s*)?(?:画面副文案|参考素材用途|事实边界)\s*[：:]|$)/);
-    if(!match)throw Object.assign(new Error(section.title+'缺少明确的“画面主标题”，请补齐本套专属文案后再生图'),{status:400});
-    const headline=match[1].trim().replace(/^[“「"]|[”」"]$/g,'');
+    const field=headlineField(blocks.get(section.title)||'');
+    if(!field)throw Object.assign(new Error(section.title+'缺少明确的“画面主标题”，请补齐本套专属文案后再生图'),{status:400});
+    const headline=field.headline;
     if(/^(无|无文字|不加文字|none|no text)$/i.test(headline))continue;
     if(headline.length>160)throw Object.assign(new Error(section.title+'的画面主标题过长，请只保留最终印刷文字'),{status:400});
     const normalized=normalizeHeadline(headline),explicit=normalizeHeadline(requirements).includes(normalized);
@@ -84,6 +128,6 @@ export function readCreativeCopy(blocks,sections,requirements='') {
     headlines.push({slot:section.slot,title:section.title,headline,normalized,explicit});
   }
   const seen=new Set();
-  for(const item of headlines.filter(item=>!item.explicit)){if(seen.has(item.normalized))throw Object.assign(new Error('本套画面主标题重复：'+item.headline+'。请逐图写出不同内容。'),{status:400});seen.add(item.normalized);}
+  for(const item of headlines.filter(item=>!item.explicit)){if(!allowDuplicates&&seen.has(item.normalized))throw Object.assign(new Error('本套画面主标题重复：'+item.headline+'。请逐图写出不同内容。'),{status:400});seen.add(item.normalized);}
   return headlines;
 }

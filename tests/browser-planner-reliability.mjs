@@ -9,7 +9,7 @@ const directory=fs.mkdtempSync(path.join(os.tmpdir(),'ec-planner-ui-'));
 const output=path.join(root,'reference/planner-reliability-20261102');
 fs.mkdirSync(output,{recursive:true});
 let generations=0;
-const app=createWorkbench({dataDirectory:directory,configuration:{},provider:async()=>{generations++;throw new Error('No image generation allowed in this UI test');}});
+const app=createWorkbench({legacyUi:true,dataDirectory:directory,configuration:{},provider:async()=>{generations++;throw new Error('No image generation allowed in this UI test');}});
 app.store.task('agent_tasks/timeout_fixture',{status:'running',payload:{product_name:'构思恢复验证',product_desc:'蓝色盒身'},createdAt:new Date().toISOString()});
 const imageUrl=app.saveImage(fs.readFileSync(path.join(root,'public/mode-samples/fast_case2.jpg')));
 await new Promise(resolve=>app.server.listen(0,'127.0.0.1',resolve));

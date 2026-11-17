@@ -107,8 +107,8 @@
                 {
                     element: '#agentBtn',
                     popover: {
-                        title: '🧠 第 5 步：一键构思（出策略，不出图）',
-                        description:
+                        title: window.WorkbenchPlatform==='temu'?'🧠 可选：先构思并调整方案':'🧠 第 5 步：一键构思（出策略，不出图）',
+                        description: window.WorkbenchPlatform==='temu'?'<p>通常直接点击下方“开始生成”即可。需要先审阅时，可在这里仅生成方案，再到“查看并修改本套设计方案”中编辑，点击“按当前方案生成”。</p>':
                             '<p>填好上面内容后点这个，AI 会先去<strong>"想策略"</strong>：</p>' +
                             '<p style="margin-top:0.5rem;">点完会弹出<strong style="color:#FFD700;">等待界面</strong>（光晕在转），AI 生成视觉策略大纲。</p>' +
                             '<p style="margin-top:0.5rem;">⏳ <strong>快速</strong>：1–2 分钟<br>👑 <strong>大师</strong>：3–5 分钟</p>' +
@@ -121,8 +121,8 @@
                 {
                     element: '#mainBtn',
                     popover: {
-                        title: '🎨 第 6 步：开始生成（真正出图）',
-                        description:
+                        title: window.WorkbenchPlatform==='temu'?'🎨 开始生成：自动构思并出图':'🎨 第 6 步：开始生成（真正出图）',
+                        description: window.WorkbenchPlatform==='temu'?'<p>填写商品资料并上传主体图，选好模式、模型与张数后，点击一次即可自动构思并生成整套图片。构思失败会停止。</p><p>将使用文本与图片服务额度；刷新页面可继续查看同一任务，不重复生成。</p>':
                             '<p>构思完成后，这个按钮会从 <span style="color:#666;">灰色禁用</span> 变成 <strong style="color:#FFD700;">金色脉动可点</strong>。</p>' +
                             '<p style="margin-top:0.5rem;">点它才会真正<strong>派发生图任务</strong>，输出最终图片。</p>' +
                             '<p style="margin-top:0.5rem;color:#aaa;font-size:0.85rem;">出图后在下方画廊查看，每张图都可单独 <strong>重绘 / 编辑</strong>。</p>' +
@@ -163,25 +163,13 @@
                             '• <strong>INPAINT</strong>：在图上圈一块 + 写文字，只修那一小块；弹窗里还有「🔄 送入编辑模式」按钮，产品画错时把图带过去换产品保风格<br>' +
                             '• <strong>REDRAW</strong>：提示词不变，直接重抽一张<br>' +
                             '• <strong>下载</strong>：单独存这一张<br>' +
-                            '• <strong>👎</strong>：这张不满意就点它' +
                             '</p>' +
                             '<p style="margin-top:0.5rem;color:#aaa;font-size:0.85rem;">生成失败的图会显示 <strong>RETRY</strong>，点它重试即可（不扣积分）。</p>',
                         side: 'left',
                         align: 'start'
                     }
                 });
-                steps.push({
-                    element: '#' + firstSlot.id,
-                    popover: {
-                        title: '👎 为什么建议你点差评',
-                        description:
-                            '<p>点 👎 会把<strong>这张图当时用的提示词</strong>一起记录下来。</p>' +
-                            '<p style="margin-top:0.5rem;">积累之后我们就能分析出：<strong>到底是哪些词导致了烂图</strong>，再去针对性优化提示词模板。</p>' +
-                            '<p style="margin-top:0.5rem;color:#aaa;font-size:0.85rem;">点完照常重画就行，差评记录会保留，不影响你继续出图。</p>',
-                        side: 'left',
-                        align: 'start'
-                    }
-                });
+
             }
             steps.push({
                 element: isUltra ? '#ultraBatchBtnContainer' : '#batchBtnContainer',
@@ -194,18 +182,7 @@
                     align: 'start'
                 }
             });
-            steps.push({
-                element: '#nav-screenshot',
-                popover: {
-                    title: '⭐ 最后：给这次生成打个分',
-                    description:
-                        '<p>全部出图后会<strong>自动弹出评分窗</strong>（5 星 + 可选评语）。想稍后再评，点这个 ⭐ 随时补。</p>' +
-                        '<p style="margin-top:0.5rem;">每张图也会<strong>自动单独存档到飞书</strong>；某张重画了，飞书里会自动换成最新那张，不用你手动管。</p>' +
-                        '<p style="margin-top:0.5rem;color:#aaa;font-size:0.85rem;">你的评分会直接用来优化模型和提示词，随手打一下很有价值 🙏</p>',
-                    side: 'right',
-                    align: 'start'
-                }
-            });
+
             return steps;
         }
 
@@ -220,8 +197,6 @@
                 nextBtnText: '下一步 →', prevBtnText: '← 上一步', doneBtnText: '知道了 🎉',
                 onDestroyed: function () {
                     try { localStorage.setItem(RESULT_TOUR_FLAG, 'true'); } catch (e) {}
-                    // 引导看完了再弹评分窗，避免两个弹窗叠在一起
-                    if (window.__pendingRatingAfterTour) { window.__pendingRatingAfterTour = false; setTimeout(showRatingModal, 600); }
                 },
                 steps: buildResultSteps()
             });
@@ -235,9 +210,8 @@
             const advVisible = !document.getElementById('view-adventure-log').classList.contains('hidden');
             const ultraVisible = !document.getElementById('view-ultra-log').classList.contains('hidden');
             if (!advVisible && !ultraVisible) return false;
-            window.__pendingRatingAfterTour = true;
             setTimeout(function () { window.startResultTour(); }, 1200);
-            return true;   // 告诉调用方：引导会跑，评分窗交给引导结束后弹
+            return true;   // 告诉调用方：结果页引导已经安排
         };
 
         function getDriverCtor() {
@@ -278,7 +252,15 @@
             inst.drive();
         };
 
+        // An automatic tour must not interrupt someone already filling the form.
+        // The explicit guide button remains available for this session.
+        let hasStartedWorking = false;
+        for (const event of ['pointerdown', 'keydown', 'input']) {
+            document.addEventListener(event, () => { hasStartedWorking = true; }, {capture:true, once:true});
+        }
+
         function isReadyForTour() {
+            if (document.querySelector('.fe-overlay.show, .rc-overlay.show, dialog[open]')) return false;
             // 1. 必须已登录（authOverlay 隐藏 + localStorage 标记）
             try {
                 if (localStorage.getItem('hyrule_terminal_auth') !== 'GRANTED') return false;
@@ -322,9 +304,10 @@
                 if (tries > 600) { clearInterval(timer); return; }
                 try {
                     if (localStorage.getItem(TOUR_FLAG) === 'true') { clearInterval(timer); setAttractMode(false); return; }
+                    if (hasStartedWorking) { clearInterval(timer); return; }
                     if (!isReadyForTour()) return;
                     clearInterval(timer);
-                    setTimeout(function () { window.startNewbieTour(); }, 600);
+                    setTimeout(function () { if (!hasStartedWorking && isReadyForTour()) window.startNewbieTour(); }, 600);
                 } catch (e) {}
             }, 500);
         });

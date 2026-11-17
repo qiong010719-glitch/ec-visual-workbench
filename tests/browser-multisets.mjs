@@ -11,7 +11,7 @@ const output=path.join(root,'tests/results/multisets');fs.mkdirSync(output,{recu
 const captured=[],errors=[];
 const image=fs.readFileSync(path.join(root,'public/mode-samples/fast_case2.jpg'));
 let release;const gate=new Promise(resolve=>{release=resolve;});
-const app=createWorkbench({dataDirectory:directory,configuration:{},provider:async payload=>{captured.push(payload);await gate;return image;}});
+const app=createWorkbench({legacyUi:true,dataDirectory:directory,configuration:{},provider:async payload=>{captured.push(payload);await gate;return image;}});
 const imageUrl=app.saveImage(image);
 await new Promise(resolve=>app.server.listen(0,'127.0.0.1',resolve));
 const base='http://127.0.0.1:'+app.server.address().port;

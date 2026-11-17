@@ -21,6 +21,17 @@ function reply(res,content=completeText,finishReason='stop'){
   res.end(JSON.stringify({model:'test-planner',choices:[{message:{content},finish_reason:finishReason}],usage:{prompt_tokens:100,completion_tokens:200,total_tokens:300}}));
 }
 
+test('shared Temu sends its hero policy to the text planner while preserving requested A+ sections',async t=>{
+  const source={...product,platform:'temu',image_workflow:'shared',image_ratio:'1:1'};
+  const api=await upstream(t,res=>reply(res,buildPlan(source).text));
+  const plan=await planProduct(source,api.configuration);
+  const system=api.requests[0].messages.filter(m=>m.role==='system').map(m=>m.content).join('\n');
+  assert.match(system,/非白色环境/);assert.match(system,/禁止纯白底抠图/);
+  assert.doesNotMatch(system,/不策划宽幅详情模块|白底主图/);
+  assert.equal(plan.sections.length,12);assert.ok(plan.temuHeroPolicyVersion);
+  assert.match(promptForSlot(source,plan.sections[0],plan),/首图最终约束/);
+});
+
 test('planner sends the selected Sol model with maximum reasoning effort',async t=>{
   const api=await upstream(t,res=>reply(res));
   const plan=await planProduct(product,{...api.configuration,PLANNER_MODEL:'gpt-6.1-sol',PLANNER_REASONING_EFFORT:'max'});
@@ -80,9 +91,12 @@ test('planner waits for delayed headers until its own deadline instead of a shor
 
 test('the total planner deadline also aborts a response stalled after headers',async t=>{
   const api=await upstream(t,res=>{res.writeHead(200,{'Content-Type':'application/json'});res.flushHeaders();res.write('{');});
-  await assert.rejects(planProduct(product,{...api.configuration,PLANNER_TIMEOUT_MS:'300'}),error=>{
+  // Allow the parallel browser suite to deliver headers before this test's
+  // deadline; a 300 ms cutoff could test the header phase instead of the body.
+  await assert.rejects(planProduct(product,{...api.configuration,PLANNER_TIMEOUT_MS:'3000'}),error=>{
     assert.equal(error.code,'PLANNER_TIMEOUT');
     assert.equal(error.planningDiagnostics.httpStatus,200);
+    assert.ok(error.planningDiagnostics.elapsedMs>=2900);
     return true;
   });
   assert.equal(api.requests.length,1);

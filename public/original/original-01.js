@@ -791,6 +791,10 @@ window.addEventListener('DOMContentLoaded', function () {
                     const kieBtn2 = document.getElementById('mainBtn');
                     if (kieBtn2) { kieBtn2.disabled = true; kieBtn2.classList.remove('ready-to-fuse'); }
                 }
+                if (window.WorkbenchPlatform === 'temu' && self.value !== 'ultra_fast') {
+                    scopeEl.add(new Option('仅生成 X 张主图', 'main_count'), 1);
+                }
+                document.getElementById('mainImageCountControl').hidden = true;
                 if (e.detail && e.detail.isRestore) {
                     // programmatic trigger — don't wipe scope/gallery
                 } else {
@@ -847,7 +851,6 @@ window.addEventListener('DOMContentLoaded', function () {
         const APP_CHANNEL = 'local';   // 本版本渠道标识(官网版)
         let lastAgentTaskId = null;   // 飞书回写用的稳定任务键
         let _archiveQueue = Promise.resolve();  // 单图归档串行队列
-        window.__downvoted = window.__downvoted || {};
         let activeAgentTask = null; 
         let activeKieTasks = []; 
 
@@ -855,7 +858,7 @@ window.addEventListener('DOMContentLoaded', function () {
         //   ① 按仓库路径隔离缓存键：YIMU/NEO/TT 同在 aexmo.github.io 一个域名下，原先共用 'hyrule_state_v13' 互相覆盖、共抢 5MB 配额
         //   ② 完整状态（含素材图预览/base64、结果图提示词）存 IndexedDB（容量百 MB 级），localStorage 只做轻量镜像
         //   ③ 刷新时先用 localStorage 同步恢复，再从 IndexedDB 补回素材图；localStorage 全丢时整份从 IndexedDB 恢复
-        const __APP_NS = (location.pathname.match(/ec-image-hardcore-[^/]+/) || [location.host || 'app'])[0];
+        const __APP_NS = window.WorkbenchNamespace || (location.pathname.match(/ec-image-hardcore-[^/]+/) || [location.host || 'app'])[0];
         const __LS_KEY = 'hyrule_state_v13::' + __APP_NS;
         let __idbRestored = false;      // IndexedDB 恢复完成前，不允许用内存里的空素材覆盖 IndexedDB
         let __idbTimer = null;
@@ -889,7 +892,7 @@ window.addEventListener('DOMContentLoaded', function () {
             __idbTimer = setTimeout(() => { try { __idbPut({ ...snap, __savedAt: Date.now() }).catch(e => console.warn('[persist] IndexedDB 保存失败', e)); } catch (e) { console.warn('[persist] IndexedDB 保存异常', e); } }, 400);
         }
         function __lsGetState() {
-            try { return localStorage.getItem(__LS_KEY) || localStorage.getItem('hyrule_state_v13'); } catch (e) { return null; } // 旧键兜底迁移一次
+            try { return localStorage.getItem(__LS_KEY) || (!window.WorkbenchNamespace && localStorage.getItem('hyrule_state_v13')); } catch (e) { return null; } // 旧键兜底迁移一次
         }
         function __mergeHeavy(full) {
             try {
@@ -975,6 +978,7 @@ window.addEventListener('DOMContentLoaded', function () {
             const state = { 
                 generationMode: document.getElementById('generationMode').value,
                 designScope: document.getElementById('designScope').value,
+                mainImageCount: Number(document.getElementById('mainImageCount').value),
                 targetMarket: document.getElementById('targetMarket').value, 
                 modelEthnicity: document.getElementById('modelEthnicity')?.value || 'auto',
                 prodName: document.getElementById('prodName').value, 
@@ -1032,6 +1036,7 @@ window.addEventListener('DOMContentLoaded', function () {
                     });
                 }
                 if (state.designScope) document.getElementById('designScope').value = state.designScope;
+                if (Number.isInteger(state.mainImageCount) && state.mainImageCount >= 1 && state.mainImageCount <= 10) document.getElementById('mainImageCount').value = state.mainImageCount;
                 if (state.targetMarket) document.getElementById('targetMarket').value = state.targetMarket;
                 if (state.modelEthnicity && document.getElementById('modelEthnicity')) document.getElementById('modelEthnicity').value = state.modelEthnicity;
                 if (state.modelChoice === 'gpt-image-2-image-to-image') state.modelChoice = 'gpt-image-2';
@@ -1221,333 +1226,13 @@ window.addEventListener('DOMContentLoaded', function () {
 
         function switchView(viewName, el) {
             playZeldaSound('click');
-            const VIEW_MAP = { 'dashboard': 'view-dashboard', 'ultra-log': 'view-ultra-log', 'partners': 'view-partners', 'adventure-log': 'view-adventure-log', 'edit-studio': 'view-edit-studio', 'multisets': 'view-multisets' };
+            const VIEW_MAP = { 'dashboard': 'view-dashboard', 'ultra-log': 'view-ultra-log', 'adventure-log': 'view-adventure-log', 'edit-studio': 'view-edit-studio', 'multisets': 'view-multisets' };
             Object.values(VIEW_MAP).forEach(id => { const n = document.getElementById(id); if (n) n.classList.add('hidden'); });
             const target = document.getElementById(VIEW_MAP[viewName] || 'view-adventure-log');
             if (target) target.classList.remove('hidden');
             document.querySelectorAll('.category-icon').forEach(i => i.classList.remove('active'));
             el.classList.add('active');
-            if (viewName === 'partners') openPartnersView();
         }
-
-        /* ══════════════════════════════════════════════════════════════
-           合作产品 / 广告位板块
-           ──────────────────────────────────────────────────────────────
-           招租新增产品 = 只往 PARTNER_PRODUCTS 里加一条，不用动任何 HTML/CSS。
-           视频托管换家（Firebase / R2 / 火山 TOS）= 只改 videos[].src，代码不变。
-           媒体文件放 partner-media/<产品id>/ 下；视频建议走外链 CDN，不进 Git 仓库。
-           ══════════════════════════════════════════════════════════════ */
-        const PARTNER_PRODUCTS = [
-            {
-                id: 'shortdrama',
-                icon: '🎬',
-                name: '短剧 Agent 生成系统',
-                badge: 'AUPlus 出品',
-                tagline: '把「我想要那种感觉」，变成每一秒都精确的执行方案',
-                desc: '你只需要用人话说清楚想要什么感觉，剩下的交给它：把模糊的方向翻译成结构、把结构拆成镜头、把镜头对上节拍和配乐、把角色锁死不跑形，最后交出一个可以直接开剪的成片包。这些事传统上要一个团队——懂节奏的编剧、写得出 Cue Sheet 的音乐总监、能把分镜和节拍对上的导演、维持角色一致的美术，每个岗位都是多年积累，还得彼此对得上话。它不是替你按下生成键，而是把这些专业判断固化成了可反复执行的流程：每一步都看得见、改得动、退得回，不满意就在那一步重来，不用整支片子推翻。',
-                highlights: ['创意研讨→可执行方案', '节拍精确到 0.5 秒', 'BGM Cue Sheet', '角色一致性锁定', '情绪标签配音', '导出即可剪'],
-                cta: { label: '了解详情 / 咨询合作', href: '' },
-
-                // ⭐ 最难被替代的能力：顾问圆桌评审（真实协作过程，三步）
-                roundtable: {
-                    title: '核心：一支顾问团陪你把本子改到能拍',
-                    lead: '下面是一次真实的剧本会诊全过程——一部 12 集竖屏丧尸短剧。<b style="color:#fff;">不是"帮你写"，是帮你看出问题在哪、并给出怎么改。</b>',
-                    steps: [
-                        { src: 'partner-media/shortdrama/rt-01-lineup.jpg',
-                          n: 'STEP 1', h: '按你的本子配阵容，还能随时换人',
-                          t: '系统读完剧本先判断类型（竖屏 1 分钟 × 12 集、丧尸恐怖 + 喜剧拌嘴），再配出六席顾问，<b>每席都写明"为什么选 TA"</b>。<br><br>真正关键的是下半张：你说了一句「台词是我们人工写的、不用改，想聊技法和镜头」，它当场<b>撤下两位台词向顾问，换成视觉／技法向</b>，并明确「五席全部聚焦技法/镜头/画面/细节，不碰台词」。<br><br><b style="color:#FFD60A;">阵容是跟着你的需求走的，不是固定套餐。</b>' },
-                        { src: 'partner-media/shortdrama/rt-02-critique.jpg',
-                          n: 'STEP 2', h: '每一席都给诊断、处方和分数',
-                          t: '不是笼统夸一句"挺好的"。韩式人性反转引擎直接判：<b>「这场丧尸灾难里，没有『人比丧尸更可怕』的时刻」，人性反转张力 4/10</b>，然后给三条能落地的改法。<br><br>单田芳<b>逐集给钩子打星</b>：第 1 集 ★★★★★「车底下那只手动了，教科书级别」；第 10 集 ★「这是最差的扣子，情绪高潮已经释放完了才停」。<br><br>技法引擎还会检索语料库佐证，命中就给原句和配方——例如「他们穿过了三节丧尸的车厢，却穿不过人心」。' },
-                        { src: 'partner-media/shortdrama/rt-03-crossview.jpg',
-                          n: 'STEP 3', h: '不同流派交叉挑刺，盲区互相补',
-                          t: 'Jordan Peele 视角挑出<b>「一颗没被引爆的炸弹——红姐递过的那杯咖啡」</b>，指出该被"日常恐怖化"的是咖啡杯、冲剂盒、办公室日光灯；Fincher 视角只从光线、构图、色彩说画面问题。同一个本子，不同人看见不同的洞。<br><br>还有一点值得注意：检索不到语料时它会<b>如实说「该维度无匹配语料」</b>而不是硬编——<b style="color:#FFD60A;">敢说"我这儿没有"，说"我有"的时候才可信。</b>' }
-                    ]
-                },
-
-
-                // 🔧 回答「我们到底给它设计了什么」——每条都能在下方截图里找到对应
-                designNotes: {
-                    title: '为了让它真的能交付，我们在里面做了这些设计',
-                    groups: [
-                        {
-                            icon: '🎭', h: '人物不跑形', sub: 'AI 短剧最容易翻车的地方',
-                            items: [
-                                '同一个角色拆成<b>两张基准图</b>：一张大头照锁脸，一张<code>全身穿搭·脖子以下不露脸</code>锁衣着体型 —— 刻意不给第二张脸，从源头掐断"多张脸对不上"',
-                                '素材按 <code>S / A / B</code> 分级，主体级素材优先保真，环境级允许发挥',
-                                '先<b>文生图</b>定 base，再<b>图生图</b>派生变体，所有衍生画面都挂在同一个基准上'
-                            ],
-                            gain: '→ 60 秒里出现十几次的角色，脸和衣服始终是同一个人'
-                        },
-                        {
-                            icon: '📝', h: '提示词不靠碰运气', sub: '把不确定性写死',
-                            items: [
-                                '每段提示词强制带<b>【素材声明】</b>：这个镜头用参考图几的哪个部分，逐条写明，不让模型自己猜',
-                                '全片共用一套<b>摄影基底</b>并写进每一段：<code>Photorealistic · natural light · handheld 混 locked-off · warm morning tones · Sony A7R5 · 35mm+85mm</code>',
-                                '禁止项前置：不出字幕水印、不生成 Logo、画面不抖动 —— 写在提示词里而不是事后返工'
-                            ],
-                            gain: '→ 十几段分别生成，光线、色温、质感却像同一台机器拍的'
-                        },
-                        {
-                            icon: '🎬', h: '镜头之间接得上', sub: '不是一堆碎片拼在一起',
-                            items: [
-                                '段与段之间标明<b>衔接方式</b>（硬切／叠化）与依据',
-                                '写明<b>桥接逻辑</b>：上一段收在什么画面 → 下一段从什么画面起 —— 例如「S1 收在 Sarah 看着 Cooper 蹭地 → S2 开在门廊强光，硬切」',
-                                '每段再拆 <code>5-6 镜</code>，逐镜标注景别与画面内容'
-                            ],
-                            gain: '→ 剪起来是顺的，不用靠转场特效硬圆场'
-                        },
-                        {
-                            icon: '🥁', h: '节奏是设计出来的', sub: '不是拍完再配个音乐',
-                            items: [
-                                '喜剧节拍拆到 <code>0.5 秒</code>：撕开包装 [pizzicato, pp] → 舌头舔走芝士 [snare accent + woodwind gliss] → 药片弹跳 [tiny percussion]，<b>动作、音效、情绪三条线同时对齐</b>',
-                                '全片 <b>Cue Sheet</b> 逐条标时间／段落／技法／意图，含 <code>Silence as Punchline</code>（把静默当笑点）这类专业处理',
-                                '附<b>「禁止元素」清单</b>：不要打击乐、不要史诗弦乐、不要欢快大调收尾 —— 先说清什么不能做'
-                            ],
-                            gain: '→ 笑点和情绪落点是排出来的，不靠运气'
-                        },
-                        {
-                            icon: '🔊', h: '声音各归各位', sub: '分工比堆功能更重要',
-                            items: [
-                                '<b>上镜对白</b>交给视频模型（口型要对上），<b>不上镜的旁白／OS</b>才走配音 —— 分工写进系统规则，不混用',
-                                '每条旁白精确标注<b>叠在哪一段的哪几秒</b>，以及与前后音乐的呼吸间隔',
-                                '情绪标签内嵌台词，稳定度刻意调低换取<b>更多情绪起伏</b>'
-                            ],
-                            gain: '→ 配音不是贴上去的，是长在画面节奏里的'
-                        }
-                    ]
-                },
-
-                screenshots: [
-                    { src: 'partner-media/shortdrama/shot-01-assets.jpg',
-                      caption: '资产先行：角色、场景、道具统一生成并锁定为 base，全片复用。同一个角色跨 60 秒不变脸——这是 AI 短剧最难的一关。' },
-                    { src: 'partner-media/shortdrama/shot-02-script.jpg',
-                      caption: '分镜级脚本：每段标时长、挂参考图编队、写明与上一段的衔接方式（硬切／叠化）与转场依据，不靠模型自由发挥。' },
-                    { src: 'partner-media/shortdrama/shot-03-bgm.jpg',
-                      caption: 'Cue Sheet 落到执行：研讨定下的音乐设计逐条变成可生成的 cue，配上关键时刻与禁止元素清单。' },
-                    { src: 'partner-media/shortdrama/shot-04-voice.jpg',
-                      caption: '情绪标签内嵌配音：[flatly]、[pause]、[softer] 直接写进台词，逐句还原语气停顿，不是机器朗读。' },
-                    { src: 'partner-media/shortdrama/shot-05-timeline.jpg',
-                      caption: '导出即可剪：画面、字幕、配音、BGM 分轨输出，落地剪辑软件直接开工，不用再倒腾素材。' }
-                ],
-                videos: []
-            }
-        ];
-
-        // 招租位文案（设为 null 可隐藏）
-        const PARTNER_RENT_SLOT = {
-            title: '这个位置招租中',
-            sub: '面向电商工具、AI 应用、跨境服务商开放。<br>想让你的产品出现在这里，联系 AUPlus。'
-        };
-
-        let _partnerActive = 0;
-        let _vlbList = [], _vlbIdx = 0;
-
-        function openPartnersView() {
-            try { localStorage.setItem('hyrule_partners_seen', '1'); } catch (e) {}
-            const dot = document.getElementById('partnerDot');
-            if (dot) dot.style.display = 'none';
-            renderPartners();
-        }
-
-        function renderPartners() {
-            const tabs = document.getElementById('partnerTabs');
-            const body = document.getElementById('partnerBody');
-            if (!tabs || !body) return;
-
-            // 只有一个产品时不显示切换 chips
-            tabs.innerHTML = PARTNER_PRODUCTS.length > 1
-                ? PARTNER_PRODUCTS.map((p, i) =>
-                    `<div class="partner-tab ${i === _partnerActive ? 'active' : ''}" onclick="_partnerActive=${i};renderPartners();">${p.icon || ''} ${escapeHtmlP(p.name)}</div>`).join('')
-                : '';
-
-            const p = PARTNER_PRODUCTS[_partnerActive];
-            if (!p) { body.innerHTML = ''; return; }
-
-            const ctaHtml = p.cta && p.cta.label
-                ? `<button class="partner-cta" onclick="${p.cta.href ? `window.open('${p.cta.href}','_blank')` : `alert('想了解「${escapeHtmlP(p.name)}」，请直接联系 AUPlus。')`}">${escapeHtmlP(p.cta.label)}</button>`
-                : '';
-
-            body.innerHTML = `
-                <div class="partner-card">
-                    <div class="partner-hero">
-                        <div class="partner-logo">${p.icon || '📦'}</div>
-                        <div style="flex:1;min-width:220px;">
-                            <div class="partner-name">${escapeHtmlP(p.name)}${p.badge ? `<span class="partner-badge">${escapeHtmlP(p.badge)}</span>` : ''}</div>
-                            <div class="partner-tagline">${escapeHtmlP(p.tagline || '')}</div>
-                        </div>
-                        ${ctaHtml}
-                    </div>
-                    ${p.desc ? `<div class="partner-desc">${escapeHtmlP(p.desc)}</div>` : ''}
-                    ${(p.highlights || []).length ? `<div class="partner-hl">${p.highlights.map(h => `<span>${escapeHtmlP(h)}</span>`).join('')}</div>` : ''}
-
-                    ${renderRoundtable(p)}
-
-                    ${renderDesignNotes(p)}
-
-                    <div class="partner-sec-title">完整生产链路</div>
-                    ${renderShots(p)}
-
-                    <div class="partner-sec-title">案例成果</div>
-                    ${renderVideos(p)}
-                </div>
-                ${PARTNER_RENT_SLOT ? `<div class="rent-card"><div class="rent-title">${PARTNER_RENT_SLOT.title}</div><div class="rent-sub">${PARTNER_RENT_SLOT.sub}</div></div>` : ''}
-            `;
-        }
-
-        // ⭐ 顾问圆桌：用三步真实过程展示「怎么跟人配合」
-        function renderRoundtable(p) {
-            const r = p.roundtable;
-            if (!r || !(r.steps || []).length) return '';
-            return `
-                <div class="partner-sec-title">${escapeHtmlP(r.title)}</div>
-                ${r.lead ? `<div class="rt-lead">${r.lead}</div>` : ''}
-                <div class="rt-steps">
-                    ${r.steps.map(s => `
-                        <div class="rt-step">
-                            <div class="rt-num">${escapeHtmlP(s.n || '')}</div>
-                            <h5>${escapeHtmlP(s.h)}</h5>
-                            <div class="rt-img" onclick="openSampleLightbox('${s.src}')">
-                                <img src="${s.src}" alt="${escapeHtmlP(s.h)}" loading="lazy">
-                                <div class="rt-zoom">点击放大看细节</div>
-                            </div>
-                            <p>${s.t}</p>
-                        </div>`).join('')}
-                </div>`;
-        }
-
-        // 🔧 设计说明：讲清楚「我们给它设计了什么」以及「对用户意味着什么」
-        function renderDesignNotes(p) {
-            const d = p.designNotes;
-            if (!d || !(d.groups || []).length) return '';
-            return `
-                <div class="partner-sec-title">${escapeHtmlP(d.title)}</div>
-                <div class="dn-grid">
-                    ${d.groups.map(g => `
-                        <div class="dn-card">
-                            <h5>${g.icon || ''} ${escapeHtmlP(g.h)}</h5>
-                            ${g.sub ? `<div class="dn-sub">${escapeHtmlP(g.sub)}</div>` : ''}
-                            <ul>${(g.items || []).map(it => `<li>${it}</li>`).join('')}</ul>
-                            ${g.gain ? `<div class="dn-gain">${g.gain}</div>` : ''}
-                        </div>`).join('')}
-                </div>`;
-        }
-
-        function renderShots(p) {
-            const shots = p.screenshots || [];
-            if (!shots.length) {
-                return `<div class="shot-rail">${[1, 2, 3].map(() =>
-                    `<div class="ph-box ph-shot"><div style="font-size:1.5rem;opacity:0.5;">🖼️</div><div>系统截图即将上线</div></div>`).join('')}</div>`;
-            }
-            return `<div class="shot-rail">${shots.map(s => `
-                <div class="shot-item" onclick="openSampleLightbox('${s.src}')">
-                    <img src="${s.src}" alt="${escapeHtmlP(s.caption || '')}" loading="lazy">
-                    ${s.caption ? `<div class="shot-cap">${escapeHtmlP(s.caption)}</div>` : ''}
-                </div>`).join('')}</div>`;
-        }
-
-        /* 视频来源支持两种：
-             { bvid: 'BV1xx...' }  → B 站 iframe 嵌入（平台扛带宽、自适应码率、长视频无压力）
-             { src : '....mp4'  }  → 直链 mp4，用原生 video 播放
-           两种都只在点击后才加载播放器，不点就只有一张封面图，浏览广告位几乎不耗流量。 */
-        function biliEmbedUrl(bvid, autoplay) {
-            return 'https://player.bilibili.com/player.html?bvid=' + encodeURIComponent(bvid)
-                 + '&page=1&high_quality=1&danmaku=0&autoplay=' + (autoplay ? 1 : 0);
-        }
-
-        function renderVideos(p) {
-            const vids = p.videos || [];
-            if (!vids.length) {
-                return `<div class="vid-wall">${[1, 2, 3, 4].map(() =>
-                    `<div class="ph-box ph-vid"><div style="font-size:1.6rem;opacity:0.5;">🎞️</div><div>案例视频即将上线</div></div>`).join('')}</div>`;
-            }
-            return `<div class="vid-wall">${vids.map((v, i) => {
-                let cover;
-                if (v.poster) {
-                    cover = `<img class="vid-poster" src="${v.poster}" alt="${escapeHtmlP(v.title || '')}" loading="lazy">`;
-                } else if (v.src) {
-                    cover = `<video src="${v.src}" muted loop playsinline preload="none"></video>`;
-                } else {
-                    // B 站源且没给封面：用标题做占位，避免空白卡片
-                    cover = `<div class="vid-fallback"><span>${escapeHtmlP(v.title || '案例视频')}</span></div>`;
-                }
-                return `
-                <div class="vid-card" onclick="openVideoLightbox(${i})"
-                     onmouseenter="hoverPreview(this,true)" onmouseleave="hoverPreview(this,false)">
-                    ${cover}
-                    <div class="vid-shade"></div>
-                    <div class="vid-play"><svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><path d="M8 5v14l11-7z"/></svg></div>
-                    ${v.dur ? `<div class="vid-dur">${escapeHtmlP(v.dur)}</div>` : ''}
-                    <div class="vid-meta">
-                        <div class="vid-title">${escapeHtmlP(v.title || '')}</div>
-                        ${v.desc ? `<div class="vid-desc">${escapeHtmlP(v.desc)}</div>` : ''}
-                    </div>
-                </div>`; }).join('')}</div>`;
-        }
-
-        // 悬停预览：有封面图的卡片不预加载视频，避免白白吃流量
-        function hoverPreview(card, on) {
-            const v = card.querySelector('video');
-            if (!v) return;
-            if (on) { v.play().catch(() => {}); } else { v.pause(); v.currentTime = 0; }
-        }
-
-        function openVideoLightbox(idx) {
-            const p = PARTNER_PRODUCTS[_partnerActive];
-            _vlbList = p.videos || [];
-            if (!_vlbList.length) return;
-            _vlbIdx = idx;
-            const lb = document.getElementById('videoLightbox');
-            lb.classList.remove('hidden');
-            playVlb();
-            document.addEventListener('keydown', vlbKeys);
-        }
-
-        function playVlb() {
-            const v = _vlbList[_vlbIdx];
-            const el = document.getElementById('vlbVideo');
-            el.src = v.src;
-            if (v.poster) el.poster = v.poster;
-            el.play().catch(() => {});
-            document.getElementById('vlbCap').textContent = [v.title, v.desc].filter(Boolean).join(' · ');
-            const multi = _vlbList.length > 1;
-            document.querySelectorAll('#videoLightbox .vlb-nav').forEach(n => n.style.display = multi ? 'flex' : 'none');
-        }
-
-        function stepVideoLightbox(d) {
-            _vlbIdx = (_vlbIdx + d + _vlbList.length) % _vlbList.length;
-            playVlb();
-        }
-
-        function closeVideoLightbox() {
-            const el = document.getElementById('vlbVideo');
-            el.pause(); el.removeAttribute('src'); el.load();
-            document.getElementById('videoLightbox').classList.add('hidden');
-            document.removeEventListener('keydown', vlbKeys);
-        }
-
-        function vlbKeys(e) {
-            if (e.key === 'Escape') closeVideoLightbox();
-            else if (e.key === 'ArrowLeft') stepVideoLightbox(-1);
-            else if (e.key === 'ArrowRight') stepVideoLightbox(1);
-        }
-
-        function escapeHtmlP(s) {
-            return String(s == null ? '' : s).replace(/[&<>"']/g, c =>
-                ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-        }
-
-        // 已看过就不再显示红点
-        (function () {
-            try {
-                if (localStorage.getItem('hyrule_partners_seen') === '1') {
-                    document.addEventListener('DOMContentLoaded', () => {
-                        const d = document.getElementById('partnerDot');
-                        if (d) d.style.display = 'none';
-                    });
-                }
-            } catch (e) {}
-        })();
 
         let currentUploadCategory = ""; 
         function preventDefaults(e) { e.preventDefault(); e.stopPropagation(); }
@@ -2022,6 +1707,11 @@ if (!response.ok) throw new Error(`HTTP 错误: ${response.status}`);
             const scope = document.getElementById('designScope').value;
             let titles = new Array(14).fill(null); 
             if (!scope) return titles;
+            if (scope === 'main_count') {
+                const count = Number(document.getElementById('mainImageCount').value);
+                for(let i=0; i<count; i++) titles[i] = i ? `【卖点图${i}】` : '【主图】';
+                return titles;
+            }
 
             // ── 极速飙车模式专属 scope（三条N8N路线，后端返回的是一张合并大图，UI只需一个slot）──
             if (scope === 'ultra_main_8' || scope === 'ultra_old_aplus_4' || scope === 'ultra_premium_aplus_5') {
@@ -2138,6 +1828,7 @@ if (!response.ok) throw new Error(`HTTP 错误: ${response.status}`);
 
         function getMainFlowTarget() {
             const scope = document.getElementById('designScope')?.value;
+            if (scope === 'main_count') return Number(document.getElementById('mainImageCount').value);
             if (scope === 'custom' && window.__customLayout) return (window.__customLayout.main|0) + (window.__customLayout.sub|0);
             return 7;
         }
@@ -2457,6 +2148,19 @@ if (!response.ok) throw new Error(`HTTP 错误: ${response.status}`);
             } catch (e) { window.open(data.url, '_blank'); }
         }
 
+        function handleMainImageCountChange() {
+            lastAgentTaskId = null;
+            window._lastAgentTaskId = null;
+            document.getElementById('sopText').value = '';
+            if (window.__categoryState?.allocation) {
+                window.__categoryState.allocation = _fitAlloc(window.__categoryState.allocation, getMainFlowTarget());
+                window.__categoryState.confirmed = false;
+            }
+            handleScopeChange();
+            const label = document.getElementById('localPlanLabel');
+            if (label) label.textContent = '主图张数已改变，请重新构思';
+        }
+
         function handleScopeChange() {
             playZeldaSound('click');
             const _newScope = document.getElementById('designScope').value;
@@ -2469,6 +2173,7 @@ if (!response.ok) throw new Error(`HTTP 错误: ${response.status}`);
             __lastScopeVal = _newScope;
             imageSlots = new Array(14).fill(null);
             buildGalleryLayout();
+            if (_newScope === 'main_count') document.getElementById('mainImageCountControl').scrollIntoView({block:'nearest'});
             saveAppState();
             // 切换输出范围时重置手机版：关监听、隐藏按钮、清展示区
             if (typeof activeMobileTasks !== 'undefined') {
@@ -2511,6 +2216,10 @@ function renderCostBill() {
   if (!el) return;
   const scope = (document.getElementById('designScope') || {}).value;
   let c = COST_TABLE[scope];
+  if (scope === 'main_count') {
+    const n = Number(document.getElementById('mainImageCount').value);
+    c = { pieces: n, think: 7, draw: 2 * n };
+  }
   if (scope === 'custom') {
     const cl = window.__customLayout;
     const n = cl ? ((cl.main|0) + (cl.sub|0) + (cl.aplus|0)) : 0;
@@ -2561,6 +2270,7 @@ function billNote(t) { return `<div class="bill-sub">${t}</div>`; }
 
         function buildGalleryLayout() {
             const scope = document.getElementById('designScope').value;
+            document.getElementById('mainImageCountControl').hidden = scope !== 'main_count';
             const container = document.getElementById('galleryContainer');
             if(!scope) { container.innerHTML = ''; return; }
 
@@ -2573,7 +2283,8 @@ function billNote(t) { return `<div class="bill-sub">${t}</div>`; }
             if (scope.includes('main') || scope.includes('thd') || (scope === 'custom' && titles.slice(0, 7).some(Boolean))) {
                 html += `<div class="text-sheikah-blue font-bold tracking-widest mb-3 font-mono text-sm uppercase">Main Flow (1:1)</div>`;
                 html += `<div class="main-images-section">`;
-                for(let i=0; i<7; i++) if(titles[i]) html += buildSlotHtml(i, titles[i]);
+                const mainCount = scope === 'main_count' ? Number(document.getElementById('mainImageCount').value) : 7;
+                for(let i=0; i<mainCount; i++) if(titles[i]) html += buildSlotHtml(i, titles[i]);
                 html += `</div>`;
             }
 
@@ -2742,7 +2453,7 @@ function billNote(t) { return `<div class="bill-sub">${t}</div>`; }
                     if (!isInpaint && activeKieTasks.length === 0) {
                         document.getElementById('logContent').innerHTML = "<span class='text-zonai-yellow animate-pulse'>全部生成完成！正在自动归档记录… 📸</span>"; if (window.aquaNotify) aquaNotify('生成完成', '所有图片已生成完毕，正在自动归档', '🎉');
                         // ⛑️ Bug D 修复：删除 1500ms 延时（_preloadImagesAsBlobs 内部自己 await 图加载完）
-                        if (!(window.maybeStartResultTour && window.maybeStartResultTour())) setTimeout(showRatingModal, 800);
+                        if (window.maybeStartResultTour) window.maybeStartResultTour();
                     }
                 } else if (data.status === 'failed') {
                     clearWatchdog('img:' + taskId);
@@ -2753,7 +2464,7 @@ function billNote(t) { return `<div class="bill-sub">${t}</div>`; }
                     // ⛑️ Bug E 修复：失败也算"这一槽完成了"——本批次全部 settled 时也要触发自动截图，否则一批里最后一张失败永远卡死
                     if (!isInpaint && activeKieTasks.length === 0) {
                         document.getElementById('logContent').innerHTML = "<span class='text-zonai-yellow animate-pulse'>本批次全部结束（含失败槽位），归档记录… 📸</span>";
-                        if (!(window.maybeStartResultTour && window.maybeStartResultTour())) setTimeout(showRatingModal, 800);
+                        if (window.maybeStartResultTour) window.maybeStartResultTour();
                     }
                 }
             });
@@ -3082,10 +2793,11 @@ function billNote(t) { return `<div class="bill-sub">${t}</div>`; }
                 document.getElementById('logContent').innerHTML = "⚠️ 通道确认超时：任务大概率已抵达云端并在生成中，Firebase 监听保持在线，图片完成后会自动点亮。若 5 分钟后毫无动静，请重新点击生成。"; saveAppState();
             }
         }
-        // ===== 评分 / 单图归档 / 单图差评 =====
+        // ===== 单图归档与图片操作 =====
 function _showSimpleToast(msg, color) {
             color = color || '#30D158';
             const t = document.createElement('div');
+            t.className = 'workbench-toast';
             t.style.cssText = 'position:fixed;bottom:30px;left:50%;transform:translateX(-50%);background:rgba(32,34,44,0.85);backdrop-filter:blur(30px) saturate(170%);-webkit-backdrop-filter:blur(30px) saturate(170%);border:1px solid color-mix(in srgb, '+color+' 55%, transparent);border-radius:14px;padding:14px 28px;color:#fff;font-family:inherit;font-size:13px;font-weight:700;z-index:99999;box-shadow:0 20px 60px rgba(0,0,0,0.5);transition:opacity 0.3s;';
             t.textContent = msg;
             document.body.appendChild(t);
@@ -3109,106 +2821,6 @@ function _showSimpleToast(msg, color) {
                 });
             }).catch(function() {});
             return _archiveQueue;   // 返回队列，调用方可 await 归档完成
-        }
-
-        function showRatingModal() {
-            if (!lastAgentTaskId) { _showSimpleToast('⚠️ 本次没有可评价的任务', '#FFD700'); return; }
-            if (document.getElementById('_ratingModalOverlay')) return; // 防重复
-            let _score = 0;
-            const overlay = document.createElement('div');
-            overlay.id = '_ratingModalOverlay';
-            overlay.style.cssText = 'position:fixed;inset:0;background:rgba(8,9,14,0.5);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);z-index:10000;display:flex;align-items:center;justify-content:center;';
-            const box = document.createElement('div');
-            box.style.cssText = 'background:linear-gradient(160deg,rgba(56,60,80,0.62),rgba(30,32,44,0.72));backdrop-filter:blur(60px) saturate(200%) brightness(1.12);-webkit-backdrop-filter:blur(60px) saturate(200%) brightness(1.12);border:1px solid rgba(255,255,255,0.16);border-radius:22px;padding:32px 36px;min-width:340px;max-width:90vw;font-family:inherit;color:#fff;box-shadow:0 40px 100px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.12);animation:materialize 0.4s var(--spring);';
-            box.innerHTML = `
-                <div style="font-size:16px;font-weight:800;color:#fff;margin-bottom:20px;text-align:center;">本次生成整体评价</div>
-                <div id="_ratingStars" style="display:flex;justify-content:center;gap:10px;margin-bottom:20px;cursor:pointer;">
-                    ${[1,2,3,4,5].map(n=>`<svg id="_star${n}" data-v="${n}" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="1.5" style="transition:all 0.15s;"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>`).join('')}
-                </div>
-                <textarea id="_ratingComment" placeholder="可不填（补充评语）" style="width:100%;height:72px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);border-radius:12px;color:#fff;font-family:inherit;font-size:12px;padding:10px;resize:none;outline:none;box-sizing:border-box;margin-bottom:18px;"></textarea>
-                <div style="display:flex;gap:12px;justify-content:center;">
-                    <button id="_ratingSubmit" class="modal-btn modal-btn-confirm" style="flex:1;padding:10px 0;font-size:13px;">提交评价</button>
-                    <button id="_ratingSkip" class="modal-btn modal-btn-cancel" style="flex:1;padding:10px 0;font-size:13px;">稍后再说</button>
-                </div>`;
-            overlay.appendChild(box);
-            document.body.appendChild(overlay);
-
-            // 星星点击高亮
-            const starsEl = document.getElementById('_ratingStars');
-            starsEl.addEventListener('click', function(e) {
-                const sv = e.target.closest('svg');
-                if (!sv) return;
-                _score = parseInt(sv.getAttribute('data-v'), 10);
-                for (let i = 1; i <= 5; i++) {
-                    const s = document.getElementById('_star' + i);
-                    if (i <= _score) { s.setAttribute('fill','#FFD700'); s.setAttribute('stroke','#FFD700'); }
-                    else { s.setAttribute('fill','none'); s.setAttribute('stroke','#555'); }
-                }
-            });
-
-            document.getElementById('_ratingSkip').addEventListener('click', function() {
-                overlay.remove();
-            });
-
-            document.getElementById('_ratingSubmit').addEventListener('click', function() {
-                if (_score < 1) { _showSimpleToast('请先点击星星打分 ⭐', '#FFD700'); return; }
-                const comment = (document.getElementById('_ratingComment').value || '').trim();
-                const task_id = lastAgentTaskId;
-                const btn = document.getElementById('_ratingSubmit');
-                btn.disabled = true; btn.textContent = '提交中...';
-                fetch('/api/feedback', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action: 'rating', task_id: task_id, score: _score, comment: comment, app_channel: APP_CHANNEL })
-                }).then(function(r) {
-                    if (r.ok) {
-                        overlay.remove();
-                        _showSimpleToast('✅ 评价已保存在本机', '#00FFC5');
-                    } else {
-                        btn.disabled = false; btn.textContent = '提交评价';
-                        _showSimpleToast('❌ 提交失败 HTTP ' + r.status, '#ef4444');
-                    }
-                }).catch(function(e) {
-                    btn.disabled = false; btn.textContent = '提交评价';
-                    _showSimpleToast('❌ 网络错误: ' + (e && e.message), '#ef4444');
-                });
-            });
-
-            // 点击遮罩关闭
-            overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
-        }
-
-        async function downvoteImage(slotIdx, btnEl) {
-            if (!lastAgentTaskId) { _showSimpleToast('⚠️ 本次没有可评价的任务', '#FFD700'); return; }
-            try { await _archiveQueue; } catch (e) {}   // 等待该图归档完成，否则飞书里还没这行，差评会静默丢失
-            const newState = !window.__downvoted[slotIdx];
-            window.__downvoted[slotIdx] = newState;
-            try {
-                const r = await fetch('/api/feedback', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action: 'downvote', task_id: lastAgentTaskId, slot: slotIdx, downvote: newState, app_channel: APP_CHANNEL })
-                });
-                if (r.ok) {
-                    if (!btnEl) { /* 无按钮引用(程序化调用)，跳过样式切换 */ }
-                    else if (newState) {
-                        btnEl.style.color = '#ef4444'; btnEl.style.borderColor = '#ef4444';
-                        btnEl.style.background = 'rgba(239,68,68,0.15)';
-                        btnEl.title = '取消差评';
-                    } else {
-                        btnEl.style.color = ''; btnEl.style.borderColor = '';
-                        btnEl.style.background = '';
-                        btnEl.title = '差评此图';
-                    }
-
-                } else {
-                    window.__downvoted[slotIdx] = !newState; // 回滚
-                    _showSimpleToast('❌ 差评失败 HTTP ' + r.status, '#ef4444');
-                }
-            } catch (e) {
-                window.__downvoted[slotIdx] = !newState;
-                console.warn('[downvote]', e && e.message);
-            }
         }
 
         function renderSlot(idx) {
@@ -3242,12 +2854,6 @@ function _showSimpleToast(msg, color) {
                         </div>
                     </div>
                     <div class="w-full flex items-center gap-2">
-                        <div class="relative group shrink-0">
-                            <button id="dv-btn-${idx}" onclick="downvoteImage(${idx}, this)" class="py-1.5 px-2.5 border border-[#00D4FF] text-[#00D4FF] bg-transparent rounded-md text-[13px] leading-none hover:bg-red-500/20 hover:border-red-400 hover:text-red-400 transition-all duration-200">👎</button>
-                            <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block w-[150px] bg-black/95 text-[#00D4FF] text-[10px] text-center py-2 px-2 rounded-lg border border-[#00D4FF]/40 z-50 font-['PingFang SC'] leading-relaxed shadow-[0_0_15px_rgba(0,212,255,0.3)]">
-                                这张不满意，记入飞书用于分析问题提示词
-                            </div>
-                        </div>
                         <button onclick="downloadSingle(${idx})" class="flex-1 py-1.5 border border-[#00D4FF] text-[#00D4FF] bg-transparent rounded-md font-black tracking-widest uppercase text-[10px] hover:bg-[#00D4FF]/20 transition-all duration-200 flex items-center justify-center gap-2">
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />

@@ -1,0 +1,52 @@
+@import url('/local/theme-tokens.css');
+
+/* Reserve the same scrollbar space on document-scrolling and pane-scrolling pages. */
+html {scrollbar-gutter:stable;--workbench-header-height:76px;}
+body.has-workbench-header {padding-top:var(--workbench-header-height);}
+.workbench-header {
+  box-sizing:border-box;position:fixed;inset:0 0 auto;z-index:100;
+  height:var(--workbench-header-height);min-height:0;padding:0 32px;
+  display:flex;align-items:center;justify-content:space-between;gap:24px;flex-wrap:nowrap;
+  background:var(--ui-surface);border:0;border-bottom:1px solid var(--ui-border);border-radius:0;
+  font:14px/1.6 var(--ui-font);letter-spacing:0;
+}
+.workbench-header .workbench-brand {
+  display:flex;align-items:center;gap:10px;flex-shrink:0;white-space:nowrap;
+  color:var(--ui-text);font-size:19px;font-weight:600;text-decoration:none;
+}
+.workbench-header .workbench-logo {
+  display:grid;place-items:center;box-sizing:border-box;width:36px;height:36px;
+  background:var(--ui-accent);color:white;border-radius:10px;font-size:24px;font-weight:800;
+}
+.workbench-header .workbench-nav {
+  display:grid;grid-template-columns:repeat(3,112px);align-items:center;gap:4px;
+  margin:0 0 0 auto;padding:4px;border-radius:10px;background:var(--ui-page);
+}
+.workbench-header .workbench-nav a {
+  box-sizing:border-box;display:block;padding:8px 4px;text-align:center;
+  color:var(--ui-muted);font:14px/22px var(--ui-font);font-weight:500;
+  white-space:nowrap;text-decoration:none;border-radius:7px;
+}
+.workbench-header .workbench-nav a:hover {background:var(--ui-surface);color:var(--ui-text);}
+.workbench-header .workbench-nav a[aria-current="page"] {
+  background:var(--ui-surface);color:var(--ui-accent);font-weight:700;
+  box-shadow:0 1px 4px #26334c12;
+}
+.workbench-header a:focus-visible {outline:2px solid var(--ui-focus);outline-offset:2px;}
+.temu-theme .main-content {padding-top:var(--workbench-header-height);}
+.temu-theme .sidebar-categories {padding-top:calc(var(--workbench-header-height) + 18px);}
+.temu-theme .ws-toolbar .mac-tools {margin-left:0;flex-wrap:wrap;}
+.listing-main .work-heading-actions {display:flex;align-items:center;gap:14px;flex-shrink:0;}
+.listing-main .work-heading-actions .destination-label {margin:0;white-space:nowrap;}
+
+/* This local app uses the local session bridge, never the archived site's account form. */
+#authOverlay {display:none!important;}
+
+@media(max-width:760px) {
+  html {--workbench-header-height:112px;}
+  .workbench-header {padding:10px 16px;gap:8px;flex-wrap:wrap;align-content:center;}
+  .workbench-header .workbench-brand {font-size:17px;}
+  .workbench-header .workbench-logo {width:30px;height:30px;font-size:22px;border-radius:8px;}
+  .workbench-header .workbench-nav {width:100%;grid-template-columns:repeat(3,minmax(0,1fr));gap:2px;}
+  .workbench-header .workbench-nav a {font-size:12px;line-height:20px;padding:6px 0;}
+}

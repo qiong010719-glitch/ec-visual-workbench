@@ -1,0 +1,38 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import {merchantFixture} from './merchant-fixture.mjs';
+import {readWorkbook,writeWorkbook} from '../src/workbook.mjs';
+
+test('legacy output recovery preserves disk edits, generated images and completed ERP receipts',async t=>{
+  let generated=0,f;
+  f=await merchantFixture({provider:async()=>{generated++;return fs.readFileSync(path.join(f.input,'CANVAS-A','01.png'));}});t.after(f.close);
+  const imported=await f.api('/api/products/import-folder',{folder:f.input});
+  const products=[{...imported.products[0],count:1}];
+  let b=await f.api('/api/products',{requestId:'legacy-output-001',storeKey:'merchant-ca',products,imageCount:2,ratio:'1:1',mode:'fast'});
+  delete f.app.store.state.productBatches[b.id].sourceFolder;delete f.app.store.state.productBatches[b.id].outputParent;f.app.store.save();
+  const route='/api/products/'+b.id;
+  await f.api(route+'/plan',{});b=await f.wait(route,b=>b.phase!=='planning');assert.equal(b.phase,'ready');
+  await f.api(route+'/generate',{});b=await f.wait(route,b=>b.phase!=='generating');assert.equal(b.phase,'completed');
+  const old={...b.resultPackage},book=readWorkbook(old.workbook);book.rows[0].englishTitle='Merchant edited the Excel title';writeWorkbook(book.rows,old.workbook);
+  const prepared=await f.api(route+'/prepare',{}),preview=f.app.erp.previews().find(p=>p.id===prepared.previewId);
+  const job=await f.api('/api/temu/erp/prepare',{previewId:preview.id,storeKey:'merchant-ca',browserKey:'merchant-browser',rows:preview.rows});
+  await f.api('/api/temu/erp/batches/'+job.id+'/start',{});await f.wait('/api/temu/erp/batches/'+job.id,b=>b.status==='completed');
+  const beforeWrites=JSON.stringify(f.writes),beforeCalls=generated,oldJob=await f.api('/api/temu/erp/batches/'+job.id),original=fs.readFileSync(path.join(f.input,'CANVAS-A','01.png'));
+  const output=path.join(f.input,'_工作台生成结果');b=await f.api(route+'/output',{folder:output,sourceFolder:f.input});
+  assert.equal(b.outputParent,output);assert.equal(b.sourceFolder,f.input);assert.equal(b.previewId,preview.id);
+  assert.equal((await f.api(route+'/prepare',{})).previewId,preview.id);
+  assert.equal(generated,beforeCalls);assert.equal(JSON.stringify(f.writes),beforeWrites);assert.deepEqual(await f.api('/api/temu/erp/batches/'+job.id),oldJob);
+  assert.deepEqual(fs.readFileSync(b.resultPackage.workbook),fs.readFileSync(old.workbook));
+  for(const row of book.rows)for(const name of fs.readdirSync(path.join(old.folder,row.productCode)))assert.deepEqual(fs.readFileSync(path.join(b.resultPackage.folder,row.productCode,name)),fs.readFileSync(path.join(old.folder,row.productCode,name)));
+  assert.deepEqual(fs.readFileSync(path.join(f.input,'CANVAS-A','01.png')),original);
+  assert.equal((await f.api(route+'/output',{folder:output})).resultPackage.folder,b.resultPackage.folder,'same destination must not make another copy');
+  const restored=JSON.parse(fs.readFileSync(f.app.store.file,'utf8')).productBatches[b.id];assert.equal(restored.resultPackage.folder,b.resultPackage.folder);
+  assert.equal((await f.api('/api/products/import-folder',{folder:f.input})).products.length,2);
+  await assert.rejects(f.api(route+'/output',{folder:f.input}),/不能与素材/);
+  await assert.rejects(f.api(route+'/output',{folder:path.join(f.input,'CANVAS-A')}),/原图/);
+  await assert.rejects(f.api(route+'/output',{folder:path.join(b.resultPackage.folder,'nested')}),/本批结果/);
+  await assert.rejects(f.api(route+'/output',{folder:'relative-folder'}),/完整路径/);
+  f.app.store.state.productBatches[b.id].phase='generating';await assert.rejects(f.api(route+'/output',{folder:output}),/正在运行/);f.app.store.state.productBatches[b.id].phase='completed';
+});

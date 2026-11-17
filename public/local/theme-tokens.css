@@ -1,0 +1,20 @@
+/* Shared with the Temu listing workspace. */
+:root {
+  --ui-font: "Microsoft YaHei UI", "PingFang SC", sans-serif;
+  --ui-page: #f1f4f9;
+  --ui-surface: #fff;
+  --ui-subtle: #f8fafd;
+  --ui-text: #26334c;
+  --ui-muted: #68758b;
+  --ui-border: #dce2ec;
+  --ui-input-border: #cdd5e2;
+  --ui-accent: #d9500d;
+  --ui-accent-hover: #ba4109;
+  --ui-accent-soft: #fff7f1;
+  --ui-accent-text: #a44213;
+  --ui-success: #215a48;
+  --ui-success-soft: #e8f4ef;
+  --ui-danger: #933024;
+  --ui-danger-soft: #fff0ec;
+  --ui-focus: #247bc5;
+}

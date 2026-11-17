@@ -10,7 +10,7 @@ const directory=fs.mkdtempSync(path.join(os.tmpdir(),'ec-model-ui-'));
 const output=path.join(root,'reference/image-model-selection-20261103');
 const captured=[],image2='gpt-image-2',sunburst='gpt-image-2.5-sunburst';
 const png=fs.readFileSync(path.join(root,'public/mode-samples/fast_case2.jpg'));
-const app=createWorkbench({dataDirectory:directory,configuration:{},provider:async p=>{captured.push(p);return png;}});
+const app=createWorkbench({legacyUi:true,dataDirectory:directory,configuration:{},provider:async p=>{captured.push(p);return png;}});
 const imageUrl=app.saveImage(png);
 app.store.task('agent_tasks/ui_plan',{status:'completed',result:'【主图】\n产品摄影',payload:{product_name:'模型验证水杯',custom_layout:{main:1}}});
 await new Promise(resolve=>app.server.listen(0,'127.0.0.1',resolve));

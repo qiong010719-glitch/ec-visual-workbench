@@ -15,6 +15,8 @@
     <script src="vendor/driver.js.iife.js"></script>
 
     <link rel="stylesheet" href="/original/original-01.css">
+    <link rel="stylesheet" href="/local/shared-theme.css">
+    <link rel="stylesheet" href="/local/navigation.css">
 </head>
 <body class="custom-scrollbar antialiased">
 <!-- ── 桌面壁纸层（Aqua Glass 主题） ── -->
@@ -189,21 +191,8 @@
 
 
 
+    <header class="workbench-header" id="macTitlebar"><a class="workbench-brand" href="/temu/listings" aria-label="Temu 工作台首页"><span class="workbench-logo">T</span><span>Temu 工作台</span></a><nav class="workbench-nav" aria-label="工作流程"><a href="/temu" aria-current="page">单品设计</a><a href="/temu/listings">店铺上架</a><a href="/settings">连接设置</a></nav></header>
     <div class="purah-pad">
-        <div class="mac-titlebar" id="macTitlebar">
-            <div class="mac-title">AUPlus 视觉工作台</div>
-            <div class="mac-tools">
-                <span id="spotHint" class="wp-hint" style="display:none">
-                    <span class="wp-hint-text">💡 鼠标聚光灯特效，开关在这</span>
-                    <span class="wp-hint-arrow">👉</span>
-                    <button class="wp-hint-close" onclick="spotHintAskClose(event)" title="关闭提示">✕</button>
-                </span>
-                <button class="mac-tool-btn" id="spotlightBtn" onclick="toggleSpotlight()" title="鼠标聚光：光圈跟随鼠标，四周轻微压暗"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.5 1.5M16.9 16.9l1.5 1.5M18.4 5.6l-1.5 1.5M7.1 16.9l-1.5 1.5"/></svg><span id="spotLabel">聚光</span></button>
-                <button class="mac-tool-btn" onclick="const m=document.getElementById('modeSelectionModal');m.style.display='flex'"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01"/><path d="M11.5 12H12v4h.5"/></svg>模式详情</button>
-                <button class="mac-tool-btn" onclick="document.getElementById('announceModal').classList.add('show')">📢 原站公告</button>
-            </div>
-        </div>
-
 <div id="announceModal" class="announce-modal" style="z-index:99999;">
     <div class="announce-box" style="max-height:90vh;overflow-y:auto;position:relative;width:600px;">
 
@@ -222,8 +211,6 @@
             <p style="color:#fff;font-weight:800;margin:0.9rem 0 0.35rem;">🎛️ 更多可控选项</p>
             <p style="color:rgba(235,235,245,0.72);font-size:0.94rem;">新增 <b style="color:#fff;">生图模型 / 信息密度 / 场景化倾向 / 产品类型</b> 四个调节项——文字要多要少、要不要真实使用场景、是保健品还是结构件，都能自己定。保健品与结构件还有专项优化。</p>
 
-            <p style="color:#fff;font-weight:800;margin:0.9rem 0 0.35rem;">⭐ 出图后可直接评分</p>
-            <p style="color:rgba(235,235,245,0.72);font-size:0.94rem;">生成完会弹出评分窗（打星＋可选评语），也可随时点右侧 ⭐ 补评。每张图还能单独点 👎 反馈。<b style="color:#fff;">你的每一次评价都会用来优化模型</b>，出图会越用越准。</p>
 
             <p style="color:#fff;font-weight:800;margin:0.9rem 0 0.35rem;">📸 新手引导 & 看样片</p>
             <p style="color:rgba(235,235,245,0.72);font-size:0.94rem;">新手引导已全面更新，出图页也有专属引导。上传区新增 <b style="color:#fff;">「看样片」</b>，用对照图告诉你什么样的输入图才能出好结果——<b style="color:#fff;">这一项对出图质量影响最大，强烈建议看一眼</b>。</p>
@@ -251,7 +238,7 @@
 <link rel="stylesheet" href="/original/original-02.css">
         <div class="game-bg"></div>
 
-        <div id="authOverlay" class="absolute inset-0 z-[5000] flex flex-col items-center justify-center transition-opacity duration-500 px-4" style="background:rgba(14,15,22,0.62);backdrop-filter:blur(40px) saturate(160%);-webkit-backdrop-filter:blur(40px) saturate(160%);">
+        <div id="authOverlay" hidden aria-hidden="true" class="absolute inset-0 z-[5000] flex flex-col items-center justify-center transition-opacity duration-500 px-4" style="display:none!important;background:rgba(14,15,22,0.62);backdrop-filter:blur(40px) saturate(160%);-webkit-backdrop-filter:blur(40px) saturate(160%);">
             <img src="3F3F3F2F3F.png" class="h-20 mb-5 filter drop-shadow-[0_0_30px_rgba(0,255,197,0.4)]" onerror="this.style.display='none'">
             <h2 class="text-2xl md:text-3xl mb-1.5 text-center" style="color:#fff;font-weight:800;letter-spacing:-0.01em;">A-PLUS 视觉生图引擎</h2>
             <p class="text-gray-400 font-mono text-[10px] tracking-[0.3em] mb-7 uppercase text-center">AUPlus Visual Studio</p>
@@ -657,8 +644,6 @@
             <div id="nav-notes" class="category-icon" data-label="图库" title="快速 / 大师模式的生成结果" onclick="switchView('adventure-log', this)"><svg width="45" height="45" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
             <div id="nav-ultra" class="category-icon" data-label="极速" onclick="switchView('ultra-log', this)" title="极速飙车模式的生成结果"><svg width="45" height="45" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
             <div id="nav-edit" class="category-icon" data-label="编辑" onclick="switchView('edit-studio', this)" title="编辑模式：保留风格、替换产品"><svg width="45" height="45" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg></div>
-            <div id="nav-rating" class="category-icon" data-label="评价" onclick="showRatingModal()" title="评价本次生成，帮助模型进步"><svg width="45" height="45" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg></div>
-            <div id="nav-partners" class="category-icon" data-label="合作" onclick="switchView('partners', this)" title="更多好产品 · 合作展示"><svg width="45" height="45" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="4" width="20" height="16" rx="2.5"/><path d="M7 4v16M17 4v16M2 9h5M2 15h5M17 9h5M17 15h5"/></svg><span class="partner-dot" id="partnerDot"></span></div>
         </nav>
 
         <div class="main-content">
@@ -672,6 +657,16 @@
                         </div>
                     </div>
                     <div class="ws-toolbar">
+            <div class="mac-tools">
+                <span id="spotHint" class="wp-hint" style="display:none">
+                    <span class="wp-hint-text">💡 鼠标聚光灯特效，开关在这</span>
+                    <span class="wp-hint-arrow">👉</span>
+                    <button class="wp-hint-close" onclick="spotHintAskClose(event)" title="关闭提示">✕</button>
+                </span>
+                <button class="mac-tool-btn" id="spotlightBtn" onclick="toggleSpotlight()" title="鼠标聚光：光圈跟随鼠标，四周轻微压暗"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.5 1.5M16.9 16.9l1.5 1.5M18.4 5.6l-1.5 1.5M7.1 16.9l-1.5 1.5"/></svg><span id="spotLabel">聚光</span></button>
+                <button class="mac-tool-btn" onclick="const m=document.getElementById('modeSelectionModal');m.style.display='flex'"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01"/><path d="M11.5 12H12v4h.5"/></svg>模式详情</button>
+                <button class="mac-tool-btn" onclick="document.getElementById('announceModal').classList.add('show')">📢 原站公告</button>
+            </div>
                         <span id="wpHint" class="wp-hint" style="display:none">
                             <span class="wp-hint-text">✨ 戳这里能换壁纸、调特效——这么酷炫，确定不试试？</span>
                             <span class="wp-hint-arrow">👉</span>
@@ -772,6 +767,13 @@
                                 <option value="custom">🎛️ 自定义方案（数量/逐张要求/参考图）</option>
                             </select>
                             <button id="customEditBtn" onclick="openCustomModal()" style="display:none; color:#c084fc; border:1px dashed rgba(192,132,252,0.45); background:rgba(192,132,252,0.08); border-radius:0.6rem; padding:6px 10px;" class="text-xs font-mono font-bold shrink-0">🎛️ 编辑自定义方案（数量/要求/参考图）</button>
+                            <label id="mainImageCountControl" for="mainImageCount" hidden class="text-xs font-mono shrink-0">
+                                每套主图张数
+                                <select id="mainImageCount" class="sheikah-input text-sm font-mono font-bold" onchange="handleMainImageCountChange()" style="width:100%;margin-top:6px">
+                                    <option value="1">1 张</option><option value="2">2 张</option><option value="3">3 张</option><option value="4">4 张</option><option value="5">5 张</option><option value="6">6 张</option><option value="7" selected>7 张</option><option value="8">8 张</option><option value="9">9 张</option><option value="10">10 张</option>
+                                </select>
+                                <span>详情页复用同组图片，SKU 预览图保留母稿原图。</span>
+                            </label>
                             <div id="scopeCostDisplay" class="text-xs font-mono mt-1 text-zonai-yellow hidden px-1"></div>
 
                             <!-- ★ 5 控制旋钮（从 YIMU 内部版移植） -->
@@ -987,7 +989,7 @@
 </div>
                         <div class="mt-4 pt-4 border-t border-sheikah-blue/20 text-[#00FF00] flex items-start gap-2 animate-[pulse_2s_ease-in-out_infinite]" style="">
     <svg class="w-4 h-4 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
-    <span class="text-[10px] leading-relaxed font-['PingFang SC'] tracking-wide">请等待所有图片加载完毕后再进行重绘或编辑，以免截图失败影响评价系统。</span>
+    <span class="text-[10px] leading-relaxed font-['PingFang SC'] tracking-wide">请等待所有图片加载完毕后再进行重绘或编辑，确保图片加载完整。</span>
 </div>
                     </div>
                     <div class="master-sword-container"><img src="Weapon_Sword_070.png" id="staticSword" onerror="this.style.display='none'"></div>
@@ -1182,27 +1184,7 @@
                 </div>
             </section>
 
-            <!-- ════════ 合作产品 / 广告位 展示页 ════════ -->
-            <section id="view-partners" class="hidden partners-view">
-                <div class="partners-head">
-                    <div>
-                        <div class="partners-title">更多好产品</div>
-                        <div class="partners-sub">我们自己在用的工具，和值得一试的同行产品</div>
-                    </div>
-                    <div class="partner-tabs" id="partnerTabs"></div>
-                </div>
-                <div id="partnerBody"></div>
-            </section>
         </div>
-    </div>
-
-    <!-- 视频灯箱 -->
-    <div id="videoLightbox" class="hidden" onclick="if(event.target===this)closeVideoLightbox()">
-        <div class="vlb-close" onclick="closeVideoLightbox()">✕</div>
-        <div class="vlb-nav prev" onclick="stepVideoLightbox(-1)">‹</div>
-        <div class="vlb-nav next" onclick="stepVideoLightbox(1)">›</div>
-        <div class="vlb-stage"><video id="vlbVideo" controls playsinline preload="metadata"></video></div>
-        <div class="vlb-cap" id="vlbCap"></div>
     </div>
 
     <script src="/original/original-01.js"></script>
@@ -1372,6 +1354,8 @@
 <script src="/local/workbench.js"></script>
 <link rel="stylesheet" href="/local/multisets.css">
 <script src="/local/multisets.js"></script>
+<script src="/local/single-design.js"></script>
+<script src="/local/shared-theme.js"></script>
 </body>
 </html>
 

@@ -1,0 +1,127 @@
+[
+  {
+    "path": ".gitignore",
+    "sha256": "F1C974C497D59E3E668F78D4265A30576D1E35031CCD85CA244B4FDA61226D70",
+    "bytes": 34
+  },
+  {
+    "path": "启动本地工作台.cmd",
+    "sha256": "5A217612E007FA6C74AC98BEF773B8ADB275BCF0C5D8BB846C496FEA834FB9CD",
+    "bytes": 101
+  },
+  {
+    "path": "启动上架工作台.cmd",
+    "sha256": "66938C2CC881C4BD1B01BE2C651CC8DD584FD2BABA7BA2B02F5C3B1F0A3AC533",
+    "bytes": 137
+  },
+  {
+    "path": "README.md",
+    "sha256": "4136DE6D46B764F826A5A4F2449912E26B724358DD6349877C8D303C71FBBEF6",
+    "bytes": 9781
+  },
+  {
+    "path": "scripts/inspect-draft.mjs",
+    "sha256": "423AA31582E551E9CBDD031476C7B03B65744C896E0109C64CAE2D008B4DCA22",
+    "bytes": 9409
+  },
+  {
+    "path": "scripts/lib/bit-cdp.mjs",
+    "sha256": "FF7AF794F5B78D3ADB5A4DCB09E3D87B8C2D6EC247C9CB18B2788B3B959C731A",
+    "bytes": 7447
+  },
+  {
+    "path": "scripts/lib/chrome-cdp.mjs",
+    "sha256": "74BA81C4BEF14E5995A9C33B1F7C105ABC7F62DDF18AD95C8E2D5D7009C6D48A",
+    "bytes": 2180
+  },
+  {
+    "path": "scripts/lib/chrome-owner.mjs",
+    "sha256": "CF2EF841717993B0547281F643E9FDB591C93F636DB4FB944DB36BAA6FA455EC",
+    "bytes": 4598
+  },
+  {
+    "path": "scripts/lib/draft-session.mjs",
+    "sha256": "021AB955C8F6FA9971943AE1EF0AF1799C75E956406DE299104F379915765BEA",
+    "bytes": 3374
+  },
+  {
+    "path": "scripts/lib/draft-ui.mjs",
+    "sha256": "4576B8EE8B036E915D4E2E6683649CD8372404CD89F483C6CC93CF95B0600FB3",
+    "bytes": 25487
+  },
+  {
+    "path": "scripts/lib/erp-image-rules.mjs",
+    "sha256": "F45A90EC46DEE1CCF048974EEFBEAB5E44A4BF45D5917006B37B7F18B7E62B98",
+    "bytes": 4009
+  },
+  {
+    "path": "scripts/lib/erp-page-state.mjs",
+    "sha256": "95D1B7D4A1827BB850FF94A86C8D70A4E81FDC22F6D2CA8958BB21926C276E9D",
+    "bytes": 2736
+  },
+  {
+    "path": "scripts/lib/miaoshou-connection.mjs",
+    "sha256": "AE1ED3273C8AA610B8D050A8C648F0727DDC0C3BAB0391298713D53B9E909CD5",
+    "bytes": 1419
+  },
+  {
+    "path": "scripts/lib/temu-mothers.mjs",
+    "sha256": "E06E5C20798D28056CF2344AF80EB0B8B1994310485AF0A43ACDC5165ED48939",
+    "bytes": 8598
+  },
+  {
+    "path": "scripts/lib/temu-publish.mjs",
+    "sha256": "209AD98F6E11FD159EAFEA5C602A662EDF55AE1CDC79314BA260DA01A7AE3083",
+    "bytes": 10890
+  },
+  {
+    "path": "scripts/lib/temu-runner.mjs",
+    "sha256": "D6A15967054715B1EBA82E09A0757DE72BE4757842434B3C55D434A42E4B56C7",
+    "bytes": 19375
+  },
+  {
+    "path": "scripts/lib/temu-templates.mjs",
+    "sha256": "BF4FD719C3F5AFDBC5FECD95791E366615FFAB37508B822D33252312F447DB00",
+    "bytes": 4512
+  },
+  {
+    "path": "scripts/prepare-listing-images.py",
+    "sha256": "8C976D66F9625E04CC42FA32D5EFB627DC0306FF875AECE1327045CCBF9EC8CD",
+    "bytes": 1914
+  },
+  {
+    "path": "scripts/read-listing-workbook.py",
+    "sha256": "17FA4E6064DF0FDA231F145F40F08FEBA9810434530C8859B6D3F20AF399EAEE",
+    "bytes": 2692
+  },
+  {
+    "path": "scripts/update-test-draft.mjs",
+    "sha256": "DB262936D8C363412D3FE9B5D63C290251BF6BBD1F00F403654CC068FC5387D5",
+    "bytes": 5175
+  },
+  {
+    "path": "scripts/verify-connections-20261106.mjs",
+    "sha256": "3A98DEA9A4F77965402CCD324FCBA95149654D95CF1874269E1F12AA246A0DB5",
+    "bytes": 1460
+  },
+  {
+    "path": "scripts/verify-new-image-draft.mjs",
+    "sha256": "1EA783690CF724D6D38857E709C159FD1202E801C7949C68ADD1E63E1DF746B3",
+    "bytes": 8645
+  },
+  {
+    "path": "scripts/verify-test-draft.mjs",
+    "sha256": "03423EEF5ABE45A1359EC1A900AAE2857DE6BAF33FBD3148DBADADFACBA25AA0",
+    "bytes": 7215
+  },
+  {
+    "path": "scripts/verify-two-store-test.mjs",
+    "sha256": "48D12F33CF97C3D28D6D8438BBCC4E0FAF87AA189592A4B1E214DAE3FC786DF0",
+    "bytes": 6081
+  },
+  {
+    "path": "start-listing-workbench.ps1",
+    "sha256": "21210C8990FC0A57521C4C9EE561CF833FCE3DBB779E70314E0147E37C1930CF",
+    "bytes": 3293
+  }
+]

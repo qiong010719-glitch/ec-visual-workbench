@@ -1,0 +1,34 @@
+import assert from 'node:assert/strict';
+import {chromium} from 'playwright';
+import {merchantFixture} from './merchant-fixture.mjs';
+import fs from 'node:fs';
+import path from 'node:path';
+const f=await merchantFixture(),browser=await chromium.launch({channel:'msedge',headless:true}),page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];
+page.on('pageerror',e=>errors.push(e.message));
+const output=path.resolve('tests/results/listing-sidebar');fs.mkdirSync(output,{recursive:true});
+const ready=()=>page.locator('#batchMother:not([disabled])').waitFor();
+try{
+  await page.goto(f.base+'/temu/listings');await page.selectOption('#targetStore','merchant-ca');await ready();
+  await page.selectOption('#batchMother','canvas-b');await ready();assert.match(await page.locator('#motherInfo a').getAttribute('href'),/987654322$/);
+  await page.fill('#folderPath',f.input);await page.click('#importFolder');await page.locator('[data-product="1"]').waitFor();
+  assert.deepEqual(await page.locator('#productInputs [data-field="templateKey"]').evaluateAll(es=>es.map(e=>e.value)),['canvas-b','canvas-b']);
+  await page.locator('[data-product="0"] [data-field="templateKey"]').selectOption('canvas-a');assert.equal(await page.inputValue('#batchMother'),'');assert.match(await page.locator('#motherInfo').textContent(),/不同母稿/);
+  await page.selectOption('#batchMother','canvas-b');await ready();
+  for(const field of await page.locator('[data-field="count"]').all())await field.fill('1');await page.selectOption('#imageCount','1');
+  await page.click('#createBatch');await page.locator('#generationPanel').waitFor();await ready();
+  await page.selectOption('#batchMother','canvas-a');await ready();await page.reload();await ready();assert.equal(await page.inputValue('#batchMother'),'canvas-a');
+  await page.click('#planBatch');await page.waitForFunction(()=>document.querySelector('#generationState').textContent==='方案与标题已就绪');
+  assert.match(await page.locator('[data-title="chineseTitle"]').first().inputValue(),/帆布/);assert.match(await page.locator('[data-title="englishTitle"]').first().inputValue(),/Canvas/);
+  await page.locator('[data-title="chineseTitle"]').first().fill('雪景帆布装饰画');await page.locator('[data-save-titles]').first().click();await ready();
+  await page.locator('#batchProducts').scrollIntoViewIfNeeded();await page.screenshot({path:path.join(output,'bilingual-titles.png')});
+  await page.click('#generateBatch');await page.waitForFunction(()=>document.querySelector('#generationState').textContent==='素材已完成');await page.click('#reviewGenerated');await page.locator('.listing-row').nth(1).waitFor();
+  await ready();await page.selectOption('#batchMother','canvas-b');await ready();assert.deepEqual(await page.locator('#productRows [data-field="templateKey"]').evaluateAll(es=>es.map(e=>e.value)),['canvas-b','canvas-b']);
+  await page.reload();await page.locator('.listing-row').nth(1).waitFor();assert.equal(await page.inputValue('#batchMother'),'canvas-b');
+  await page.locator('#targetStore').scrollIntoViewIfNeeded();await page.screenshot({path:path.join(output,'mother-selector.png')});
+  await page.click('#prepareBatch');await page.locator('#executionPanel').waitFor();const jobs=await f.api('/api/temu/erp/batches');assert.ok(jobs[0].rows.every(r=>r.mother.draftId==='987654322'));
+  await page.click('#startBatch');await page.waitForFunction(()=>document.querySelector('#batchState').textContent==='全部完成');assert.equal(await page.locator('#batchMother').isDisabled(),true);assert.ok(f.writes.every(w=>w.mother==='987654322'));
+  await page.click('#newBatch');await page.selectOption('#targetStore','merchant-other');await ready();assert.match(await page.locator('#motherInfo a').getAttribute('href'),/987654331$/);await page.selectOption('#batchMother','canvas-b');await ready();assert.match(await page.locator('#motherInfo a').getAttribute('href'),/987654332$/);
+  await page.click('#addStoreLink');await page.locator('#continueStore').waitFor();assert.equal(await page.inputValue('#storeForm [name="key"]'),'');assert.equal(await page.inputValue('#storeForm [name="expectedStore"]'),'');assert.equal(await page.locator('#storeMothers').isVisible(),false);assert.equal(await page.evaluate(()=>document.activeElement.name),'expectedStore');
+  await page.screenshot({path:path.join(output,'add-store.png')});assert.deepEqual(errors,[]);
+  console.log('浏览器通过：中文与英文独立显示、侧栏母稿批量选择及刷新保留、单品差异提示、执行使用所选 ID、已执行锁定、新增店铺入口。');
+}finally{await browser.close();await f.close();}

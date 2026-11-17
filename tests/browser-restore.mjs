@@ -5,7 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import {createWorkbench,root} from '../src/server.mjs';
 const directory=fs.mkdtempSync(path.join(os.tmpdir(),'ec-restore-'));
-const app=createWorkbench({dataDirectory:directory,configuration:{}});
+const app=createWorkbench({legacyUi:true,dataDirectory:directory,configuration:{}});
 const url=app.saveImage(fs.readFileSync(path.join(root,'public/mode-samples/ultra_1.jpg')));
 await new Promise(resolve=>app.server.listen(0,'127.0.0.1',resolve));
 const browser=await chromium.launch({channel:'msedge',headless:true});

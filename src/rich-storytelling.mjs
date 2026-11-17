@@ -1,4 +1,5 @@
 // Visual directions are reusable methods, never additional facts about a SKU.
+import {isAplusSlot} from './image-scope.mjs';
 export const SCENE_STYLE_VERSION=3;
 
 const topics={
@@ -123,7 +124,7 @@ const profiles={
 };
 
 export function richStoryboard(payload,slot,facts,base,category) {
-  const isAplus=slot>=7,index=isAplus?(slot-7)%7:(Math.max(1,slot)-1)%6;
+  const isAplus=isAplusSlot(payload,slot),index=isAplus?(slot-7)%7:(Math.max(1,slot)-1)%6;
   const profile=profiles[category];
   let frame=profile?.[isAplus?'aplus':'gallery']?.[index] || (isAplus?aplus:gallery)[index];
   if(frame.intent==='scent'&&(noScent.test([payload.product_name,...facts].join(' '))||!evidenceFor('scent',facts,index).length)){

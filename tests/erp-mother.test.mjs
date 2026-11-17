@@ -1,0 +1,31 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {chromium} from 'playwright';
+import sharp from 'sharp';
+import {readMother,copyMother} from '../../scripts/lib/temu-mothers.mjs';
+import {domAction,clearInheritedMainImages} from '../../scripts/lib/draft-ui.mjs';
+import {readPage} from '../../scripts/inspect-draft.mjs';
+
+test('exact link creates an unsaved copy; wrong shops, changed copied fields and original edit writes are rejected',async t=>{
+ const browser=await chromium.launch({channel:'msedge',headless:true});t.after(()=>browser.close());const context=await browser.newContext();const original=await context.newPage(),copy=await context.newPage();
+ const cdp=async page=>{const session=await context.newCDPSession(page);return {send:(...args)=>session.send(...args),evaluate:(...args)=>page.evaluate(...args)};};const source=await cdp(original),target=await cdp(copy);
+ const store={draftId:'220114595116064422',expectedStore:'店铺1',expectedSite:'加拿大站'},seen=[];let wrongShop=false,wrongTitle=false;
+ const item=(label,content)=>`<div class="ant-form-item"><label class="ant-form-item-label">${label}</label>${content}</div>`;
+ const selection=s=>`<span class="ant-select-selection-item">${s}</span>`;
+ const image='https://wxalbum-10001658-file.dianxiaomi.com/source.jpg';
+ const square=await sharp({create:{width:800,height:800,channels:3,background:'#eee'}}).jpeg().toBuffer();let imageBytes=square;
+ await context.route('**/*',async route=>{assert.equal(route.request().method(),'GET','mother validation must never save or publish');const u=new URL(route.request().url());if(u.hostname!=='www.dianxiaomi.com')return route.fulfill({status:200,contentType:'image/jpeg',headers:{'access-control-allow-origin':'*'},body:imageBytes});seen.push(u.pathname+u.search);const quoted=u.pathname.endsWith('quoteEdit');
+  const html=`<div class="btn-user"><span class="user-name">fixture</span></div>${item('店铺账号',selection(wrongShop&&quoted?'店铺2':'店铺1'))}${item('经营站点',selection('加拿大站'))}${item('产品分类',selection('海报'))}${item('承诺发货时效',selection('2天'))}${item('运费模板',selection('加拿大'))}${item('产品标题',`<input value="${wrongTitle&&quoted?'另一商品':'source '+u.searchParams.get('id')}">`)}<div><span>${selection('风格')}</span><div><div class="theme-value-add"></div><span class="theme-value-text">A</span></div></div><div><span>${selection('颜色')}</span><div><div class="theme-value-add"></div></div></div><div class="in-selector ant-select-multiple ant-select-allow-clear">${selection('加拿大仓')}</div>${['variationSku','price','skuLength','skuWidth','skuHeight','weight','stock'].map(n=>`<input name="${n}" value="${n==='variationSku'?'SKU-1':n==='stock'?(quoted?'':'12'):'10'}">`).join('')}<div class="sku-image"><img src="${image}"></div><div class="mainImage"><div class="img-list"><div><img src="${image}"><a class="icon_delete" onclick="this.parentElement.remove()">删除</a></div></div></div><div id="wirelessDescContentBox"><img src="${image}"></div>`;
+  await route.fulfill({contentType:'text/html; charset=utf-8',body:'<meta charset="utf-8">'+html.replace('>海报<','>海报和印刷品<')});});
+ imageBytes=await sharp({create:{width:1280,height:1949,channels:3,background:'#eee'}}).jpeg().toBuffer();
+ await assert.rejects(readMother(source,store),/1280×1949.*方图/);assert.equal(seen.some(s=>s.includes('quoteEdit')),false);
+ imageBytes=Buffer.from('broken image');await assert.rejects(readMother(source,store),/无法核验母稿 SKU 预览图/);
+ imageBytes=square;
+ const {mother,extra}=await readMother(source,store);await copyMother(target,store,mother,extra);assert.ok(seen.includes('/web/popTemu/quoteEdit?id='+store.draftId));assert.equal(await copy.locator('[name=stock]').inputValue(),'12');
+ assert.equal(extra.skuPreviewCheck.checked,true);assert.equal(extra.skuPreviewCheck.width,800);
+ await assert.rejects(source.evaluate(domAction,{locator:{selector:'input[name=stock]'},action:'fill',value:'999'}),/new unsaved/);assert.equal(await original.locator('[name=stock]').inputValue(),'12');
+ await clearInheritedMainImages(target,mother.media.mainImages);assert.equal(await copy.locator('.mainImage img').count(),0);assert.equal(await original.locator('.mainImage img').count(),1);assert.equal(await copy.locator('.sku-image img').getAttribute('src'),image);
+ await copy.goto('https://www.dianxiaomi.com/web/popTemu/quoteEdit?id=220114595118926212');await assert.rejects(target.evaluate(domAction,{locator:{selector:'input[name=stock]'},action:'fill',value:'999'}),/new unsaved/);
+ wrongShop=true;await assert.rejects(copyMother(target,store,mother,extra),/母稿属于.*店铺2/);wrongShop=false;wrongTitle=true;await assert.rejects(copyMother(target,store,mother,extra),/产品标题.*不一致/);
+ assert.deepEqual((await source.evaluate(readPage,store)).variantFields,mother.variantFields);
+});

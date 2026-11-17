@@ -148,7 +148,20 @@ export function createImageProvider(configuration, mediaDirectory, {download=cre
     // Never automatically repeat generation: a timeout may still have incurred charges.
     const response = await fetch(base + endpoint, {method: 'POST', headers, body, signal: AbortSignal.timeout(480000)});
     await onProgress?.({providerHttpStatus:response.status,providerRequestId:response.headers.get('x-request-id') || null});
-    if (!response.ok) throw new Error(`${model} 图片接口 HTTP ${response.status}。请检查专用图片密钥、余额及模型权限；没有自动更换模型。`);
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => null);
+      const providerError = errorBody?.error;
+      const rawReason = providerError?.message ?? (typeof providerError === 'string' ? providerError : errorBody?.message);
+      let reason = typeof rawReason === 'string' ? rawReason : '';
+      // Providers may echo credentials in errors. Never persist them in task history.
+      for (const [name, value] of Object.entries(configuration)) {
+        if (/KEY|TOKEN|SECRET/i.test(name) && typeof value === 'string' && value) reason = reason.split(value).join('[已隐藏]');
+      }
+      reason = reason.replace(/Bearer\s+\S+/gi, 'Bearer [已隐藏]').replace(/\bsk-[\w-]+/g, '[已隐藏]').replace(/[\r\n\t]+/g, ' ').slice(0, 240);
+      const code = typeof providerError?.code === 'string' && /^[a-zA-Z0-9_-]{1,80}$/.test(providerError.code) ? providerError.code : null;
+      await onProgress?.({providerErrorCode:code});
+      throw new Error(`${model} 图片接口 HTTP ${response.status}。${reason ? `服务提示：${reason}。` : '请检查专用图片密钥、余额及模型权限。'}没有自动更换模型。`);
+    }
     const json = await response.json();
     const providerModel = typeof json.model === 'string' ? json.model : null;
     await onProgress?.({providerModel});

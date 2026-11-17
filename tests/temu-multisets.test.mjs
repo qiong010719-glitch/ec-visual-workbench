@@ -19,7 +19,7 @@ async function fixture(t,options={}) {
   const call=async(url,payload)=>{const r=await fetch(base+url,payload===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json','X-Workbench-Token':token},body:JSON.stringify(payload)});return {status:r.status,data:await r.json()};};
   const wait=async(id,predicate)=>{for(let i=0;i<400;i++){const {data}=await call(api+'/'+id);if(predicate(data))return data;await new Promise(r=>setTimeout(r,15));}throw new Error('Temu group timed out');};
   t.after(async()=>{await new Promise(r=>app.server.close(r));fs.rmSync(directory,{recursive:true,force:true});});
-  const source={platform:'temu',design_scope:'temu_main',product_name:'米色帆布画',product_desc:'单幅，米色画面，保留原框与可见纹理。',image_ratio:'3:4',image_count:2,generation_mode:'fast',visual_style:'scene_advertising',target_lang:'English',categorized_images:[{filename:'产品主体图.png',url:app.saveImage(png)}]};
+  const source={platform:'temu',design_scope:'temu_main',product_name:'米色帆布画',product_desc:'单幅，米色画面，保留原框与可见纹理。',image_ratio:'1:1',image_count:2,generation_mode:'fast',visual_style:'scene_advertising',target_lang:'English',categorized_images:[{filename:'产品主体图.png',url:app.saveImage(png)}]};
   const create=async(extra={})=>{const r=await call(api,{request_id:crypto.randomUUID(),source,count:2,variation:'both',model:'gpt-image-2.5-sunburst',...extra});assert.equal(r.status,202,JSON.stringify(r.data));return wait(r.data.id,g=>g.recommendation.status==='completed');};
   const plan=async g=>{const r=await call(api+'/'+g.id+'/plan',{});assert.equal(r.status,202,JSON.stringify(r.data));return wait(g.id,g=>g.sets.every(s=>s.planning.status==='completed'));};
   const generate=async(g,setId)=>{const r=await call(api+'/'+g.id+'/generate',setId?{setId}:{});assert.equal(r.status,202,JSON.stringify(r.data));return wait(g.id,g=>(setId?g.sets.filter(s=>s.id===setId):g.sets).every(s=>s.images.every(i=>i.task?.status==='completed')));};
@@ -34,7 +34,7 @@ test('Temu accepts 20 independent full seven-image plans, retains Amazon limits 
   let g=await a.create({count:20,source:{...a.source,image_count:7}});
   assert.equal(g.totalImages,140);assert.equal(new Set(g.sets.map(s=>s.direction.styleId)).size,20);
   g=await a.plan(g);assert.equal(new Set(g.sets.map(s=>s.planId)).size,20);
-  for(const set of g.sets){assert.equal(set.plan.sections.length,7);assert.doesNotMatch(set.plan.text,/A\+|亚马逊/);assert.ok(set.plan.sections.every(s=>s.ratio==='3:4'));}
+  for(const set of g.sets){assert.equal(set.plan.sections.length,7);assert.doesNotMatch(set.plan.text,/A\+|亚马逊/);assert.ok(set.plan.sections.every(s=>s.ratio==='1:1'));}
   assert.equal((await a.call('/api/multisets')).data.length,0);
   assert.equal((await a.call('/api/multisets/'+g.id)).status,404);
   assert.equal((await a.call('/api/multisets/'+g.id+'/generate',{})).status,404);
@@ -49,7 +49,7 @@ test('Temu accepts 20 independent full seven-image plans, retains Amazon limits 
 
 test('Temu multi-set generation and listing packages keep ratios, ordered references, IDs and selected model',async t=>{
   const a=await fixture(t);
-  for(const ratio of ['1:1','3:4']){
+  for(const ratio of ['1:1']){
     let g=await a.plan(await a.create({source:{...a.source,image_ratio:ratio}}));
     assert.equal((await a.call(a.api+'/'+g.id+'/export',{})).status,409);
     g=await a.generate(g,g.sets[1].id);
@@ -73,8 +73,30 @@ test('Temu multi-set generation and listing packages keep ratios, ordered refere
     await a.call(a.api+'/'+g.id+'/generate',{});
     for(const set of g.sets)for(const image of set.images){const task=a.store.state.tasks['hyrule_tasks/'+image.task.taskId];assert.equal(task.groupId,g.id);assert.equal(task.setId,set.id);assert.ok(task.prompt.includes(set.direction.audience));}
   }
-  assert.equal(a.calls.length,8,'export, reload and duplicate generate never call image service again');
+  assert.equal(a.calls.length,4,'export, reload and duplicate generate never call image service again');
   assert.ok(a.calls.every(p=>p.platform==='temu'&&p.model==='gpt-image-2.5-sunburst'&&p.references.includes(a.source.categorized_images[0].url)));
+});
+
+test('shared Temu multi-set preflights old hero plans before any image submission, then generates contextual heroes',async t=>{
+  const a=await fixture(t);
+  let g=await a.plan(await a.create({source:{...a.source,image_workflow:'shared',design_scope:'main_count'}}));
+  const saved=a.store.state.tasks['agent_tasks/'+g.sets[1].planId].plan,version=saved.temuHeroPolicyVersion;
+  delete saved.temuHeroPolicyVersion;
+  const charges=a.store.state.charges.length;
+  const rejected=await a.call(a.api+'/'+g.id+'/generate',{});
+  assert.equal(rejected.status,409);assert.match(rejected.data.error,/首图规则已更新/);
+  assert.equal(a.calls.length,0);assert.equal(a.store.state.charges.length,charges);
+  g=(await a.call(a.api+'/'+g.id)).data;
+  assert.ok(g.sets.every(s=>s.images.every(i=>!i.taskId&&i.attempts.length===0)));
+  saved.temuHeroPolicyVersion=version;
+  g=await a.generate(g);
+  for(const set of g.sets){
+    const hero=set.images.find(i=>i.slot===0),task=a.store.state.tasks['hyrule_tasks/'+hero.task.taskId];
+    assert.match(task.prompt,/非白色环境/);assert.match(task.prompt,/首图最终约束/);
+    assert.doesNotMatch(task.prompt,/白底产品主图|白底、产品完整/);
+    assert.ok(task.prompt.includes(set.direction.audience));
+  }
+  assert.equal(a.calls.length,4);
 });
 
 test('Temu export validates all files before creating any draft and retries only one slot',async t=>{

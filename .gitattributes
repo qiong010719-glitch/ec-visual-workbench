@@ -1,0 +1,2 @@
+# Preserve archived companion files byte-for-byte for SHA-256 verification.
+workspace-support/auto-listing/** -text

@@ -10,7 +10,7 @@ const output=path.join(root,'tests/results');fs.mkdirSync(output,{recursive:true
 const directory=fs.mkdtempSync(path.join(os.tmpdir(),'ec-ui-test-'));
 const image=fs.readFileSync(path.join(root,'public/mode-samples/fast_case2.jpg'));
 // An explicit fixture backend exercises UI plumbing without real provider charges.
-const app=createWorkbench({dataDirectory:directory,configuration:{},provider:async()=>image});
+const app=createWorkbench({legacyUi:true,dataDirectory:directory,configuration:{},provider:async()=>image});
 await new Promise(resolve=>app.server.listen(0,'127.0.0.1',resolve));
 const address='http://127.0.0.1:'+app.server.address().port;
 const browser=await chromium.launch({channel:'msedge',headless:true});
@@ -47,7 +47,7 @@ try {
   page.on('dialog',dialog=>dialog.accept());
   await act('#mainBtn');
   await page.waitForFunction(()=>document.querySelectorAll('.quest-slot img').length>=7,{},{timeout:30000});
-  await page.locator('#_ratingSkip').waitFor({state:'visible',timeout:10000});await act('#_ratingSkip');
+  assert.equal(await page.locator('#_ratingModalOverlay,[id^="dv-btn-"]').count(),0);
   await page.screenshot({path:path.join(output,'02-gallery.png')});checks.push('7 个异步结果槽位、任务监听、图片归档（测试替身）');
   await act('#nav-dash');await act('#localDraftButton');await act('#draftNew');await act('#draftAddSku');
   await fill('[data-sku="code"]','QA-SKU-01');await fill('[data-sku="name"]','测试规格');await fill('[data-sku="price"]','9.9');await fill('[data-sku="stock"]','1');
@@ -66,14 +66,14 @@ try {
   await fill('#editPrompt','本地测试替身，用于验证编辑任务流程');await act('#editRunBtn');
   await page.locator('#editResultImg').waitFor({state:'visible'});checks.push('自由编辑任务结果显示（测试替身）');
   await page.screenshot({path:path.join(output,'04-editor.png')});
-  await act('#nav-partners');await page.screenshot({path:path.join(output,'05-partners.png')});checks.push('合作页本地静态资源');
+  assert.equal(await page.locator('#nav-rating,#nav-partners,#view-partners,#videoLightbox').count(),0);checks.push('评价及合作功能已移除');
   await act('#nav-dash');await act('#modeBtn_master');await select('#designScope','custom');
   await fill('#clSub','1');await fill('#clAplus','1');await act('#customConfirmBtn');
   assert.equal(await page.evaluate(()=>getCurrentSlotTitles().filter(Boolean).length),3);
   await act('#agentBtn');await act('#agentConfirmOk');
   await page.waitForFunction(()=>!document.querySelector('#championsOverlay').classList.contains('show'));
   await act('#mainBtn');await page.waitForFunction(()=>document.querySelectorAll('.quest-slot img').length>=3);
-  await page.locator('#_ratingSkip').waitFor({state:'visible'});await act('#_ratingSkip');
+  assert.equal(await page.locator('#_ratingModalOverlay').count(),0);
   checks.push('大师模式自定义 1 主图 + 1 副图 + 1 A+（测试替身）');
   await act('#nav-dash');await act('#modeBtn_ultra_fast');
   if(await page.locator('#ultraFastWarningModal').isVisible())await act('[onclick*="selectModeFromModal(\'ultra_fast\')"]');

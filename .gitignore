@@ -10,3 +10,5 @@ node_modules/
 /reference/
 /runs/
 /打开本次构建.cmd
+
+dist/

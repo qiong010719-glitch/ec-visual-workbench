@@ -10,12 +10,20 @@
     "start": "node src/server.mjs",
     "dev": "node --watch src/server.mjs",
     "test": "node --test tests/*.test.mjs",
-    "check": "node tools/check-source.mjs"
+    "check": "node tools/check-source.mjs",
+    "desktop": "electron .",
+    "build:desktop": "electron-builder --config desktop/builder.cjs --win portable"
   },
   "dependencies": {
-    "sharp": "^0.35.5"
+    "sharp": "^0.35.5",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
+    "electron": "^45.2.3",
+    "electron-builder": "^26.18.0",
     "playwright": "^1.64.1"
-  }
+  },
+  "main": "desktop/main.cjs",
+  "description": "Temu 商品裂变与店小秘草稿工作台",
+  "author": "Workbench"
 }

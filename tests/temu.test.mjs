@@ -4,14 +4,15 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
+import crypto from 'node:crypto';
 import sharp from 'sharp';
 import {createWorkbench} from '../src/server.mjs';
 import {buildPlan,slotPlan,planProduct,promptForSlot} from '../src/planner.mjs';
 import {createImageProvider} from '../src/provider.mjs';
-import {prepareTemuImage,temuFormats} from '../src/temu.mjs';
+import {prepareTemuImage,temuFormats,TEMU_MAX_IMAGE_BYTES,verifyTemuImages} from '../src/temu.mjs';
 
 const sample=await sharp({create:{width:120,height:180,channels:3,background:'#2468ac'}}).png().toBuffer();
-const basePayload={platform:'temu',design_scope:'temu_main',product_name:'测试帆布画',product_desc:'已确认：蓝色画面，单幅，保留原有画框',image_ratio:'3:4',image_count:3,generation_mode:'fast',visual_style:'scene_advertising',target_lang:'English'};
+const basePayload={platform:'temu',design_scope:'temu_main',product_name:'测试帆布画',product_desc:'已确认：蓝色画面，单幅，保留原有画框',image_ratio:'1:1',image_count:3,generation_mode:'fast',visual_style:'scene_advertising',target_lang:'English'};
 async function fixture(t,options={}) {
   const directory=fs.mkdtempSync(path.join(os.tmpdir(),'temu-api-'));
   const calls=[];
@@ -26,12 +27,13 @@ async function fixture(t,options={}) {
   return {...app,base,call,settle,plan,calls,directory};
 }
 
-test('Temu plans only the chosen number of main images in either format; Amazon A+ remains',()=>{
-  for(const ratio of ['1:1','3:4'])for(const count of [1,3,7]) {
+test('Temu plans only the chosen number of square main images; Amazon A+ remains',()=>{
+  for(const ratio of ['1:1'])for(const count of [1,3,7]) {
     const payload={...basePayload,image_ratio:ratio,image_count:count},plan=buildPlan(payload);
     assert.equal(plan.sections.length,count);assert.ok(plan.sections.every(s=>s.ratio===ratio && s.slot<7));
     assert.doesNotMatch(plan.text,/A\+|亚马逊/);assert.match(plan.text,/Temu/);
-    assert.match(promptForSlot(payload,plan.sections[0],plan),/不强制白底/);
+    assert.match(promptForSlot(payload,plan.sections[0],plan),/非白色环境/);
+    assert.doesNotMatch(promptForSlot(payload,plan.sections[0],plan),/白底产品主图|白底、产品完整/);
   }
   const legacy=buildPlan({product_name:'水杯',product_desc:'蓝色',design_scope:'main_6_premium_aplus'});
   assert.equal(legacy.sections.length,12);assert.equal(legacy.sections[7].ratio,'21:9');
@@ -40,7 +42,7 @@ test('Temu plans only the chosen number of main images in either format; Amazon 
 });
 
 test('invalid Temu counts, ratios, A+ and ultra are rejected',()=>{
-  for(const patch of [{image_count:0},{image_count:8},{image_count:1.5},{image_count:'3'},{image_ratio:'16:9'},{custom_layout:{aplus:5}},{design_scope:'main_6_premium_aplus'},{generation_mode:'ultra_fast'},{mobile_reformat:true}])assert.throws(()=>slotPlan({...basePayload,...patch}));
+  for(const patch of [{image_count:0},{image_count:8},{image_count:1.5},{image_count:'3'},{image_ratio:'16:9'},{image_ratio:'3:4'},{custom_layout:{aplus:5}},{design_scope:'main_6_premium_aplus'},{generation_mode:'ultra_fast'},{mobile_reformat:true}])assert.throws(()=>slotPlan({...basePayload,...patch}));
 });
 
 test('image fitting preserves the entire source and exports exact pixels',async()=>{
@@ -60,16 +62,16 @@ test('upload, plan, ordered generation, download and independent drafts work end
   const app=await fixture(t),source=app.saveImage(sample);
   const payload={...basePayload,categorized_images:[{filename:'产品主体图.png',url:source}]};
   const plan=await app.plan(payload);assert.equal(plan.status,'completed');
-  const tasks=plan.plan.sections.map(s=>({slot:s.slot,taskId:'temu_'+s.slot,aspect_ratio:'3:4'}));
+  const tasks=plan.plan.sections.map(s=>({slot:s.slot,taskId:'temu_'+s.slot,aspect_ratio:'1:1'}));
   const request={...payload,agent_task_id:'plan',sop_text:plan.result,firebase_tasks:tasks};
   assert.equal((await app.call('/api/generate',request)).status,202);
   assert.equal((await app.call('/api/generate',request)).status,202,'repeat submission reuses IDs');
   const images=[];
-  for(const task of tasks){const done=await app.settle('hyrule_tasks/'+task.taskId);assert.equal(done.status,'completed',done.error);assert.deepEqual(done.dimensions,{width:1152,height:1536,ratio:'3:4'});images.push(done.imageUrl);}
-  assert.equal(app.calls.length,3);assert.ok(app.calls.every(p=>p.ratio==='3:4' && p.platform==='temu' && p.references[0]===source));
+  for(const task of tasks){const done=await app.settle('hyrule_tasks/'+task.taskId);assert.equal(done.status,'completed',done.error);assert.deepEqual(done.dimensions,{width:1024,height:1024,ratio:'1:1'});images.push(done.imageUrl);}
+  assert.equal(app.calls.length,3);assert.ok(app.calls.every(p=>p.ratio==='1:1' && p.platform==='temu' && p.references[0]===source));
   assert.doesNotMatch(app.calls[0].prompt,/【卖点图1】/);
-  const bytes=Buffer.from(await(await fetch(app.base+images[0])).arrayBuffer());assert.equal((await sharp(bytes).metadata()).width,1152);
-  const draft={platform:'temu',title:'Temu 测试',image_ratio:'3:4',images,skus:[],sop:plan.result};
+  const bytes=Buffer.from(await(await fetch(app.base+images[0])).arrayBuffer());assert.equal((await sharp(bytes).metadata()).width,1024);
+  const draft={platform:'temu',title:'Temu 测试',image_ratio:'1:1',images,skus:[],sop:plan.result};
   const saved=await app.call('/api/drafts',draft);assert.equal(saved.status,200);assert.deepEqual(saved.data.mainImages,saved.data.detailImages);assert.deepEqual(saved.data.mainImages,images);assert.equal(saved.data.skuPreviewPolicy,'preserve-source');
   const amazon=await app.call('/api/drafts',{title:'Amazon 测试',platform:'Amazon',images:[source],skus:[]});assert.equal(amazon.status,200);
   assert.deepEqual((await app.call('/api/drafts')).data.map(d=>d.title),['Amazon 测试']);
@@ -78,10 +80,30 @@ test('upload, plan, ordered generation, download and independent drafts work end
   assert.equal((await app.call('/api/drafts',{...draft,images:[source]})).status,400,'incorrect pixels cannot enter the package');
 });
 
+test('large generated square images stay below 2 MB through download, export and ERP import',async t=>{
+  const noisy=await sharp(crypto.randomBytes(1024*1024*3),{raw:{width:1024,height:1024,channels:3}}).png().toBuffer();
+  assert.ok(noisy.length>TEMU_MAX_IMAGE_BYTES);
+  const app=await fixture(t,{provider:async()=>noisy});
+  const payload={...basePayload,image_count:1},plan=await app.plan(payload);
+  assert.equal((await app.call('/api/generate',{...payload,agent_task_id:'plan',sop_text:plan.result,firebase_tasks:[{slot:0,taskId:'large_square',aspect_ratio:'1:1'}]})).status,202);
+  const task=await app.settle('hyrule_tasks/large_square');assert.equal(task.status,'completed',task.error);
+  assert.match(task.imageUrl,/\.jpg$/);
+  const response=await fetch(app.base+task.imageUrl),bytes=Buffer.from(await response.arrayBuffer());
+  assert.match(response.headers.get('content-type'),/image\/jpeg/);assert.ok(bytes.length<=TEMU_MAX_IMAGE_BYTES);
+  const meta=await sharp(bytes).metadata();assert.equal(meta.width,1024);assert.equal(meta.height,1024);
+  const draft=await app.call('/api/drafts',{platform:'temu',image_ratio:'1:1',title:'Square product',images:[task.imageUrl],skus:[]});
+  assert.equal(draft.status,200);assert.equal(draft.data.skuPreviewPolicy,'preserve-source');
+  const imported=await app.call('/api/temu/erp/import-generated',{draftId:draft.data.id});assert.equal(imported.status,200);
+  const upload=Buffer.from(await(await fetch(app.base+imported.data.folders[0].images[0].url)).arrayBuffer());
+  assert.ok(upload.length<=TEMU_MAX_IMAGE_BYTES);const uploadMeta=await sharp(upload).metadata();assert.equal(uploadMeta.width,1024);assert.equal(uploadMeta.height,1024);
+  const oversized=path.join(app.directory,'oversized.png');fs.writeFileSync(oversized,noisy);
+  await assert.rejects(verifyTemuImages([oversized],'1:1'),/超过 2 MB/);
+});
+
 test('changed inputs, mismatched ratios and duplicate slots fail before charging or generation',async t=>{
   const app=await fixture(t);const plan=await app.plan();
   const valid={...basePayload,agent_task_id:'plan',sop_text:plan.result,firebase_tasks:[{slot:0,taskId:'new'}]};
-  for(const change of [{product_desc:'different product'},{image_ratio:'1:1'},{image_count:4},{firebase_tasks:[{slot:0,taskId:'a',aspect_ratio:'1:1'}]},{firebase_tasks:[{slot:7,taskId:'a'}]},{firebase_tasks:[{slot:0,taskId:'a'},{slot:0,taskId:'b'}]},{agent_task_id:'missing'}]) {
+  for(const change of [{product_desc:'different product'},{image_ratio:'3:4'},{image_count:4},{firebase_tasks:[{slot:0,taskId:'a',aspect_ratio:'3:4'}]},{firebase_tasks:[{slot:7,taskId:'a'}]},{firebase_tasks:[{slot:0,taskId:'a'},{slot:0,taskId:'b'}]},{agent_task_id:'missing'}]) {
     assert.ok((await app.call('/api/generate',{...valid,...change})).status>=400);
   }
   assert.equal(app.calls.length,0);assert.equal(app.store.state.charges.length,1);assert.equal(app.store.state.charges[0].amount,0);
@@ -91,17 +113,20 @@ test('Temu editing and recovered downloads retain format without generating agai
   let generationCalls=0,downloads=0;
   const app=await fixture(t,{provider:async({onProgress})=>{generationCalls++;await onProgress({resultUrl:'https://example.com/already-generated.png',phase:'downloading'});throw new Error('download interrupted');},download:async()=>{downloads++;return sample;}});
   const image=app.saveImage(sample);
-  assert.equal((await app.call('/api/inpaint',{platform:'temu',image_ratio:'3:4',aspect_ratio:'3:4',task_id:'edit',slot_idx:0,prompt:'Keep product',source_image_url:image})).status,202);
+  assert.equal((await app.call('/api/inpaint',{platform:'temu',image_ratio:'1:1',aspect_ratio:'1:1',task_id:'edit',slot_idx:0,prompt:'Keep product',source_image_url:image})).status,202);
   assert.equal((await app.settle('hyrule_tasks/edit')).status,'failed');
   await app.call('/api/downloads/retry',{taskId:'edit'});
-  const result=await app.settle('hyrule_tasks/edit');assert.equal(result.status,'completed',result.error);assert.equal(result.dimensions.width,1152);assert.equal(result.dimensions.height,1536);assert.equal(generationCalls,1);assert.equal(downloads,1);
+  const result=await app.settle('hyrule_tasks/edit');assert.equal(result.status,'completed',result.error);assert.equal(result.dimensions.width,1024);assert.equal(result.dimensions.height,1024);assert.equal(generationCalls,1);assert.equal(downloads,1);
 });
 
-test('both independent entry points are served',async t=>{
+test('the default workspace serves only Temu at the homepage and former entry URLs',async t=>{
   const app=await fixture(t);
-  assert.match(await(await fetch(app.base+'/')).text(),/AUPlus/);
-  assert.match(await(await fetch(app.base+'/temu')).text(),/Temu 做图工作台/);
-  const config=await app.call('/api/temu/config');assert.equal(config.data.fissionEnabled,true);assert.equal(config.data.publishEnabled,false);
+  for(const route of ['/','/index.html','/temu','/temu/','/temu.html']){
+    const html=await(await fetch(app.base+route)).text();
+    assert.match(html,/<title>Temu 工作台/);assert.match(html,/shared-temu-bootstrap\.js/);assert.match(html,/id="designScope"/);assert.match(html,/original-01\.js/);
+  }
+  assert.equal((await fetch(app.base+'/amazon')).status,404);
+  const config=await app.call('/api/temu/config');assert.equal(config.data.workspacePlatform,'temu');assert.equal(config.data.fissionEnabled,true);assert.equal(config.data.publishEnabled,false);
 });
 
 test('Temu provider requests exact 3:4 size; Amazon uses its original mapping',async t=>{

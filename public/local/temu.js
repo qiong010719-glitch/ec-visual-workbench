@@ -58,7 +58,7 @@
     $('imageGrid').innerHTML=state.results.map((r,i)=>{
       const pending=['pending','running'].includes(r.status),failed=r.status==='failed';
       const body=r.status==='completed' && r.imageUrl?`<img src="${escape(r.imageUrl)}" alt="第 ${i+1} 张商品图" data-preview="${escape(r.imageUrl)}">`:`${pending?'<span class="busy-dot" aria-hidden="true"></span>':''}<p>${escape(failed?r.error||'生成失败':phases[r.phase]||phases[r.status]||'等待结果')}</p>`;
-      return `<article class="image-card" data-slot="${i}"><div class="image-frame">${body}</div><header><strong>${i===0?'首图':'商品图 '+(i+1)}</strong><small>${r.dimensions?`${r.dimensions.width} × ${r.dimensions.height}`:escape(result?.image_ratio||'')}</small></header><footer>${r.status==='completed'?`<a href="${escape(r.imageUrl)}" download="Temu-${i+1}.png">下载</a><button data-edit="${i}" type="button">修改图片</button>`:''}${r.canRetryDownload?`<button data-recover="${i}" type="button">重试下载</button>`:`<button data-regenerate="${i}" type="button">${failed?'重新生成':'重做此图'}</button>`}${r.previousImageUrl?`<a href="${escape(r.previousImageUrl)}" target="_blank" rel="noopener">上一版</a>`:''}</footer></article>`;
+      return `<article class="image-card" data-slot="${i}"><div class="image-frame">${body}</div><header><strong>${i===0?'首图':'商品图 '+(i+1)}</strong><small>${r.dimensions?`${r.dimensions.width} × ${r.dimensions.height}`:escape(result?.image_ratio||'')}</small></header><footer>${r.status==='completed'?`<a href="${escape(r.imageUrl)}" download="Temu-${i+1}.${r.imageUrl.split('.').pop()}">下载</a><button data-edit="${i}" type="button">修改图片</button>`:''}${r.canRetryDownload?`<button data-recover="${i}" type="button">重试下载</button>`:`<button data-regenerate="${i}" type="button">${failed?'重新生成':'重做此图'}</button>`}${r.previousImageUrl?`<a href="${escape(r.previousImageUrl)}" target="_blank" rel="noopener">上一版</a>`:''}</footer></article>`;
     }).join('');
     controls();
   }
@@ -177,7 +177,7 @@
     const manifest={schemaVersion:1,platform:'temu',...(draft.groupId?{groupId:draft.groupId,setId:draft.setId,setIndex:draft.setIndex,direction:draft.direction,model:draft.model}:{}),title:draft.title,description:draft.description,imageRatio:draft.imageRatio,mainImages:files,detailImages:[...files],skuPreviewPolicy:'preserve-source',skus:draft.skus,status:'draft',published:false};
     zip.file('listing-manifest.json',JSON.stringify(manifest,null,2));
     zip.file('商品草稿.json',JSON.stringify(draft,null,2));zip.file('设计方案.txt',draft.sop||'');
-    zip.file('使用说明.txt','Temu 图片资料包\n主图和详情页使用 images/ 中相同图片、相同顺序，不需要再次生成。\nSKU 预览图保持上架母稿原图，不用新主图替换。\n此包尚未写入店铺或发布商品；价格、库存和类目等由后续上架流程补充。');
+    zip.file('使用说明.txt','Temu 图片资料包\n主图和详情页使用 images/ 中相同图片、相同顺序，不需要再次生成。\nSKU 预览图保留母稿原图。\n此包尚未写入店铺或发布商品；价格、库存和类目等由后续上架流程补充。');
     const blob=await zip.generateAsync({type:'blob'}),url=URL.createObjectURL(blob),link=document.createElement('a');
     link.href=url;link.download=draft.title.replace(/[<>:"/\\|?*\u0000-\u001f]/g,'_')+'-Temu图片包.zip';link.click();setTimeout(()=>URL.revokeObjectURL(url),10000);
   }
@@ -202,7 +202,7 @@
   $('statusButton').onclick=async()=>{
     try {
       status=await api('/api/status');controls();
-      openDialog('通道状态',`<dl class="status-list"><dt>图片服务</dt><dd>${status.imageConfigured?'已配置':'未配置专用图片密钥'}</dd><dt>构思方式</dt><dd>${status.planner==='local-rules'?'本地规则，可编辑方案':'已配置文本模型'}</dd><dt>图片下载</dt><dd>${status.downloadProxyConfigured?'使用已配置代理':'直接下载'}</dd><dt>当前任务</dt><dd>${status.active} 个运行中，${status.queued} 个排队中</dd></dl><p class="muted">亚马逊和 Temu 共用模型服务，商品资料与草稿分别保存。图片服务和文本模型按实际调用计费；当前工作台不发布商品。</p>`);
+      openDialog('通道状态',`<dl class="status-list"><dt>图片服务</dt><dd>${status.imageConfigured?'已配置':'未配置专用图片密钥'}</dd><dt>构思方式</dt><dd>${status.planner==='local-rules'?'本地规则，可编辑方案':'已配置文本模型'}</dd><dt>图片下载</dt><dd>${status.downloadProxyConfigured?'使用已配置代理':'直接下载'}</dd><dt>当前任务</dt><dd>${status.active} 个运行中，${status.queued} 个排队中</dd></dl><p class="muted">当前工作台专用于 Temu 商品做图与裂变。图片服务和文本模型按实际调用计费，生成结果按套保存，供后续上架任务使用。</p>`);
     } catch(error){notice(error.message,true);}
   };
   $('newButton').onclick=()=>confirmAction('新建商品','将清空当前工作区。已保存的 Temu 草稿保留；未导出的图片请先保存资料包。',()=>{localStorage.removeItem(key);location.reload();});
@@ -243,7 +243,7 @@
         zip.file(set.folder+'/设计方案.txt',draft.sop);
         zip.file(set.folder+'/商品草稿.json',JSON.stringify(draft,null,2));
       }
-      zip.file('使用说明.txt','Temu 多套图片资料包\n每套的 mainImages 与 detailImages 同图同序，路径相对于本包根目录。\n按 groupId + setId 对应商品草稿，setIndex 保留原批次顺序。\nSKU 预览图保持上架母稿原图；商品未发布，价格、库存和类目由后续上架流程补充。');
+      zip.file('使用说明.txt','Temu 多套图片资料包\n每套的 mainImages 与 detailImages 同图同序，路径相对于本包根目录。\n按 groupId + setId 对应商品草稿，setIndex 保留原批次顺序。\nSKU 预览图保留母稿原图；商品未发布，价格、库存和类目由后续上架流程补充。');
       const url=URL.createObjectURL(await zip.generateAsync({type:'blob'})),link=document.createElement('a');
       link.href=url;link.download=group.source.product_name.replace(/[<>:"/\\|?*\u0000-\u001f]/g,'_')+'-Temu裂变图片包.zip';link.click();setTimeout(()=>URL.revokeObjectURL(url),10000);
     },ready:init()};

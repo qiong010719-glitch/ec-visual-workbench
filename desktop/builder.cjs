@@ -1,0 +1,10 @@
+module.exports={
+  appId:'com.local.productworkbench',productName:'商品裂变工作台',
+  directories:{output:'dist'},electronDist:'node_modules/electron/dist',asar:true,
+  files:['desktop/**','src/**','public/**','package.json','!**/*.map'],
+  extraResources:[{from:'../scripts',to:'erp-scripts',filter:['lib/*.mjs','inspect-draft.mjs']}],
+  asarUnpack:['**/node_modules/sharp/**','**/node_modules/@img/**'],
+  win:{target:[{target:'portable',arch:['x64']}],signAndEditExecutable:false},
+  portable:{artifactName:'Temu-Workbench-${version}-win-x64.exe'},
+  npmRebuild:false
+};

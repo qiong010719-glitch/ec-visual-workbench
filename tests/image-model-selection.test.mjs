@@ -83,12 +83,22 @@ test('unsupported models fail before enqueueing or charging; omitted model keeps
   assert.equal((await app.settled('default')).model,image2);
 });
 
-test('a rejected Sunburst request stays Sunburst and is never retried as Image 2',async t=>{
-  const app=await fixture(t,{respond:(_req,res)=>{res.writeHead(403,{'Content-Type':'application/json'});res.end(JSON.stringify({error:{message:'model not enabled'}}));}});
+test('a rejected Sunburst request exposes a safe reason without changing models or retrying',async t=>{
+  const app=await fixture(t,{respond:(_req,res)=>{res.writeHead(403,{'Content-Type':'application/json'});res.end(JSON.stringify({error:{code:'model_not_enabled',message:'model not enabled for dedicated-image-test; Bearer upstream-secret; sk-upstream-secret'}}));}});
   await app.post('/api/generate',{model:sunburst,prompt:'产品图',firebase_tasks:[{taskId:'rejected',slot:0}]});
   const task=await app.settled('rejected');
   assert.equal(task.status,'failed');assert.equal(task.model,sunburst);assert.match(task.error,/2\.5.*403/);
+  assert.match(task.error,/model not enabled/);assert.equal(task.providerErrorCode,'model_not_enabled');
+  assert.doesNotMatch(JSON.stringify(task),/dedicated-image-test|upstream-secret/);
   assert.equal(app.requests.length,1);assert.equal(app.requests[0].model,sunburst);
+});
+
+test('non-JSON image errors still report the HTTP status without exposing the response page',async t=>{
+  const app=await fixture(t,{respond:(_req,res)=>{res.writeHead(403,{'Content-Type':'text/html'});res.end('<html>private proxy error page</html>');}});
+  await app.post('/api/generate',{model:image2,prompt:'产品图',firebase_tasks:[{taskId:'html-error',slot:0}]});
+  const task=await app.settled('html-error');
+  assert.equal(task.status,'failed');assert.match(task.error,/403/);assert.doesNotMatch(task.error,/private proxy/);
+  assert.equal(app.requests.length,1);
 });
 
 test('an explicitly different upstream model is rejected instead of labeling its image as Sunburst',async t=>{
