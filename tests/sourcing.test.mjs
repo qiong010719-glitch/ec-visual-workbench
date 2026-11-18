@@ -7,8 +7,9 @@ import {signGeekbi,createGeekbiClient,normalizeSearch,temuGoodsId,GEEKBI_ROUTES}
 import {createSourcing} from '../src/sourcing.mjs';
 import {createSettings} from '../src/settings.mjs';
 import {createWorkbench} from '../src/server.mjs';
+import {rawFixture} from './fixtures/geekbi-raw.mjs';
 
-const goodsId='601105252678120',original=`https://www.temu.com/jp-zh-Hans/canvas-g-${goodsId}.html`;
+const goodsId='601105252678120',original=`https://www.temu.com/goods.html?goods_id=${goodsId}`;
 const sample={goodsId,goodsName:'Original title',minPrice:8.04,monthSold:1,siteId:48,linkUrl:`https://www.geekbi.com/data/goods/detail?goodsId=${goodsId}&siteId=48`};
 const sites=[{siteId:48,regionId:211,cnName:'美国',currency:'USD'}];
 const configuration={WORKBENCH_FRESH:'true',GB_APP_KEY:'test-key',GB_APP_SECRET:'test-secret'};
@@ -18,7 +19,7 @@ function folder(t){const dir=fs.mkdtempSync(path.join(os.tmpdir(),'sourcing-test
 async function idle(service){const deadline=Date.now()+3000;while(service.isBusy()){if(Date.now()>deadline)throw new Error('test did not settle');await new Promise(r=>setTimeout(r,5));}}
 async function fixture(t,extras={}){
   const directory=folder(t),calls=[];
-  const client=async(kind,params)=>{calls.push({kind,params});return {data:kind==='sites'?sites:{list:[sample],total:1},receivedAt:'2026-11-17T00:00:00.000Z',chargedPoints:kind==='sites'?0:10};};
+  const client=async(kind,params)=>{calls.push({kind,params});if(kind==='rawDetail')return rawFixture(params.goodsId);return {data:kind==='sites'?sites:{list:[sample],total:1},receivedAt:'2026-11-17T00:00:00.000Z',chargedPoints:kind==='sites'?0:10};};
   const options={directory,configuration:{...configuration},preferences:prefs,client,...extras};
   const service=createSourcing(options);await service.sites();return {directory,options,service,calls};
 }
@@ -89,7 +90,7 @@ test('uncertain search cannot be silently reissued after restart',async t=>{
 });
 
 test('collection binds account, preserves original URL, stops on failure and prevents duplicate submission',async t=>{
-  const attempts=[];const adapter={resolve:async()=>({sourceUrl:original}),collect:async args=>{assert.equal(args.erpConnection.expectedAccount,'account-a');assert.equal(args.sourceUrl,original);args.beforeSubmit();attempts.push(args.goodsId);return {status:'failed',error:'插件采集更可靠'};}};
+  const attempts=[];const adapter={preflight:async()=>{},resolve:()=>assert.fail('must not open Temu'),collect:()=>assert.fail('must not use link collection'),importProduct:async args=>{assert.equal(args.erpConnection.expectedAccount,'account-a');assert.equal(args.sourceUrl,original);assert.ok(fs.existsSync(args.filePath));args.beforeSubmit();attempts.push(args.goodsId);return {status:'failed',error:'文件解析失败'};}};
   const f=await fixture(t,{adapter});f.service.startSearch(query);await idle(f.service);
   const payload={requestId:'batch-0001',searchId:query.requestId,erpKey:'erp-a',goodsIds:[goodsId]};f.service.startBatch(payload);await idle(f.service);
   assert.equal(f.service.getBatch(payload.requestId).rows[0].status,'failed');assert.equal(attempts.length,1);
@@ -99,7 +100,7 @@ test('collection binds account, preserves original URL, stops on failure and pre
 });
 
 test('browser failure after write intent requires review; reconcile performs no new submit',async t=>{
-  let submissions=0;const adapter={resolve:async()=>({sourceUrl:original}),collect:async args=>{args.beforeSubmit();submissions++;throw new Error('connection lost');},verify:async()=>({status:'verified',evidence:{tab:'未认领',sourceUrl:original}})};
+  let submissions=0;const adapter={preflight:async()=>{},importProduct:async args=>{args.beforeSubmit();submissions++;throw new Error('connection lost');},verify:async args=>{assert.equal(args.product.skus[0].stock,748);return {status:'verified',evidence:{tab:'未认领',sourceUrl:original}};}};
   const f=await fixture(t,{adapter});f.service.startSearch(query);await idle(f.service);
   f.service.startBatch({requestId:'batch-0001',searchId:query.requestId,erpKey:'erp-a',goodsIds:[goodsId]});await idle(f.service);
   assert.equal(f.service.getBatch('batch-0001').rows[0].status,'needs-review');

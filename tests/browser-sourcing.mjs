@@ -4,15 +4,17 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {createWorkbench} from '../src/server.mjs';
+import {rawFixture} from './fixtures/geekbi-raw.mjs';
 const dir=fs.mkdtempSync(path.join(os.tmpdir(),'sourcing-ui-')),out=path.resolve('tests/results/sourcing');fs.mkdirSync(out,{recursive:true});
 let submitted=0;const queries=[];
 const app=createWorkbench({dataDirectory:dir,configuration:{WORKBENCH_FRESH:'true'},settingsCodec:{encode:s=>Buffer.from(s).toString('base64'),decode:s=>Buffer.from(s,'base64').toString()},
   sourcingClient:async(kind,params)=>{
+    if(kind==='rawDetail')return rawFixture(params.goodsId,'UI 测试商品（非真实选品结果）');
     if(kind==='search')queries.push(params);
     const empty=params?.keyword==='empty fixture',kettle=params?.keyword==='electric kettle';
     return {data:kind==='sites'?[{siteId:48,regionId:211,cnName:'美国',currency:'USD'},{siteId:6,cnName:'加拿大',currency:'CAD'}]:kind==='categories'?[{catId:123,catName:'测试类目',isLeaf:true}]:{total:empty?0:1,list:empty?[]:[{goodsId:kettle?'601105252678121':'601105252678120',goodsName:kettle?'电水壶测试商品（非真实结果）':'UI 测试商品（非真实选品结果）',linkUrl:'https://www.geekbi.com/data/goods/detail?goodsId=601105252678120',siteId:params?.siteId||48,minPrice:8.04,monthSold:1,updateTime:'2026-11-17T00:00:00.000Z'}]},chargedPoints:0,receivedAt:new Date().toISOString()};
   },
-  collectionAdapter:{resolve:async()=>({sourceUrl:'https://www.temu.com/canvas-g-601105252678120.html'}),collect:async args=>{args.beforeSubmit();submitted++;return {status:'verified',evidence:{tab:'未认领',sourceUrl:args.sourceUrl}};}}});
+  collectionAdapter:{preflight:async()=>{},resolve:()=>assert.fail('must not open Temu'),importProduct:async args=>{assert.ok(fs.existsSync(args.filePath));args.beforeSubmit();submitted++;return {status:'verified',evidence:{tab:'未认领',sourceUrl:args.sourceUrl}};}}});
 app.preferences.update({revision:0,browsers:[{key:'chrome-a',type:'chrome',name:'隔离测试浏览器',debugPort:9444}],erpConnections:[{key:'erp-a',name:'测试ERP',browserKey:'chrome-a',expectedAccount:'test-account'}]});
 await new Promise(r=>app.server.listen(0,'127.0.0.1',r));const base='http://127.0.0.1:'+app.server.address().port;
 const browser=await chromium.launch({channel:'msedge',headless:true}),page=await browser.newPage({viewport:{width:1440,height:1080}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
@@ -33,8 +35,11 @@ try{
   await page.selectOption('#searchHistory',firstId);await page.getByText('UI 测试商品（非真实选品结果）',{exact:true}).waitFor();assert.equal(await page.inputValue('[name=keywords]'),'canvas wall art');assert.equal(await page.locator('#draftNotice').isVisible(),false);
   await page.selectOption('#site','6');assert.match(await page.textContent('#priceMinLabel'),/CAD/);await page.fill('[name=priceMin]','20');await page.fill('[name=monthSoldMin]','500');const beforeClear=queries.length;await page.click('#clearNumericFilters');assert.equal(await page.inputValue('[name=priceMin]'),'');assert.equal(await page.inputValue('[name=monthSoldMin]'),'');assert.equal(queries.length,beforeClear);
   await page.selectOption('#site','48');await page.locator('[data-goods]').check();await page.locator('#collect:not([disabled])').waitFor();
+  assert.match(await page.textContent('#importCost'),/预计 50 点/);
   await page.evaluate(()=>scrollTo(0,0));await page.screenshot({path:path.join(out,'selected.png'),fullPage:true});await page.click('#collect');await page.getByText('已确认入箱',{exact:true}).waitFor();assert.equal(submitted,1);
   await page.reload();await page.getByText('已确认入箱',{exact:true}).waitFor();assert.equal(await page.locator('[data-goods]:checked').count(),0);
+  assert.match(await page.textContent('#batches'),/极鲸云详情 \/ 文件导入/);assert.match(await page.textContent('#batches'),/详情扣点回执：50 点/);
+  const file=await page.locator('a:has-text("下载导入文件")').getAttribute('href');const download=await page.request.get(base+file);assert.equal(download.status(),200);assert.match(download.headers()['content-type'],/spreadsheetml/);
   await page.setViewportSize({width:700,height:900});await page.screenshot({path:path.join(out,'mobile.png'),fullPage:true});
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);assert.deepEqual(errors,[]);
   console.log('Sourcing UI: strict keyword changes, empty results, history, stale selections, currency, filter clearing, collection and restart passed (isolated fixtures; no live API or ERP calls).');

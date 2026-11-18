@@ -232,6 +232,8 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
         const route=pathname.slice('/api/sourcing'.length);
         if(request.method==='GET'){
           if(!route)return json(response,200,sourcing.view());
+          const download=/^\/batches\/([a-zA-Z0-9_-]+)\/files\/(\d{6,32})$/.exec(route);
+          if(download){const file=sourcing.importFile(download[1],download[2]);response.writeHead(200,{'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Content-Disposition':`attachment; filename="${file.name}"`,'Cache-Control':'no-store'});return fs.createReadStream(file.path).pipe(response);}
           const item=/^\/(searches|batches)\/([a-zA-Z0-9_-]+)$/.exec(route);
           if(item)return json(response,200,item[1]==='searches'?sourcing.getSearch(item[2]):sourcing.getBatch(item[2]));
         }

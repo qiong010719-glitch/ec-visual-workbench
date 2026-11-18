@@ -1,0 +1,4 @@
+// Synthetic product data: never sent to a live ERP or paid provider.
+export function rawFixture(goodsId='601105252678120',title='Original title'){
+  return {data:{goodsId,json:{goods:{goodsId,goodsName:title,bannerList:[{url:'https://img.kwcdn.com/product/main.jpeg'}],goodsProperty:[{key:'材质',values:['帆布']}],video:{videoUrl:'https://goods-vod.kwcdn.com/goods-video/demo.mp4'}},localInfo:{currency:'USD'},moduleMap:{shareModule:{data:{share:{linkUrl:`/goods.html?goods_id=${goodsId}`}}}},productDetail:{floorList:[{items:[{url:'https://img.kwcdn.com/product/detail.jpeg'}]}]},serverTime:1789098659,sku:[{goodsId,skuId:'101130239481327',normalPrice:451,normalPriceStr:'$4.51',salePrice:401,stockQuantity:748,limitQuantity:38,thumbUrl:'https://img.kwcdn.com/product/variant.jpeg',specs:[{specKey:'颜色',specValue:'蓝色'},{specKey:'尺码',specValue:'30x45cm'}]}]}},receivedAt:'2026-11-18T00:00:00Z',chargedPoints:50};
+}
