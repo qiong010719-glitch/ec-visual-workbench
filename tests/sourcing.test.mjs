@@ -50,6 +50,38 @@ test('search preserves provider fields, does not use the GeekBI page as a Temu s
   assert.throws(()=>service.startSearch({...query,keywords:'changed'}),/同一个查询编号/);
 });
 
+test('keyword and explicit match mode reach the signed API independently for consecutive searches',async t=>{
+  const sent=[];
+  const client=createGeekbiClient(configuration,{fetcher:async url=>{
+    const u=new URL(url),params=Object.fromEntries(u.searchParams);sent.push(params);
+    const data=u.pathname===GEEKBI_ROUTES.sites?sites:{total:params.keyword==='missing'?0:1,list:params.keyword==='missing'?[]:[{...sample,goodsId:params.keyword==='帆布画'?goodsId:'601105252678121',goodsName:params.keyword}]};
+    return new Response(JSON.stringify({code:0,data}),{headers:{'x-gb-price-points':'0'}});
+  }});
+  const f=await fixture(t,{client});
+  f.service.startSearch({...query,keywords:'帆布画'});await idle(f.service);
+  f.service.startSearch({...query,requestId:'search-0002',keywords:'电水壶',matchMode:'2'});await idle(f.service);
+  f.service.startSearch({...query,requestId:'search-0003',keywords:'missing'});await idle(f.service);
+  assert.deepEqual(sent.filter(x=>x.keyword).map(x=>[x.keyword,x.matchMode]),[['帆布画','1'],['电水壶','2'],['missing','1']]);
+  assert.equal(f.service.getSearch('search-0001').rows[0].raw.goodsName,'帆布画');
+  assert.equal(f.service.getSearch('search-0002').rows[0].raw.goodsName,'电水壶');
+  assert.deepEqual(f.service.getSearch('search-0003').rows,[]);
+  assert.equal(f.service.getSearch('search-0003').status,'completed');
+  assert.throws(()=>normalizeSearch({...query,matchMode:3}),/严格匹配/);
+});
+
+test('legacy fuzzy search replay returns its original receipt without another paid request',async t=>{
+  const f=await fixture(t);f.service.startSearch(query);await idle(f.service);
+  const file=path.join(f.directory,'state.json'),saved=JSON.parse(fs.readFileSync(file,'utf8'));
+  delete saved.searches[query.requestId].filters.matchMode;
+  saved.searches[query.requestId].fingerprint=JSON.stringify(saved.searches[query.requestId].filters);
+  fs.writeFileSync(file,JSON.stringify(saved));
+  let calls=0;const restored=createSourcing({...f.options,client:async()=>{calls++;throw new Error('must not call');}});
+  assert.equal(restored.startSearch(query).rows.length,1);
+  assert.equal(restored.getSearch(query.requestId).filters.matchMode,undefined);
+  assert.throws(()=>restored.startSearch({...query,matchMode:1}),/同一个查询编号/);
+  assert.equal(calls,0);
+});
+
 test('uncertain search cannot be silently reissued after restart',async t=>{
   let count=0;const f=await fixture(t);const client=async kind=>{if(kind==='sites')return {data:sites};count++;throw Object.assign(new Error('timeout'),{uncertain:true});};
   const s=createSourcing({...f.options,client});s.startSearch(query);await idle(s);assert.equal(s.getSearch(query.requestId).status,'needs-review');

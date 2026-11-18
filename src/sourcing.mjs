@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import {createGeekbiClient,normalizeSearch,temuGoodsId,GEEKBI_PRICES,interpretSourcingPrompt} from './geekbi.mjs';
 import {createCollectionBrowser} from './collection-browser.mjs';
 
-export const SOURCING_REVISION='geekbi-collection-20261117-v1';
+export const SOURCING_REVISION='geekbi-search-match-20261119-v2';
 const fail=(message,status=400)=>Object.assign(new Error(message),{status});
 const now=()=>new Date().toISOString();
 const idOK=id=>typeof id==='string'&&/^[a-zA-Z0-9_-]{8,100}$/.test(id);
@@ -44,7 +44,12 @@ export function createSourcing({directory,configuration,preferences,isOtherBusy=
   function startSearch(payload){
     const {requestId}=payload;if(!idOK(requestId))throw fail('查询编号无效');
     const filters=normalizeSearch(payload),fingerprint=JSON.stringify(filters);
-    if(state.searches[requestId]){const s=search(requestId);if(s.fingerprint!==fingerprint)throw fail('同一个查询编号不能修改条件',409);return copy(s);}
+    if(state.searches[requestId]){
+      const s=search(requestId),comparison={...filters};
+      // Reconcile old requests without silently turning a replay into a new paid strict search.
+      if(s.filters.matchMode===undefined&&payload.matchMode===undefined)delete comparison.matchMode;
+      if(s.fingerprint!==JSON.stringify(comparison))throw fail('同一个查询编号不能修改条件',409);return copy(s);
+    }
     available();
     const site=state.sites.find(s=>Number(s.siteId)===filters.siteId);if(!site)throw fail('请先加载站点，再选择经营站点');
     if(!configuration.GB_APP_KEY||!configuration.GB_APP_SECRET)throw fail('请先在连接设置保存极鲸云调用标识和应用密钥');
