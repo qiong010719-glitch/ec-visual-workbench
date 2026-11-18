@@ -94,7 +94,7 @@
   function resetConnectionState(){$('connectionState').textContent='选择已保存的 ERP 连接，再检查登录状态。';}
   function renderConnections(erpKey=$('erpConnection').value,storeKey=$('targetStore').value){
     updateChoices($('erpConnection'),'<option value="">请选择 ERP 连接</option>'+listingErps().map(e=>`<option value="${escape(e.key)}">${escape(e.name)} · 店小秘</option>`).join(''),erpKey);
-    const shops=config.stores.filter(s=>s.erpKey===erpKey);
+    const shops=config.stores.filter(s=>s.erpKey===erpKey&&s.platform==='temu');
     updateChoices($('targetStore'),`<option value="">${!erpKey?'请先选择 ERP 连接':shops.length?'请选择店铺':'该 ERP 尚未关联店铺'}</option>`+shops.map(s=>`<option value="${escape(s.key)}">${escape(s.expectedStore)} · ${escape(s.expectedSite)}</option>`).join(''),storeKey);
     if(!$('storeSyncStatus').dataset.failed)$('storeSyncStatus').hidden=true;
   }
@@ -273,6 +273,10 @@
   document.addEventListener('visibilitychange',()=>{if(document.hidden)saveWorkspace();else refreshStoreConfig();});
   // Also catch saves from another desktop/browser profile and retry deferred or failed reads.
   setInterval(refreshStoreConfig,5000);
+  window.ListingWorkspace={
+    getState:()=>({ready:configReady,busy:isBusy(),locked:!!taskContext||!!preview||!!generation.batch||!!batch,storeKey:$('targetStore').value,erpKey:$('erpConnection').value}),
+    selectStore:store=>{if(taskContext||preview||generation.batch||batch)return false;renderConnections(store.erpKey,store.key);$('targetStore').onchange();return true;}
+  };
   (async()=>{try{
     token=(await request('/api/session')).token;config=await api('config');renderConnections(listingErps().length===1?listingErps()[0].key:'','');$('folderPath').value=config.defaultFolder;
     await history();const params=new URLSearchParams(location.search);let active=activeTask();
@@ -284,5 +288,5 @@
     restoreExecutionMode(active?.kind,active?.id);
     if(active?.kind==='execution')await restoreBatch(active.id);else if(active?.kind==='product')await restoreProduct(active.id);else if(active?.kind==='preview')await restorePreview(previews.find(p=>p.id===active.id),params.get('store'));else if(!restoreIntake())selectSource('raw');
     window.history.replaceState(null,'','/temu/listings');if(!config.stores.length){notice('请先配置浏览器、ERP 连接和店铺母稿。 ');const link=document.createElement('a');link.href='/settings';link.textContent='前往连接设置';$('listingNotice').append(link);}
-  }catch(e){notice(e.message,true);selectSource('raw');}finally{configReady=!!config;refreshStoreConfig();}})();
+  }catch(e){notice(e.message,true);selectSource('raw');}finally{configReady=!!config;refreshStoreConfig();window.dispatchEvent(new Event('workbench-listing-ready'));}})();
 })();

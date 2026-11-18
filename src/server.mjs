@@ -23,8 +23,11 @@ import {createProductBatches} from './product-batches.mjs';
 import {createSingleDesign,SINGLE_DESIGN_REVISION} from './single-design.mjs';
 import {TEMU_DESIGN_REVISION} from './image-scope.mjs';
 import {createSourcing,SOURCING_REVISION} from './sourcing.mjs';
+import {createWorkspace} from './workspace.mjs';
+import {prepareDesignResult,validateSingleDesignPlatform} from './design-platforms.mjs';
 
 export const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+export const WORKSPACE_REVISION='multi-platform-20261119-1';
 const mimes = {'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json; charset=utf-8','.jpg':'image/jpeg','.png':'image/png','.webp':'image/webp','.svg':'image/svg+xml','.ico':'image/x-icon','.woff2':'font/woff2'};
 const validId = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,120}$/.test(value);
 const uuid = () => crypto.randomUUID();
@@ -50,6 +53,8 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
     return '/media/' + name;
   };
   const saveResult = async (bytes, task) => {
+    const designResult=await prepareDesignResult(bytes,task);
+    if(designResult)return {imageUrl:saveImage(designResult.bytes),originalImageUrl:saveImage(designResult.originalBytes),formatId:designResult.formatId,dimensions:designResult.dimensions,sourceDimensions:designResult.sourceDimensions,fitted:designResult.fitted};
     if (!isTemu(task)) return {imageUrl:saveImage(bytes)};
     const prepared=await prepareTemuImage(bytes,task.image_ratio);
     return {imageUrl:saveImage(prepared.bytes),dimensions:prepared.dimensions,sourceDimensions:prepared.sourceDimensions,fitted:prepared.fitted};
@@ -135,6 +140,7 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
     const requestId = uuid();
     const agent = store.state.tasks['agent_tasks/' + payload.agent_task_id];
     const merged = {...agent?.payload,...payload};
+    if(merged.platform==='amazon'&&kind==='generate'&&!merged.mobile_reformat&&['fast','master'].includes(merged.generation_mode))validateSingleDesignPlatform(merged);
     if (isTemu(merged)) {
       validateTemu(merged,{editing:kind==='inpaint'});
       if(kind==='ultra'&&merged.image_workflow!=='shared')throw fail(400,'Temu 当前只支持逐张主图生成');
@@ -170,7 +176,7 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
     createCharge(requestId, tasks.map(t => t.taskId), payload.mobile_reformat ? 1 : 2);
     for (const {task,section,prompt,refs} of prepared) {
       const key = 'hyrule_tasks/' + task.taskId;
-      store.task(key, {status:'pending', phase:'queued', taskId:task.taskId, slot:task.slot, requestId, model, prompt,...(isTemu(merged)?{platform:'temu',image_ratio:merged.image_ratio}:{}),referenceImages:refs.filter(r=>!r.startsWith('data:')),designReferences:design.references || [],visualStyle:design.visualStyle || null,generationMode:design.generationMode || null,...(payload.group_id?{groupId:payload.group_id,setId:payload.set_id,creativeDirection:design.creativeDirection}:{}),promptVersion:design.visualStyle?.id==='scene_advertising'&&design.visualStyle.version===SCENE_STYLE_VERSION?'per-slot-v5':design.visualStyle?'per-slot-v3':'per-slot-v2',createdAt:new Date().toISOString()});
+      store.task(key, {status:'pending', phase:'queued', taskId:task.taskId, slot:task.slot, requestId, model, prompt,...(isTemu(merged)?{platform:'temu',image_ratio:merged.image_ratio}:{}),...(merged.platform==='amazon'?{platform:'amazon',design_scope:merged.design_scope,custom_layout:merged.custom_layout,generation_mode:merged.generation_mode,mobile_reformat:!!merged.mobile_reformat}:{}),...(merged.workspace_product_id?{workspace_product_id:merged.workspace_product_id}:{}),referenceImages:refs.filter(r=>!r.startsWith('data:')),designReferences:design.references || [],visualStyle:design.visualStyle || null,generationMode:design.generationMode || null,...(payload.group_id?{groupId:payload.group_id,setId:payload.set_id,creativeDirection:design.creativeDirection}:{}),promptVersion:design.visualStyle?.id==='scene_advertising'&&design.visualStyle.version===SCENE_STYLE_VERSION?'per-slot-v5':design.visualStyle?'per-slot-v3':'per-slot-v2',createdAt:new Date().toISOString()});
       enqueue(async () => {
         store.task(key, {status:'running',phase:'generating'});
         try {
@@ -188,6 +194,7 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
 
   function submitPlan(payload,singleDesignFlow){
     validateTemu(payload);
+    if(payload.platform==='amazon'&&['fast','master'].includes(payload.generation_mode))validateSingleDesignPlatform(payload);
     if(!validId(payload.agent_task_id)||!payload.product_name||!payload.product_desc)throw fail(400,'需要产品名称、卖点和有效任务编号');
     const key='agent_tasks/'+payload.agent_task_id;
     if(store.state.tasks[key])return store.state.tasks[key].requestId;
@@ -213,6 +220,7 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
   const erp=createErpService({directory:path.join(dataDirectory,'erp'),mediaDirectory,store,multisets,configuration,adapter:erpAdapter,preferences});
   const products=createProductBatches({store,mediaDirectory,saveImage,multisets,erp,preferences,configuration,titlePlanner,chineseTranslator,productRecognizer,imageAvailable:()=>!!provider||!!configuration.SUANZHOU_IMAGE_API_KEY});
   const sourcing=createSourcing({directory:path.join(dataDirectory,'sourcing'),configuration,preferences,client:sourcingClient,adapter:collectionAdapter,isOtherBusy:()=>erp.isBusy()||products.isBusy()});
+  const workspace=createWorkspace({store,preferences,products,multisets,erp,sourcing});
 
   const server = http.createServer(async (request, response) => {
     try {
@@ -227,6 +235,59 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
       if (pathname === '/api/session' && request.method === 'GET') return json(response,200,{token:csrf,user:{id:'local-owner',email:'local@workbench.local'}});
       if (pathname === '/api/temu/config' && request.method === 'GET') return json(response,200,{platform:'temu',workspacePlatform:legacyUi?'legacy':'temu',generationWorkflow:'shared',formats:{'1:1':temuFormats['1:1']},maxImages:14,maxSets:TEMU_MAX_SETS,detailImages:'same-as-main-images-in-order',fissionEnabled:true,publishEnabled:false});
       if (pathname.startsWith('/api/') && !['GET','HEAD'].includes(request.method) && request.headers['x-workbench-token'] !== csrf) throw fail(403, '本地会话已过期，请刷新页面');
+      if(pathname==='/api/workspace'&&request.method==='GET')return json(response,200,workspace.view());
+      if(pathname==='/api/workspace/context'){
+        if(request.method==='GET')return json(response,200,workspace.context());
+        if(request.method==='POST')return json(response,200,workspace.context(await body(request,1000000)));
+      }
+      if(pathname==='/api/workspace/products'&&request.method==='POST')return json(response,201,workspace.createProduct(await body(request,4000000)));
+      if(pathname==='/api/workspace/import-folder'&&request.method==='POST')return json(response,200,await workspace.importFolder(await body(request,1000000)));
+      const workspaceProduct=/^\/api\/workspace\/products\/([^/]+)$/.exec(pathname);
+      if(workspaceProduct&&request.method==='POST')return json(response,200,workspace.updateProduct(workspaceProduct[1],await body(request,4000000)));
+      if(pathname==='/api/workspace/design-state'){
+        const key=url.searchParams.get('key')||'';
+        if(request.method==='GET')return json(response,200,workspace.designState(key));
+        if(request.method==='POST')return json(response,200,workspace.designState(key,await body(request,12000000)));
+      }
+      if(pathname==='/api/workspace/ui-state'){
+        const key=url.searchParams.get('key')||'';
+        if(request.method==='GET')return json(response,200,workspace.uiState(key));
+        if(request.method==='POST')return json(response,200,workspace.uiState(key,await body(request,4000000)));
+      }
+      if(pathname==='/api/workspace/listing-source'&&request.method==='POST'){
+        const payload=await body(request,1000000),product=workspace.view().products.find(p=>p.id===payload.productId);
+        if(!product)throw fail(404,'商品不存在');
+        if(!['amazon','temu'].includes(payload.platform))throw fail(400,'请选择目标平台');
+        const versions=product.versions.filter(v=>v.platform===payload.platform&&v.images?.length);
+        const version=payload.versionId?versions.find(v=>v.id===payload.versionId):(versions.filter(v=>v.source?.kind!=='draft').at(-1)||versions.at(-1));
+        if(!version)throw fail(400,'这件商品还没有所选平台的成品图片');
+        const historicalDraft=version.source?.kind==='draft'?store.state.drafts.find(d=>d.id===(version.source.draftId||version.source.id)):null;
+        if(version.source?.kind==='draft'&&(!historicalDraft||(isTemu(historicalDraft)?'temu':'amazon')!==payload.platform))throw fail(400,'保存的图片草稿不存在或与目标平台不一致');
+        if(version.status!=='completed'&&!(historicalDraft&&version.status==='draft'))throw fail(409,'本套图片尚未全部完成，请等待生成结束并处理失败图片后再进入上架');
+        const single=version.source?.kind==='single-design'?store.state.tasks['agent_tasks/'+version.source.id]:null;
+        if(single?.singleDesign){
+          const children=single.singleDesign.tasks||[];
+          if((isTemu(single.payload)?'temu':'amazon')!==payload.platform)throw fail(400,'单品任务与目标平台不一致');
+          if(single.status!=='completed'||!children.length||children.length!==version.images.length||children.some(child=>store.state.tasks['hyrule_tasks/'+child.taskId]?.status!=='completed'))throw fail(409,'本套图片尚未全部完成，请等待生成结束并处理失败图片后再进入上架');
+        }
+        let selectedGroup;
+        if(version.source?.groupId||version.source?.kind==='multiset'){
+          const groupId=version.source.groupId||version.source.id,group=multisets.get(groupId);
+          if((isTemu(group.source)?'temu':'amazon')!==payload.platform)throw fail(400,'图片批次与目标平台不一致');
+          if(group.phase!=='completed')throw fail(409,'本套图片尚未全部完成，请等待生成结束并处理失败图片后再进入上架');
+          selectedGroup=groupId;
+        }
+        if(payload.platform!=='temu')return json(response,200,{product,version,executionSupported:false});
+        if(selectedGroup)return json(response,200,{groupId:selectedGroup});
+        const images=version.images.map(i=>typeof i==='string'?i:i.url);
+        if(images.length>10)throw fail(400,'直接上架每个商品支持 1—10 张图片，请先选择对应主图版本');
+        if(images.some(x=>!/^\/media\/[a-f0-9-]+\.(png|jpg|webp)$/.test(x)))throw fail(400,'请先完成本地生成图片，再进入成品上架');
+        await verifyTemuImages(images.map(x=>path.join(mediaDirectory,path.basename(x))),'1:1');
+        const fingerprint=JSON.stringify([product.id,version.id,images,product.name,product.description]);
+        let draft=store.state.drafts.find(d=>d.workspaceFingerprint===fingerprint);
+        if(!draft){draft={id:uuid(),title:product.name,description:product.description,platform:'temu',skus:[],images,mainImages:[...images],detailImages:[...images],imageRatio:'1:1',skuPreviewPolicy:'preserve-source',imageRules:{detailImages:'same-as-main-images-in-order',skuPreview:'preserve-source'},sop:'',status:'draft',published:false,workspaceProductId:product.id,workspaceVersionId:version.id,workspaceFingerprint:fingerprint,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};store.state.drafts.unshift(draft);store.save();}
+        return json(response,200,{draftId:draft.id});
+      }
       if(sourcing.isBusy()&&request.method==='POST'&&['/api/settings','/api/temu/erp/','/api/products'].some(p=>pathname.startsWith(p)))throw fail(409,'选品或采集任务正在运行，请完成后再修改连接或操作ERP');
       if(pathname.startsWith('/api/sourcing')){
         const route=pathname.slice('/api/sourcing'.length);
@@ -287,7 +348,7 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
       if(pathname.startsWith('/api/temu/erp/')){
         const route=pathname.slice('/api/temu/erp/'.length);
         if(request.method==='GET'){
-          if(route==='config')return json(response,200,erp.settings());
+          if(route==='config'){const settings=erp.settings();return json(response,200,{...settings,stores:settings.stores.filter(s=>s.platform==='temu')});}
           if(route==='sources')return json(response,200,erp.sources());
           if(route==='previews')return json(response,200,erp.previews());
           if(route==='batches')return json(response,200,erp.list());
@@ -330,7 +391,7 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
         if(!operations[action])throw fail(404,'接口不存在');
         return json(response,['directions','plan-text'].includes(action)?200:202,multisets[operations[action]](groupId,payload));
       }
-      if (pathname === '/api/status') return json(response,200,{workbenchVersion:'merchant-1',sourcingRevision:SOURCING_REVISION,copyRepairRevision:COPY_REPAIR_REVISION,erpAutomationRevision:ERP_AUTOMATION_REVISION,singleDesignRevision:SINGLE_DESIGN_REVISION,temuDesignRevision:TEMU_DESIGN_REVISION,workbenchRevision:'chinese-review-mother-selector-20261110',busy:active>0||queue.length>0||products.isBusy()||erp.isBusy()||sourcing.isBusy(),erpPublishEnabled:true,mode:'local', isolatedPreview:configuration.WORKBENCH_STYLE_PREVIEW==='true', imageProvider:provider ? 'test-fixture' : 'configured-image-api', imageConfigured:!!provider || !!configuration.SUANZHOU_IMAGE_API_KEY, model:resolveImageModel(undefined,configuration), imageModels, planner:configuration.PLANNER_API_KEY ? 'configured' : 'local-rules', active, queued:queue.length,queueConcurrency:concurrency,downloadProxyConfigured:!!configuration.IMAGE_DOWNLOAD_PROXY,downloadRecoveryEnabled:true,recoverableDownloads:Object.values(store.state.tasks).filter(t=>t.resultUrl&&t.status==='failed').length, defaultProductStatus:'draft', paymentEnabled:false, publishEnabled:false});
+      if (pathname === '/api/status') return json(response,200,{workbenchVersion:'merchant-1',workspaceRevision:WORKSPACE_REVISION,sourcingRevision:SOURCING_REVISION,copyRepairRevision:COPY_REPAIR_REVISION,erpAutomationRevision:ERP_AUTOMATION_REVISION,singleDesignRevision:SINGLE_DESIGN_REVISION,temuDesignRevision:TEMU_DESIGN_REVISION,workbenchRevision:'chinese-review-mother-selector-20261110',busy:active>0||queue.length>0||products.isBusy()||erp.isBusy()||sourcing.isBusy(),erpPublishEnabled:true,mode:'local', isolatedPreview:configuration.WORKBENCH_STYLE_PREVIEW==='true', imageProvider:provider ? 'test-fixture' : 'configured-image-api', imageConfigured:!!provider || !!configuration.SUANZHOU_IMAGE_API_KEY, model:resolveImageModel(undefined,configuration), imageModels, planner:configuration.PLANNER_API_KEY ? 'configured' : 'local-rules', active, queued:queue.length,queueConcurrency:concurrency,downloadProxyConfigured:!!configuration.IMAGE_DOWNLOAD_PROXY,downloadRecoveryEnabled:true,recoverableDownloads:Object.values(store.state.tasks).filter(t=>t.resultUrl&&t.status==='failed').length, defaultProductStatus:'draft', paymentEnabled:false, publishEnabled:false});
       if (pathname === '/api/research/status' && request.method === 'GET') return json(response,200,research.status());
       if (pathname === '/api/research/design-patterns' && request.method === 'GET') return json(response,200,designPatterns(research.library.state));
       if (pathname === '/api/research/products' && request.method === 'GET') return json(response,200,Object.values(research.library.state.products).map(p=>({id:p.id,title:p.title,brand:p.brand,asin:p.asin,url:p.url,category:p.category,categoryMemberships:p.categoryMemberships||[],styleProfileIds:p.styleProfileIds||[],collectionIds:p.collectionIds||[],rank:p.rank,rankBasis:p.rankBasis,provenance:p.provenance,aplusStatus:p.aplusStatus,images:p.assets.length,downloaded:p.assets.filter(a=>a.status==='downloaded').length,analysisStatus:p.analysis?.status || 'pending',analysisError:p.analysis?.error || null,thumbnail:p.assets.find(a=>a.localUrl)?.localUrl || null,warnings:p.warnings})));
@@ -428,14 +489,41 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
       }
       if (pathname.startsWith('/api/')) throw fail(404,'接口不存在');
       if (!['GET','HEAD'].includes(request.method)) throw fail(405,'不支持该方法');
-      if(pathname==='/app'){response.writeHead(302,{Location:'/temu/listings'+url.search,'Cache-Control':'no-cache'});return response.end();}
-      if(!legacyUi&&['/','/index.html','/temu','/temu/','/temu.html'].includes(pathname.toLowerCase())){
-        const html=fs.readFileSync(path.join(root,'public/index.html'),'utf8')
-          .replace('<head>','<head><base href="/"><script src="/local/shared-temu-bootstrap.js"></script>')
-          .replace(/<title>[^<]*<\/title>/,'<title>Temu 工作台 · 商品做图与裂变</title>')
-          .replace('<script src="/local/multisets.js"></script>','<script src="/local/shared-temu.js"></script><script src="/local/multisets.js"></script>');
-        response.writeHead(200,{'Content-Type':mimes['.html'],'Cache-Control':'no-cache'});
-        return response.end(request.method==='HEAD'?undefined:html);
+      const encoded=value=>JSON.stringify(value).replace(/</g,'\\u003c').replace(/\u2028/g,'\\u2028').replace(/\u2029/g,'\\u2029');
+      const shell=html=>html.replace('</head>','<link rel="stylesheet" href="/local/workspace-shell.css"><script src="/local/workspace-shell.js" defer></script><script src="/local/workspace-branding.js" defer></script></head>');
+      const page=(html)=>{response.writeHead(200,{'Content-Type':mimes['.html'],'Cache-Control':'no-store'});return response.end(request.method==='HEAD'?undefined:shell(html));};
+      const legacyPage={'/sourcing.html':'/sourcing','/merchant.html':'/settings'}[pathname];
+      if(legacyPage){response.writeHead(302,{Location:legacyPage+url.search,'Cache-Control':'no-cache'});return response.end();}
+      if(pathname==='/app'||!legacyUi&&pathname==='/'){response.writeHead(302,{Location:'/products'+url.search,'Cache-Control':'no-cache'});return response.end();}
+      if(!legacyUi&&['/design','/index.html','/temu','/temu/','/temu.html'].includes(pathname.toLowerCase())){
+        const platform=pathname==='/design'?(url.searchParams.get('platform')||workspace.context().platform):'temu';
+        if(!['amazon','temu'].includes(platform))throw fail(400,'请选择 Amazon 或 Temu');
+        const remembered=workspace.context();
+        const productId=url.searchParams.get('product')||(['temu','/temu','/temu/','/temu.html','/index.html'].includes(pathname)&&remembered.platform==='temu'?remembered.productId:'')||'',product=productId?workspace.view().products.find(p=>p.id===productId):null;
+        if(productId&&!product)throw fail(404,'商品不存在，请从商品库重新选择');
+        const key=(productId||'blank')+':'+platform,saved=workspace.designState(key),boot={platform,productId,key,revision:saved.revision,data:saved.data,product};
+        let html=fs.readFileSync(path.join(root,'public/index.html'),'utf8')
+          .replace('<head>','<head><base href="/"><script>window.WorkspaceDesignBoot='+encoded(boot)+'</script><script src="/local/design-bootstrap.js"></script>')
+          .replace(/<title>[^<]*<\/title>/,'<title>单品设计 · 跨境工作台</title>')
+          .replace('<script src="/local/multisets.js"></script>',(platform==='temu'?'<script src="/local/shared-temu.js"></script>':'')+'<script src="/local/amazon-design.js"></script><script src="/local/multisets.js"></script>')
+          .replace('</body>','<script src="/local/design-state.js"></script></body>');
+        return page(html);
+      }
+      if(['/products','/content','/tasks'].includes(pathname))return page(fs.readFileSync(path.join(root,'public/workspace.html'),'utf8'));
+      if(['/listings','/temu/listings','/temu/listings/','/sourcing','/settings'].includes(pathname)){
+        const source=pathname==='/sourcing'||pathname==='/listings'&&url.searchParams.get('mode')==='sourcing';
+        const bound=workspace.view().stores,context=workspace.context(),requested=url.searchParams.get('platform');
+        if(requested&&!['amazon','temu'].includes(requested))throw fail(400,'请选择 Amazon 或 Temu');
+        const targetPlatform=pathname.startsWith('/temu/')?'temu':requested||(bound.some(s=>s.platform===context.platform)?context.platform:bound[0]?.platform)||'temu';
+        const file=pathname==='/settings'?'merchant.html':source?'sourcing.html':targetPlatform==='amazon'?'platform-listings.html':'temu-listings.html';
+        const uiKeys=source?['sourcing:form']:pathname==='/settings'?[]:['listing:intake','listing:selection',...erp.previews().map(p=>'listing:review:'+p.id)];
+        const uiStates=Object.fromEntries(uiKeys.map(key=>[key,workspace.uiState(key)]));
+        let html=fs.readFileSync(path.join(root,'public',file),'utf8')
+          // Apply display labels before injecting merchant data and local paths.
+          .replace(/极鲸云/g,'选品数据服务').replace(/TEMU · 选品数据服务选品/g,'选品与采集')
+          .replace(/<title>[^<]*<\/title>/,'<title>'+(pathname==='/settings'?'连接设置':source?(pathname==='/sourcing'?'选品与采集':'自动选品上架'):'上架中心')+' · 跨境电商工作台</title>')
+          .replace('</head>','<script>window.WorkspacePageBoot='+encoded({page:source?'sourcing':pathname==='/settings'?'settings':'listings',platform:targetPlatform,context,uiStates})+'</script><script src="/local/workspace-state.js"></script><link rel="stylesheet" href="/local/platform-flow.css"><script src="/local/platform-flow.js" defer></script></head>');
+        return page(html);
       }
       const base = pathname.startsWith('/media/') ? mediaDirectory : path.join(root,'public');
       const relative = pathname.startsWith('/media/') ? pathname.slice(7) : pathname==='/sourcing'?'sourcing.html':pathname==='/settings'?'merchant.html':['/','/index.html'].includes(pathname) ? (legacyUi?'index.html':'temu.html') : ['/temu','/temu/'].includes(pathname)?'temu.html':['/temu/listings','/temu/listings/'].includes(pathname)?'temu-listings.html':pathname.slice(1);
@@ -447,7 +535,7 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
     } catch(error) {json(response,error.status || 400,{error:error.message || '请求失败'});}
   });
   server.on('close',()=>{products.close();research.close();});
-  return {server,store,mediaDirectory,saveImage,research,erp,preferences,products,sourcing,isBusy:()=>active>0||queue.length>0||products.isBusy()||erp.isBusy()||sourcing.isBusy()};
+  return {server,store,mediaDirectory,saveImage,research,erp,preferences,products,sourcing,workspace,isBusy:()=>active>0||queue.length>0||products.isBusy()||erp.isBusy()||sourcing.isBusy()};
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

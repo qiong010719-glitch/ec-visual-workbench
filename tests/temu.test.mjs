@@ -119,12 +119,14 @@ test('Temu editing and recovered downloads retain format without generating agai
   const result=await app.settle('hyrule_tasks/edit');assert.equal(result.status,'completed',result.error);assert.equal(result.dimensions.width,1024);assert.equal(result.dimensions.height,1024);assert.equal(generationCalls,1);assert.equal(downloads,1);
 });
 
-test('the default workspace serves only Temu at the homepage and former entry URLs',async t=>{
+test('the workspace homepage is shared while former design URLs preserve Temu',async t=>{
   const app=await fixture(t);
-  for(const route of ['/','/index.html','/temu','/temu/','/temu.html']){
+  const home=await fetch(app.base+'/');assert.equal(new URL(home.url).pathname,'/products');assert.match(await home.text(),/workspace-shell\.js/);
+  for(const route of ['/index.html','/temu','/temu/','/temu.html']){
     const html=await(await fetch(app.base+route)).text();
-    assert.match(html,/<title>Temu 工作台/);assert.match(html,/shared-temu-bootstrap\.js/);assert.match(html,/id="designScope"/);assert.match(html,/original-01\.js/);
+    assert.match(html,/<title>单品设计 · 跨境工作台/);assert.match(html,/"platform":"temu"/);assert.match(html,/shared-temu\.js/);assert.match(html,/id="designScope"/);assert.match(html,/original-01\.js/);
   }
+  const amazon=await(await fetch(app.base+'/design?platform=amazon')).text();assert.match(amazon,/"platform":"amazon"/);assert.doesNotMatch(amazon,/src="\/local\/shared-temu\.js"/);
   assert.equal((await fetch(app.base+'/amazon')).status,404);
   const config=await app.call('/api/temu/config');assert.equal(config.data.workspacePlatform,'temu');assert.equal(config.data.fissionEnabled,true);assert.equal(config.data.publishEnabled,false);
 });

@@ -16,7 +16,7 @@
     <div class="store-editor-heading"><h3 id="storeEditorTitle">新增店铺</h3><p id="storeEditorHelp" class="muted">先填写新店铺信息，再添加该店铺的母稿。</p></div>
     <section id="storeDetails" aria-labelledby="storeDetailsTitle">
       <h4 id="storeDetailsTitle">1. 填写店铺信息</h4>
-      <div class="fields"><label>平台<select name="platform"><option value="temu">Temu 半托管</option></select></label><label>店小秘中的店铺名称<input name="expectedStore" placeholder="填写要新增的店铺名称" required></label><label>经营站点<input name="expectedSite" placeholder="例如：加拿大站（请填写）" required></label><label>使用的 ERP 连接<select name="erpKey" required></select></label></div>
+      <div class="fields"><label>平台<select name="platform"><option value="temu">Temu 半托管</option><option value="amazon">Amazon 亚马逊</option></select></label><label>ERP 中的店铺名称<input name="expectedStore" placeholder="填写要新增的店铺名称" required></label><label>经营站点<input name="expectedSite" placeholder="例如：加拿大站（请填写）" required></label><label>使用的 ERP 连接<select name="erpKey" required></select></label></div>
       <p class="muted store-details-hint">名称和站点须与店小秘一致。店铺使用所选 ERP 连接绑定的浏览器；如需更换，请在上方 ERP 连接中修改并保存。多家店铺可以使用同一条 ERP 连接，上架页按此关联展示店铺和母稿。</p>
       <button type="button" class="primary" id="continueStore">下一步：添加该店铺的母稿</button>
     </section>

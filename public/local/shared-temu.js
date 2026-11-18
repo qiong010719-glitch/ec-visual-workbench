@@ -1,7 +1,7 @@
 /* Destination adapter: all design controls and generation actions stay in the shared UI. */
 (() => {
   if(window.WorkbenchPlatform!=='temu')return;
-  const $=id=>document.getElementById(id),key='temu-shared-image-settings';
+  const $=id=>document.getElementById(id),key=window.WorkspaceDesignAdapterKey||'temu-shared-image-settings';
   const escape=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   let settings={ratio:'1:1',resultRatio:'1:1'},status;
   try{settings={...settings,...JSON.parse(localStorage.getItem(key)||'{}')};}catch{}

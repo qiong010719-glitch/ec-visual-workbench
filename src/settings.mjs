@@ -74,8 +74,11 @@ export function createSettings({directory,configuration,legacyDirectory,codec={e
       if(!Array.isArray(payload.stores)||payload.stores.length>500)throw fail('店铺配置数量无效');
       next.stores=payload.stores.map(s=>{
         platformFor(s.platform);if(!validKey(s.key)||!text(s.expectedStore)||!text(s.expectedSite))throw fail('请填写店铺名称、站点和唯一编号');
-        if(!Array.isArray(s.templates)||!s.templates.length||s.templates.length>100)throw fail('每家店至少配置一个商品母稿');
-        const templates=s.templates.map(t=>{const draftId=text(t.draftId);if(!validKey(t.key)||!/^\d{6,30}$/.test(draftId)||!text(t.name))throw fail('请填写母稿名称和有效的母稿链接或数字 ID');
+        // A configured content destination is independent of an implemented ERP runner.
+        // Temu retains its complete mother-product validation and execution binding.
+        const inputTemplates=s.templates??(s.platform==='amazon'?[]:undefined);
+        if(!Array.isArray(inputTemplates)||(s.platform==='temu'&&!inputTemplates.length)||inputTemplates.length>100)throw fail('每家 Temu 店至少配置一个商品母稿');
+        const templates=inputTemplates.map(t=>{const draftId=text(t.draftId);if(!validKey(t.key)||!/^\d{6,30}$/.test(draftId)||!text(t.name))throw fail('请填写母稿名称和有效的母稿链接或数字 ID');
           const result={key:t.key,name:text(t.name),draftId};
           const verified=verifiedTemplates.get(s.key+':'+t.key),oldStore=state.stores.find(old=>old.key===s.key),old=oldStore?.templates.find(old=>old.key===t.key);
           // Retain old metadata for history, but it never selects the source product.
@@ -88,12 +91,12 @@ export function createSettings({directory,configuration,legacyDirectory,codec={e
         let erp=next.erpConnections.find(e=>e.key===s.erpKey);
         if(s.erpKey&&!erp)throw fail('ERP 连接不存在');
         if(!erp){erp=next.erpConnections.find(e=>e.browserKey===s.browserKey&&(e.provider||'dianxiaomi')==='dianxiaomi');if(!erp){erp={key:'erp-'+s.browserKey,name:'店小秘连接',browserKey:s.browserKey,expectedAccount:'',loginUrl:'https://www.dianxiaomi.com/'};if(next.erpConnections.some(e=>e.key===erp.key))throw fail('请明确选择店小秘连接');next.erpConnections.push(erp);}}
-        return {key:s.key,platform:s.platform,expectedStore:text(s.expectedStore),expectedSite:text(s.expectedSite),erpKey:erp.key,browserKey:erp.browserKey,templates,draftId:templates[0].draftId,...(templates[0].templateName?{templateName:templates[0].templateName}:{})};
+        return {key:s.key,platform:s.platform,expectedStore:text(s.expectedStore),expectedSite:text(s.expectedSite),erpKey:erp.key,browserKey:erp.browserKey,templates,...(templates[0]?{draftId:templates[0].draftId}:{}),...(templates[0]?.templateName?{templateName:templates[0].templateName}:{})};
       });
       if(new Set(next.stores.map(s=>s.key)).size!==next.stores.length)throw fail('店铺编号重复');
     }
     for(const e of next.erpConnections)if(!next.browsers.some(b=>b.key===e.browserKey))throw fail('ERP 关联的浏览器不存在，请先调整 ERP 连接');
-    for(const s of next.stores){const e=next.erpConnections.find(e=>e.key===s.erpKey);if(!e)throw fail('店铺关联的 ERP 连接不存在');requireListingProvider(e,s.platform);s.browserKey=e.browserKey;
+    for(const s of next.stores){const e=next.erpConnections.find(e=>e.key===s.erpKey);if(!e)throw fail('店铺关联的 ERP 连接不存在');if(s.platform==='temu')requireListingProvider(e,s.platform);s.browserKey=e.browserKey;
       const before=state.erpConnections.find(old=>old.key===s.erpKey),browser=next.browsers.find(b=>b.key===e.browserKey),oldBrowser=state.browsers.find(b=>b.key===before?.browserKey);
       if(JSON.stringify(before)!==JSON.stringify(e)||JSON.stringify(browser)!==JSON.stringify(oldBrowser))for(const t of s.templates)if(!verifiedTemplates.has(s.key+':'+t.key)){delete t.verifiedAt;delete t.shippingTemplate;delete t.sourceMode;}
     }

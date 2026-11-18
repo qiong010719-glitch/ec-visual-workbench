@@ -12,7 +12,7 @@ function desktopProfile({env=process.env,root,packaged,resourcesPath,userDataPat
     WORKBENCH_ADAPTER_ROOT:packaged?path.join(resourcesPath,'erp-scripts'):path.resolve(root,'../scripts')
   }:{...env};
   return {dataDirectory,configuration,port,test,isolated,reuseService:!isolated&&port!==0,
-    title:isolated?'全新用户测试 · Temu 工作台':'商品裂变工作台'};
+    title:isolated?'独立预览 · 跨境电商工作台':'跨境电商工作台'};
 }
 
 module.exports={desktopProfile};

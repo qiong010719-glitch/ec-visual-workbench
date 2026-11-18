@@ -16,7 +16,7 @@ const id=()=>crypto.randomUUID();
 const requestId=value=>typeof value==='string'&&/^[a-zA-Z0-9][a-zA-Z0-9_-]{7,100}$/.test(value);
 const busy=task=>['pending','running'].includes(task?.status);
 const signature=value=>crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
-const sourceFields=['platform','image_workflow','image_ratio','image_count','product_name','product_desc','product_fact_source','generation_mode','visual_style','design_scope','custom_layout','target_market','target_lang','model_ethnicity','strict_requirements','text_depth','info_density','scene_intensity','category','category_confirmed','image_allocation','structure_notes','slot_directives','reference_ids','categorized_images'];
+const sourceFields=['platform','workspace_product_id','image_workflow','image_ratio','image_count','product_name','product_desc','product_fact_source','generation_mode','visual_style','design_scope','custom_layout','target_market','target_lang','model_ethnicity','strict_requirements','text_depth','info_density','scene_intensity','category','category_confirmed','image_allocation','structure_notes','slot_directives','reference_ids','categorized_images'];
 
 function sourceSnapshot(value,mediaDirectory){
   if(!value||typeof value!=='object')throw fail(400,'缺少产品资料');

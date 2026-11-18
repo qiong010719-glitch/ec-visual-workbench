@@ -791,7 +791,7 @@ window.addEventListener('DOMContentLoaded', function () {
                     const kieBtn2 = document.getElementById('mainBtn');
                     if (kieBtn2) { kieBtn2.disabled = true; kieBtn2.classList.remove('ready-to-fuse'); }
                 }
-                if (window.WorkbenchPlatform === 'temu' && self.value !== 'ultra_fast') {
+                if (['temu','amazon'].includes(window.WorkbenchPlatform) && self.value !== 'ultra_fast') {
                     scopeEl.add(new Option('仅生成 X 张主图', 'main_count'), 1);
                 }
                 document.getElementById('mainImageCountControl').hidden = true;

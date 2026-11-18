@@ -24,6 +24,6 @@
     "playwright": "^1.64.1"
   },
   "main": "desktop/main.cjs",
-  "description": "Temu 商品裂变与店小秘草稿工作台",
+  "description": "跨境电商内容制作与上架工作台",
   "author": "Workbench"
 }

@@ -1,7 +1,8 @@
 /* One click submits a fixed product snapshot; polling never submits paid work. */
 (() => {
-  if(!window.TemuWorkbench?.sharedUi)return;
-  const $=id=>document.getElementById(id),key='temu-single-design::'+location.host;
+  const workbench=window.DesignWorkbench||window.TemuWorkbench;
+  if(!workbench?.sharedUi)return;
+  const $=id=>document.getElementById(id),key=workbench.pendingKey||'temu-single-design::'+location.host;
   let pending=null,submitting=false,timer,attachedId=null,planId=null,notice,retry;
   try{pending=JSON.parse(localStorage.getItem(key)||'null');}catch{}
   const normal=()=>['fast','master'].includes($('generationMode').value);
@@ -40,7 +41,7 @@
     if(scope==='custom'&&!custom){openCustomModal();throw new Error('请先确认自定义图片方案。');}
     const category=window.__categoryState;
     if(scope==='custom'&&category?.category!=='general'&&category?.allocation&&Object.values(category.allocation).reduce((a,b)=>a+Number(b||0),0)!==getMainFlowTarget())throw new Error('产品类型的图片配额与自定义张数不一致，请重新确认。');
-    return TemuWorkbench.decorateSource({agent_task_id:id,product_name:$('prodName').value,product_desc:$('prodDesc').value,generation_mode:mode,
+    return workbench.decorateSource({agent_task_id:id,product_name:$('prodName').value,product_desc:$('prodDesc').value,generation_mode:mode,
       model:$('modelChoice').value,visual_style:window.getLocalVisualStyle?.(mode)||'scene_advertising',design_scope:getEffectiveScope(),
       custom_layout:scope==='custom'?{main:custom.main|0,sub:custom.sub|0,aplus:custom.aplus|0,aplus_type:custom.aplusType||'premium'}:null,
       target_market:market.market,target_lang:market.lang,model_ethnicity:getModelEthnicity(market.market),strict_requirements:$('strictReq').value,text_depth:isTextDepthOn(),
@@ -56,6 +57,7 @@
       const id='single_'+crypto.randomUUID();capture(id);
       const materials=await ensureMaterialUrls(globalMaterials);
       if(materials.lost.length)throw new Error('参考图已失效，请重新上传：'+materials.lost.join('、'));
+      await workbench.prepareSource?.();
       const payload=capture(id);
       // Persist before POST, including the exact ID for an uncertain response.
       localStorage.setItem(key,JSON.stringify({id,payload}));pending={id,payload};saveAppState();
@@ -68,7 +70,7 @@
   async function poll(){
     clearTimeout(timer);const current=pending;if(!current)return;
     try{
-      const task=await TemuWorkbench.api('/api/tasks/agent_tasks/'+current.id);
+      const task=await workbench.api('/api/tasks/agent_tasks/'+current.id);
       if(pending!==current)return;
       if(!task){message('尚未查询到任务。可用同一任务编号重新提交，避免重复生成。');retry.hidden=false;return;}
       retry.hidden=true;
@@ -80,7 +82,7 @@
         saveAppState();
       }
       if(flow.images.some(i=>i.status!=='not_started')&&attachedId!==current.id){
-        TemuWorkbench.recordSingleResult(task.payload,flow.tasks,task.result);
+        workbench.recordSingleResult(task.payload,flow.tasks,task.result);
         attachedId=current.id;imageSlots=Array(14).fill(null);activeKieTasks=flow.tasks.map(({taskId,slot})=>({taskId,slot}));
         buildGalleryLayout();switchView('adventure-log',$('nav-notes'));
         activeKieTasks.forEach(t=>resumeKieListener(t.slot,t.taskId));saveAppState();
@@ -90,7 +92,14 @@
         (task.status==='failed'?'构思未完成，已停止生图。':'图片未全部完成，已有结果已保留。')+(flow.error||''):
         `构思已完成，正在生成图片（${complete}/${flow.tasks.length}）…`;
       message(text);if(attachedId===current.id)$('logContent').textContent=text;
-      if(['completed','failed'].includes(flow.phase)){$('localPlanLabel').textContent=flow.phase==='completed'?'本套图片已完成':'本次生成已停止';clear();return;}
+      if(['completed','failed'].includes(flow.phase)){
+        $('localPlanLabel').textContent=flow.phase==='completed'?'本套图片已完成':'本次生成已停止';
+        if(flow.phase==='completed'&&workbench.onSingleComplete){
+          try{await workbench.onSingleComplete(task);message(`本套 ${complete} 张图片已完成，已保存到商品库。`);}
+          catch(error){message(`图片已完成，保存到商品库未完成：${error.message}。可点击“保存到商品库”重试。`);}
+        }
+        clear();return;
+      }
     }catch(error){message('任务状态暂时无法读取，正在恢复查询；不会重复提交。');}
     if(pending===current)timer=setTimeout(poll,1500);
   }

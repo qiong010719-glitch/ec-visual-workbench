@@ -52,7 +52,8 @@
       target_market:market.market,target_lang:market.lang,model_ethnicity:getModelEthnicity(market.market),strict_requirements:$('strictReq').value,text_depth:isTextDepthOn(),info_density:$('infoDensity')?.value||'high',scene_intensity:$('sceneIntensity')?.value||'original',
       category:window.__categoryState?.category||'general',category_confirmed:!!window.__categoryState?.confirmed,image_allocation:window.__categoryState?.allocation||null,
       structure_notes:window.__categoryState?.structure_notes||null,slot_directives:buildSlotDirectives(),reference_ids:window.__designReferenceIds||[],categorized_images:globalMaterials.map(m=>({filename:m.filename,category:m.category,url:m.url}))};
-    return temu?.decorateSource?temu.decorateSource(source):source;
+    const destination=window.DesignWorkbench||temu;
+    return destination?.decorateSource?destination.decorateSource(source):source;
   }
   async function history(){
     const rows=await api('/api/multisets');

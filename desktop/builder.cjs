@@ -5,6 +5,6 @@ module.exports={
   extraResources:[{from:'../scripts',to:'erp-scripts',filter:['lib/*.mjs','inspect-draft.mjs']}],
   asarUnpack:['**/node_modules/sharp/**','**/node_modules/@img/**'],
   win:{target:[{target:'portable',arch:['x64']}],signAndEditExecutable:false},
-  portable:{artifactName:'Temu-Workbench-${version}-win-x64.exe'},
+  portable:{artifactName:'CrossBorder-Workbench-${version}-win-x64.exe'},
   npmRebuild:false
 };

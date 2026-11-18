@@ -18,9 +18,9 @@
     for(const field of $('modelForm').elements)if(field.name&&field.type!=='password')field.value=settings.models[field.name]||'';
     $('modelStatus').textContent=`图片密钥：${settings.models.SUANZHOU_IMAGE_API_KEYConfigured?'已配置':'未配置'}；文本密钥：${settings.models.PLANNER_API_KEYConfigured?'已配置':'未配置'}`;
     $('browserList').innerHTML=chromeBrowsers().map(b=>`<div class="config-row"><div><strong>${escape(b.name)}</strong><small>谷歌 Chrome 专用窗口 · 保留登录状态</small></div><div><button data-browser-edit="${b.key}">编辑</button><button data-browser-check="${b.key}">检查连接</button><button data-browser-remove="${b.key}">删除</button></div></div>`).join('')||'<p class="muted">先保存下方谷歌浏览器配置，再添加 ERP 连接。</p>';
-    $('storeList').innerHTML=settings.stores.map(s=>`<div class="config-row"><div><strong>${escape(s.expectedStore)} · ${escape(s.expectedSite)}</strong><small>${s.templates.length} 个商品母稿</small></div><div><button data-store-edit="${s.key}">编辑</button><button data-store-remove="${s.key}">删除</button></div></div>`).join('')||'<p class="muted">先添加浏览器，再添加店铺与母稿。</p>';
+    $('storeList').innerHTML=settings.stores.map(s=>`<div class="config-row"><div><strong>${escape(s.expectedStore)} · ${escape(s.expectedSite)}</strong><small>${s.platform==='amazon'?'Amazon · 已绑定，自动发布待接入':'Temu · '+s.templates.length+' 个商品母稿'}</small></div><div><button data-store-edit="${s.key}">编辑</button><button data-store-remove="${s.key}">删除</button></div></div>`).join('')||'<p class="muted">先添加浏览器，再添加店铺与母稿。</p>';
     const prior=$('erpForm').elements.browserKey.value;$('erpForm').elements.browserKey.innerHTML=chromeBrowsers().map(b=>`<option value="${b.key}">${escape(b.name)}</option>`).join('');if(chromeBrowsers().some(b=>b.key===prior))$('erpForm').elements.browserKey.value=prior;
-    const current=$('storeForm').elements.erpKey.value;$('storeForm').elements.erpKey.innerHTML=settings.erpConnections.map(e=>`<option value="${e.key}" ${erpProvider(e).listingPlatforms.includes('temu')?'':'disabled'}>${escape(e.name)} · ${escape(erpProvider(e).name)}${erpProvider(e).listingPlatforms.includes('temu')?'':'（自动上架待联调）'}</option>`).join('');if(settings.erpConnections.some(e=>e.key===current&&erpProvider(e).listingPlatforms.includes('temu')))$('storeForm').elements.erpKey.value=current;
+    renderStoreErps();
     $('erpList').innerHTML=settings.erpConnections.map(e=>{const p=erpProvider(e),browser=chromeBrowsers().find(b=>b.key===e.browserKey);return `<div class="config-row"><div><strong>${escape(e.name)}</strong><small>${escape(p.name)} · ${browser?escape(browser.name):'请编辑连接，改绑谷歌浏览器'}${e.expectedAccount?' · 配置账号 '+escape(e.expectedAccount):''}</small><small>${escape(p.status)}</small></div><div><button data-erp-edit="${e.key}">编辑</button><button data-erp-open="${e.key}" ${browser?'':'disabled'}>打开${escape(p.name)}登录</button><button data-erp-check="${e.key}" ${browser?'':'disabled'}>${p.id==='miaoshou'?'检查连接':'检查登录'}</button><button data-erp-remove="${e.key}">删除</button></div></div>`;}).join('')||'<p class="muted">保存谷歌浏览器后，在这里建立 ERP 账号连接。</p>';
     erpFields();
   }
@@ -42,15 +42,18 @@
     if(b.dataset.erpCheck){const p=erpProvider(settings.erpConnections.find(e=>e.key===b.dataset.erpCheck)),r=await api('/api/temu/erp/connection',{erpKey:b.dataset.erpCheck});notice(r.loginVerificationSupported===false?r.message:r.loggedIn?(r.accountMatched===false?'已登录，但账号与配置不一致。':p.name+'登录有效'+(r.account?'：'+r.account:'')):r.erpOpen?p.name+'页面已打开，请完成登录或重新检查。':'请先打开'+p.name+'登录。',r.accountMatched===false);}
     if(b.dataset.erpRemove)await saveSettings({erpConnections:settings.erpConnections.filter(v=>v.key!==b.dataset.erpRemove)});
   });};
-  const storeContext=()=>{const f=formValue($('storeForm'));return {platform:'temu',expectedStore:f.expectedStore?.trim(),expectedSite:f.expectedSite?.trim(),erpKey:f.erpKey};};
+  function renderStoreErps(){const form=$('storeForm'),current=form.elements.erpKey.value,amazon=form.elements.platform.value==='amazon';form.elements.erpKey.innerHTML=settings.erpConnections.map(e=>`<option value="${e.key}" ${amazon||erpProvider(e).listingPlatforms.includes('temu')?'':'disabled'}>${escape(e.name)} · ${escape(erpProvider(e).name)}${amazon||erpProvider(e).listingPlatforms.includes('temu')?'':'（自动上架待联调）'}</option>`).join('');if(settings.erpConnections.some(e=>e.key===current&&(amazon||erpProvider(e).listingPlatforms.includes('temu'))))form.elements.erpKey.value=current;}
+  const storeContext=()=>{const f=formValue($('storeForm'));return {platform:f.platform,expectedStore:f.expectedStore?.trim(),expectedSite:f.expectedSite?.trim(),erpKey:f.erpKey};};
   function updateStoreEditor(){
-    const editing=!!$('storeForm').elements.key.value,mothers=editing||storeStep==='mothers';
+    const editing=!!$('storeForm').elements.key.value,amazon=$('storeForm').elements.platform.value==='amazon',mothers=amazon||editing||storeStep==='mothers';
     $('storeEditorTitle').textContent=editing?'编辑店铺 · '+($('storeForm').elements.expectedStore.value.trim()||'未命名店铺'):'新增店铺';
     $('storeEditorHelp').textContent=editing?'下方信息和母稿属于正在编辑的这家店铺。':'先填写新店铺信息，再添加该店铺的母稿。';
     $('storeForm').elements.expectedStore.placeholder=editing?'填写店小秘中的店铺名称':'填写要新增的店铺名称';
     $('continueStore').hidden=mothers;$('storeMothers').hidden=!mothers;
     $('saveStore').textContent=editing?'保存店铺修改':'保存新店铺';
     $('storeSaveHint').textContent=editing?'修改后请保存，上架页会自动更新店铺和母稿列表。':'填写和校验后，还需点击“保存新店铺”；保存成功后，上架页才会出现这家店铺。';
+    for(const element of [$('templateInputs'),$('addTemplate'),$('storeMothers').querySelector('.note'),$('storeMothersTitle')])element.hidden=amazon;
+    if(amazon){$('storeEditorHelp').textContent='保存 Amazon 店铺后，商品库、内容制作与上架中心共用这份绑定。';$('storeSaveHint').textContent='Amazon 可保存店铺绑定并制作图片，当前自动发布尚未接入；成品可在上架中心核对并导出。';}
   }
   function focusStoreDetails(){
     $('storeForm').scrollIntoView({block:'start',behavior:'instant'});
@@ -134,6 +137,7 @@
   };
   function clearCatalog(){templateChecks.clear();}
   $('storeForm').addEventListener('input',e=>{if(['expectedStore','expectedSite','erpKey','platform'].includes(e.target.name)){collectTemplates();clearCatalog();paintTemplates();rememberEditor();}});
+  $('storeForm').elements.platform.addEventListener('change',()=>{renderStoreErps();updateStoreEditor();rememberEditor();});
   $('addTemplate').onclick=()=>{collectTemplates();const t={key:uid(),name:'',draftId:''};templates.push(t);showTemplateStep(t,'source');$('templateInputs').lastElementChild.scrollIntoView({block:'nearest'});};
   function resetStore(){$('storeForm').reset();$('storeForm').elements.key.value='';storeStep='details';templates=[{key:uid(),name:'',draftId:''}];templateSteps.clear();templateSteps.set(templates[0].key,'source');clearCatalog();paintTemplates();$('notice').hidden=true;$('storeSaveStatus').hidden=true;try{localStorage.removeItem(editorStorage);sessionStorage.removeItem(editorStorage);}catch{}}
   $('resetStore').onclick=()=>{if($('storeForm').inert)return;resetStore();rememberEditor();focusStoreDetails();};
@@ -141,8 +145,9 @@
   $('storeForm').onsubmit=e=>{e.preventDefault();if(!$('continueStore').hidden){continueStore();return;}storeAction(e.submitter||$('saveStore'),async()=>{
     const status=$('storeSaveStatus');status.hidden=false;status.className='muted';status.textContent='正在校验并保存店铺，请稍候…';notice(status.textContent);
     try{collectTemplates();
-    for(const [i,t] of templates.entries())try{draftIdFromInput(t.draftId,i);if(!t.name.trim())throw new Error(`第 ${i+1} 个母稿：请填写名称，或先读取母稿自动命名。`);}catch(error){showTemplateStep(t,'source');throw error;}
-    const value={...formValue(e.target),platform:'temu',templates:templates.map((t,i)=>({...t,draftId:draftIdFromInput(t.draftId,i)}))};value.key||=uid();
+    const amazon=e.target.elements.platform.value==='amazon';
+    if(!amazon)for(const [i,t] of templates.entries())try{draftIdFromInput(t.draftId,i);if(!t.name.trim())throw new Error(`第 ${i+1} 个母稿：请填写名称，或先读取母稿自动命名。`);}catch(error){showTemplateStep(t,'source');throw error;}
+    const value={...formValue(e.target),templates:amazon?[]:templates.map((t,i)=>({...t,draftId:draftIdFromInput(t.draftId,i)}))};value.key||=uid();
     const verifyMothers=templates.filter(t=>templateChecks.get(checkKey(t))?.valid).map(t=>value.key+':'+t.key);
     await saveSettings({stores:[...settings.stores.filter(s=>s.key!==value.key),value],verifyMothers});editStore(settings.stores.find(s=>s.key===value.key));status.hidden=false;status.textContent=`“${value.expectedStore}”已保存，上架页的店铺和母稿列表会自动更新。`;notice(status.textContent);}
     catch(error){status.className='error';status.textContent='店铺尚未保存：'+error.message;throw error;}

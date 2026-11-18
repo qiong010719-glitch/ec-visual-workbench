@@ -91,7 +91,7 @@ test('saved original plans remain usable and new scene evidence reaches the prov
 });
 test('source interface is served and original service keys are absent',async t=>{
   const app=await fixture(t);const response=await fetch(app.base+'/');
-  assert.equal(response.status,200);assert.match(await response.text(),/Temu 工作台/);
+  assert.equal(response.status,200);assert.match(await response.text(),/跨境电商工作台/);
   const source=await(await fetch(app.base+'/original/original-01.js')).text();
   assert.doesNotMatch(source,/sb_publishable_|sapient-hub-485206|vxlwmeonxrvntwwdqcew|6d70ba77dad1fd3e/);
 });

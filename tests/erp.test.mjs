@@ -6,7 +6,17 @@ import path from 'node:path';
 import sharp from 'sharp';
 import {createErpService} from '../src/erp.mjs';
 import {createWorkbench} from '../src/server.mjs';
+import {createSettings} from '../src/settings.mjs';
 import {connectionStatus} from '../../scripts/lib/miaoshou-connection.mjs';
+
+function configureFixture(preferences){
+  // Keep these tests independent of the user's legacy config and browser login.
+  return preferences.update({revision:preferences.view().revision,
+    browsers:[{key:'fixture-browser',type:'chrome',name:'ERP 测试专用浏览器',debugPort:9388}],
+    erpConnections:[{key:'fixture-erp',provider:'dianxiaomi',name:'ERP 测试连接',browserKey:'fixture-browser',expectedAccount:'fixture-account'}],
+    stores:[1,2].map(number=>({key:`store${number}-ca`,platform:'temu',expectedStore:`店铺${number}测试`,expectedSite:'加拿大站',erpKey:'fixture-erp',templates:[{key:'fixture-mother',name:'测试母稿',draftId:String(123456789+number)}]}))
+  });
+}
 
 async function fixture(t,adapter){
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'erp-test-'));
@@ -14,6 +24,9 @@ async function fixture(t,adapter){
   const media=path.join(dir,'media');fs.mkdirSync(media);
   for(let i=0;i<3;i++)await sharp({create:{width:80,height:100,channels:3,background:{r:i*80,g:60,b:100}}}).png().toFile(path.join(media,`sample-${i}.png`));
   const store={state:{drafts:[{id:'draft1',title:'测试画',platform:'temu',images:['/media/sample-0.png','/media/sample-1.png','/media/sample-2.png']}]}};
+  // Persist once, then let each service instance reload from disk. Several
+  // recovery tests intentionally modify this file before recreating the service.
+  configureFixture(createSettings({directory:path.join(dir,'erp/preferences'),configuration:{},legacyDirectory:null}));
   const options={directory:path.join(dir,'erp'),mediaDirectory:media,store,multisets:{list:()=>[],get:()=>({source:{platform:'temu'},sets:[{images:[{task:{status:'failed'}}]}]})},adapter};
   const service=createErpService(options),preview=await service.importGenerated({draftId:'draft1'}),cfg=service.settings();
   const payload={previewId:preview.id,storeKey:cfg.stores[1].key,browserKey:cfg.browsers[0].key,rows:preview.rows.map(r=>({...r,englishTitle:'Canvas art',imageIds:preview.folders[0].images.map(i=>i.id)}))};
@@ -171,10 +184,11 @@ test('restart marks interrupted saves for review rather than enqueueing them',as
 test('two generated Temu sets reach the selected store as two independent draft jobs',async t=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'erp-generation-')),writes=[];
   const png=await sharp({create:{width:120,height:160,channels:3,background:'#abcdee'}}).png().toBuffer();
-  const app=createWorkbench({dataDirectory:dir,configuration:{},provider:async()=>png,erpAdapter:{runDraft:async({store,row,onProgress})=>{
+  const app=createWorkbench({dataDirectory:dir,configuration:{WORKBENCH_FRESH:'true'},provider:async()=>png,erpAdapter:{runDraft:async({store,row,onProgress})=>{
     writes.push({store:store.key,code:row.productCode,images:row.images.map(i=>i.id)});onProgress('saving');
     return {draftId:'TEST-'+row.productCode,published:false,sourceUnchanged:true};
   }}});
+  configureFixture(app.preferences);
   await new Promise(r=>app.server.listen(0,'127.0.0.1',r));const base='http://127.0.0.1:'+app.server.address().port;
   t.after(async()=>{await new Promise(r=>app.server.close(r));fs.rmSync(dir,{recursive:true,force:true});});
   const {token}=await fetch(base+'/api/session').then(r=>r.json());

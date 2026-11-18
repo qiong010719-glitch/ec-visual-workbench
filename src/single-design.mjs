@@ -1,5 +1,5 @@
 import {slotPlan} from './planner.mjs';
-import {validateTemu,temuPlanSignature} from './temu.mjs';
+import {validateSingleDesignPlatform,singleDesignPlanSignature} from './design-platforms.mjs';
 import {resolveImageModel} from './image-models.mjs';
 
 const fail=(status,message)=>Object.assign(new Error(message),{status});
@@ -15,10 +15,9 @@ export function createSingleDesign({store,configuration,imageAvailable,submitPla
   function start(input) {
     const payload={...input};
     if(!/^single_[a-zA-Z0-9_-]{1,90}$/.test(payload.agent_task_id||''))throw fail(400,'单品任务编号无效');
-    if(payload.platform!=='temu'||payload.image_workflow!=='shared'||!['fast','master'].includes(payload.generation_mode))throw fail(400,'一体化生成仅支持单品快速或大师模式');
+    validateSingleDesignPlatform(payload);
     if(payload.mobile_reformat||payload.group_id||payload.set_id||payload.firebase_tasks)throw fail(400,'单品任务不能混入其他生成流程');
-    validateTemu(payload);
-    const signature=JSON.stringify([temuPlanSignature(payload),payload.model]);
+    const signature=singleDesignPlanSignature(payload);
     const known=store.state.tasks['agent_tasks/'+payload.agent_task_id];
     if(known){
       if(known.singleDesign?.signature!==signature)throw fail(409,'任务编号已用于另一份资料，请核对已有任务');
@@ -27,7 +26,7 @@ export function createSingleDesign({store,configuration,imageAvailable,submitPla
     if(!payload.product_name?.trim()||!payload.product_desc?.trim()||!payload.categorized_images?.length)throw fail(400,'请填写商品名称、资料并上传主体图');
     if(!imageAvailable())throw fail(503,'尚未配置图片服务，本次未提交构思或生图');
     payload.model=resolveImageModel(payload.model,configuration);
-    const tasks=slotPlan(payload).map(s=>({slot:s.slot,taskId:payload.agent_task_id+'_'+s.slot,aspect_ratio:payload.image_ratio}));
+    const tasks=slotPlan(payload).map(s=>({slot:s.slot,taskId:payload.agent_task_id+'_'+s.slot,aspect_ratio:payload.platform==='amazon'?s.ratio:payload.image_ratio}));
     if(!tasks.length||tasks.length>14)throw fail(400,'请选择有效的图片输出范围');
     return submitPlan(payload,{phase:'planning',tasks,signature});
   }
@@ -45,7 +44,7 @@ export function createSingleDesign({store,configuration,imageAvailable,submitPla
     const flow=task.singleDesign;
     const images=flow.tasks.map(({taskId,slot})=>{
       const image=store.state.tasks['hyrule_tasks/'+taskId];
-      return {taskId,slot,status:image?.status||'not_started',imageUrl:image?.imageUrl,error:image?.error,phase:image?.phase};
+      return {taskId,slot,status:image?.status||'not_started',imageUrl:image?.imageUrl,originalImageUrl:image?.originalImageUrl,dimensions:image?.dimensions,formatId:image?.formatId,error:image?.error,phase:image?.phase};
     });
     let phase=flow.phase,error=flow.error;
     if(task.status==='failed'){phase='failed';error=task.error;}
