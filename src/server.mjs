@@ -19,6 +19,7 @@ import {TEMU_MAX_SETS} from './temu.mjs';
 import {exportTemuSets} from './temu-export.mjs';
 import {createErpService,ERP_AUTOMATION_REVISION} from './erp.mjs';
 import {createSettings} from './settings.mjs';
+import {createBrowserConnections} from './browser-connections.mjs';
 import {createProductBatches} from './product-batches.mjs';
 import {createSingleDesign,SINGLE_DESIGN_REVISION} from './single-design.mjs';
 import {TEMU_DESIGN_REVISION} from './image-scope.mjs';
@@ -27,13 +28,13 @@ import {createWorkspace} from './workspace.mjs';
 import {prepareDesignResult,validateSingleDesignPlatform} from './design-platforms.mjs';
 
 export const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-export const WORKSPACE_REVISION='multi-platform-20261119-1';
+export const WORKSPACE_REVISION='multi-platform-20261119-2';
 const mimes = {'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json; charset=utf-8','.jpg':'image/jpeg','.png':'image/png','.webp':'image/webp','.svg':'image/svg+xml','.ico':'image/x-icon','.woff2':'font/woff2'};
 const validId = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,120}$/.test(value);
 const uuid = () => crypto.randomUUID();
 const fail = (status, message) => Object.assign(new Error(message), {status});
 
-export function createWorkbench({dataDirectory = path.join(root, 'data'), configuration = process.env, provider, download, planner, directionPlanner, titlePlanner, chineseTranslator, productRecognizer, copyRewriter, erpAdapter, sourcingClient, collectionAdapter, legacyUi = false, researchOptions = {}, settingsCodec} = {}) {
+export function createWorkbench({dataDirectory = path.join(root, 'data'), configuration = process.env, provider, download, planner, directionPlanner, titlePlanner, chineseTranslator, productRecognizer, copyRewriter, erpAdapter, sourcingClient, collectionAdapter, chromeInspector, legacyUi = false, researchOptions = {}, settingsCodec} = {}) {
   configuration={...configuration};
   const preferences=createSettings({directory:path.join(dataDirectory,'preferences'),configuration,legacyDirectory:configuration.WORKBENCH_FRESH==='true'?null:path.join(root,'../config'),codec:settingsCodec});
   const store = new Store(dataDirectory);
@@ -221,6 +222,7 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
   const products=createProductBatches({store,mediaDirectory,saveImage,multisets,erp,preferences,configuration,titlePlanner,chineseTranslator,productRecognizer,imageAvailable:()=>!!provider||!!configuration.SUANZHOU_IMAGE_API_KEY});
   const sourcing=createSourcing({directory:path.join(dataDirectory,'sourcing'),configuration,preferences,client:sourcingClient,adapter:collectionAdapter,isOtherBusy:()=>erp.isBusy()||products.isBusy()});
   const workspace=createWorkspace({store,preferences,products,multisets,erp,sourcing});
+  const browserConnections=createBrowserConnections({preferences,inspector:chromeInspector,isBusy:()=>active>0||queue.length>0||products.isBusy()||erp.isBusy()||sourcing.isBusy()});
 
   const server = http.createServer(async (request, response) => {
     try {
@@ -288,6 +290,8 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
         if(!draft){draft={id:uuid(),title:product.name,description:product.description,platform:'temu',skus:[],images,mainImages:[...images],detailImages:[...images],imageRatio:'1:1',skuPreviewPolicy:'preserve-source',imageRules:{detailImages:'same-as-main-images-in-order',skuPreview:'preserve-source'},sop:'',status:'draft',published:false,workspaceProductId:product.id,workspaceVersionId:version.id,workspaceFingerprint:fingerprint,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};store.state.drafts.unshift(draft);store.save();}
         return json(response,200,{draftId:draft.id});
       }
+      const chromeSettings=/^\/api\/settings\/chrome\/(inspect|suggest|save)$/.exec(pathname);
+      if(chromeSettings&&request.method==='POST')return json(response,200,await browserConnections[chromeSettings[1]](await body(request,100000)));
       if(sourcing.isBusy()&&request.method==='POST'&&['/api/settings','/api/temu/erp/','/api/products'].some(p=>pathname.startsWith(p)))throw fail(409,'选品或采集任务正在运行，请完成后再修改连接或操作ERP');
       if(pathname.startsWith('/api/sourcing')){
         const route=pathname.slice('/api/sourcing'.length);

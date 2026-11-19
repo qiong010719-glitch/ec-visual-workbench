@@ -1,37 +1,89 @@
 (() => {
   const $=id=>document.getElementById(id),escape=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   let token,settings,templates=[],storeStep='details';
+  let chromeBusy=false,chromeInspection=null,chromeBaseline=null,chromeFreeze=false;
   const editorStorage='merchant-store-editor-v1';
   const templateChecks=new Map();
   const templateSteps=new Map();
-  const api=async(route,p)=>{const response=await fetch(route,p===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json','X-Workbench-Token':token},body:JSON.stringify(p)});const value=await response.json();if(!response.ok)throw new Error(value.error||'请求失败');return value;};
+  const api=async(route,p)=>{const response=await fetch(route,p===undefined?{cache:'no-store'}:{method:'POST',headers:{'Content-Type':'application/json','X-Workbench-Token':token},body:JSON.stringify(p)});const value=await response.json().catch(()=>{throw Object.assign(new Error('后台返回异常，请检查工作台服务是否可用。'),{status:response.status});});if(!response.ok)throw Object.assign(new Error(value.error||'请求失败'),{status:response.status});return value;};
   function notice(message,error=false){$('notice').hidden=false;$('notice').className=error?'error':'';$('notice').textContent=message;}
   async function action(button,fn){button.disabled=true;try{await fn();}catch(e){notice(e.message,true);}finally{button.disabled=false;}}
   const formValue=form=>Object.fromEntries(new FormData(form));
   const uid=()=>crypto.randomUUID();
   const chromeBrowsers=()=>settings.browsers.filter(b=>b.type==='chrome');
+  const chromeLabel=browser=>browser.name+' · 端口 '+browser.debugPort;
   const erpProvider=e=>(settings.erpProviders||[{id:'dianxiaomi',name:'店小秘',loginUrl:'https://www.dianxiaomi.com/',listingPlatforms:['temu'],status:'已接入 Temu 半托管'}]).find(p=>p.id===(e?.provider||'dianxiaomi'));
   function erpFields(){const provider=erpProvider(formValue($('erpForm')));$('erpLoginUrl').value=provider?.loginUrl||'';$('erpProviderHint').textContent=settings.erpProviders?provider?.status||'':'新增妙手连接需在当前任务结束后重启工作台。已有店小秘连接仍可使用。';}
-  async function saveSettings(p){settings=await api('/api/settings',{revision:settings.revision,...p});renderSettings();try{localStorage.setItem('workbench-settings-changed',JSON.stringify({revision:settings.revision,at:Date.now()}));}catch{}notice('配置已保存在本机。');}
-  function renderSettings(){
+  function announceSettings(){const detail={revision:settings.revision,at:Date.now()};try{localStorage.setItem('workbench-settings-changed',JSON.stringify(detail));}catch{}window.dispatchEvent(new CustomEvent('workbench-settings-changed',{detail}));document.dispatchEvent(new CustomEvent('workspace:refresh'));}
+  async function saveSettings(p){settings=await api('/api/settings',{revision:settings.revision,...p});renderSettings({preserveModelInputs:!p.models});announceSettings();notice('配置已保存在本机。');}
+  function renderSettings({preserveModelInputs=false}={}){
     $('erpForm').elements.provider.querySelector('[value="miaoshou"]').disabled=!settings.erpProviders?.some(p=>p.id==='miaoshou');
-    for(const field of $('modelForm').elements)if(field.name&&field.type!=='password')field.value=settings.models[field.name]||'';
+    if(!preserveModelInputs)for(const field of $('modelForm').elements)if(field.name&&field.type!=='password')field.value=settings.models[field.name]||'';
     $('modelStatus').textContent=`图片密钥：${settings.models.SUANZHOU_IMAGE_API_KEYConfigured?'已配置':'未配置'}；文本密钥：${settings.models.PLANNER_API_KEYConfigured?'已配置':'未配置'}`;
-    $('browserList').innerHTML=chromeBrowsers().map(b=>`<div class="config-row"><div><strong>${escape(b.name)}</strong><small>谷歌 Chrome 专用窗口 · 保留登录状态</small></div><div><button data-browser-edit="${b.key}">编辑</button><button data-browser-check="${b.key}">检查连接</button><button data-browser-remove="${b.key}">删除</button></div></div>`).join('')||'<p class="muted">先保存下方谷歌浏览器配置，再添加 ERP 连接。</p>';
+    $('browserList').innerHTML=chromeBrowsers().map(b=>`<div class="config-row"><div><strong>${escape(chromeLabel(b))}</strong><small>独立 Chrome 窗口 · 保留此窗口的登录状态</small></div><div><button type="button" data-browser-edit="${escape(b.key)}">编辑</button><button type="button" data-browser-check="${escape(b.key)}" title="可能打开此窗口，与只读检查端口不同">打开 / 检查连接</button><button type="button" data-browser-remove="${escape(b.key)}">删除</button></div></div>`).join('')||'<p class="muted">尚未保存谷歌窗口。先新增独立窗口，再在 ERP 连接中选择它。</p>';
     $('storeList').innerHTML=settings.stores.map(s=>`<div class="config-row"><div><strong>${escape(s.expectedStore)} · ${escape(s.expectedSite)}</strong><small>${s.platform==='amazon'?'Amazon · 已绑定，自动发布待接入':'Temu · '+s.templates.length+' 个商品母稿'}</small></div><div><button data-store-edit="${s.key}">编辑</button><button data-store-remove="${s.key}">删除</button></div></div>`).join('')||'<p class="muted">先添加浏览器，再添加店铺与母稿。</p>';
-    const prior=$('erpForm').elements.browserKey.value;$('erpForm').elements.browserKey.innerHTML=chromeBrowsers().map(b=>`<option value="${b.key}">${escape(b.name)}</option>`).join('');if(chromeBrowsers().some(b=>b.key===prior))$('erpForm').elements.browserKey.value=prior;
+    const prior=$('erpForm').elements.browserKey.value;$('erpForm').elements.browserKey.innerHTML=(prior&&!chromeBrowsers().some(b=>b.key===prior)?`<option value="${escape(prior)}" disabled>原窗口已移除，请重新选择</option>`:'')+chromeBrowsers().map(b=>`<option value="${escape(b.key)}">${escape(chromeLabel(b))}</option>`).join('');if(prior)$('erpForm').elements.browserKey.value=prior;
     renderStoreErps();
-    $('erpList').innerHTML=settings.erpConnections.map(e=>{const p=erpProvider(e),browser=chromeBrowsers().find(b=>b.key===e.browserKey);return `<div class="config-row"><div><strong>${escape(e.name)}</strong><small>${escape(p.name)} · ${browser?escape(browser.name):'请编辑连接，改绑谷歌浏览器'}${e.expectedAccount?' · 配置账号 '+escape(e.expectedAccount):''}</small><small>${escape(p.status)}</small></div><div><button data-erp-edit="${e.key}">编辑</button><button data-erp-open="${e.key}" ${browser?'':'disabled'}>打开${escape(p.name)}登录</button><button data-erp-check="${e.key}" ${browser?'':'disabled'}>${p.id==='miaoshou'?'检查连接':'检查登录'}</button><button data-erp-remove="${e.key}">删除</button></div></div>`;}).join('')||'<p class="muted">保存谷歌浏览器后，在这里建立 ERP 账号连接。</p>';
-    erpFields();
+    $('erpList').innerHTML=settings.erpConnections.map(e=>{const p=erpProvider(e),browser=chromeBrowsers().find(b=>b.key===e.browserKey);return `<div class="config-row"><div><strong>${escape(e.name)}</strong><small>${escape(p.name)} · ${browser?escape(chromeLabel(browser)):'请编辑连接，改绑谷歌浏览器'}${e.expectedAccount?' · 配置账号 '+escape(e.expectedAccount):''}</small><small>${escape(p.status)}</small></div><div><button data-erp-edit="${e.key}">编辑</button><button data-erp-open="${e.key}" ${browser?'':'disabled'}>打开${escape(p.name)}登录</button><button data-erp-check="${e.key}" ${browser?'':'disabled'}>${p.id==='miaoshou'?'检查连接':'检查登录'}</button><button data-erp-remove="${e.key}">删除</button></div></div>`;}).join('')||'<p class="muted">保存谷歌浏览器后，在这里建立 ERP 账号连接。</p>';
+    erpFields();renderChromeChoices();
   }
   $('modelForm').onsubmit=e=>{e.preventDefault();action(e.submitter,async()=>{await saveSettings({models:formValue(e.target)});for(const el of e.target.querySelectorAll('input[type=password]'))el.value='';});};
-  function editBrowser(value){const saved=value||chromeBrowsers().find(b=>b.key===$('browserForm').elements.key.value)||chromeBrowsers()[0]||{key:'',name:'谷歌浏览器',debugPort:9222,executable:''};for(const el of $('browserForm').elements)if(el.name)el.value=el.name==='type'?'chrome':saved[el.name]??'';}
-  $('browserForm').onsubmit=e=>{e.preventDefault();action(e.submitter,async()=>{const value={...formValue(e.target),type:'chrome'};value.key||=chromeBrowsers()[0]?.key||uid();const list=settings.browsers.filter(b=>b.key!==value.key);list.push(value);await saveSettings({browsers:list});editBrowser(settings.browsers.find(b=>b.key===value.key));});};
-  $('resetBrowser').onclick=()=>editBrowser();
+  function chromeValue(){const fields=$('browserForm').elements;return {key:fields.key.value,type:'chrome',name:fields.name.value.trim(),debugPort:Number(fields.debugPort.value),executable:fields.executable.value.trim()};}
+  const chromeFingerprint=()=>JSON.stringify(chromeValue());
+  function chromeStatus(message,state='unchecked'){$('chromePortStatus').textContent=message;$('chromePortStatus').className='chrome-port-status '+state;$('chromePortStatus').setAttribute('role',['error','occupied','profile_running','unavailable'].includes(state)?'alert':'status');}
+  function chromeError(error){return error.status===404||error.status===405?'当前后台尚未提供谷歌端口设置，请更新或重启后台后重试。当前输入已保留。':error.name==='TypeError'?'无法连接工作台后台，请确认服务正在运行。当前输入已保留。':error.message+' 当前输入已保留。';}
+  function updateChromeControls(){
+    if(!settings)return;
+    const value=chromeValue(),existing=chromeBrowsers().find(browser=>browser.key===value.key),blocked=chromeInspection?.fingerprint===chromeFingerprint()&&['occupied','profile_running','unavailable'].includes(chromeInspection.state);
+    for(const id of ['savedChromeWindow','newChromeWindow','inspectChromePort','suggestChromePort','refreshChromeRevision'])$(id).disabled=chromeBusy;
+    $('resetBrowser').disabled=chromeBusy||!existing;$('saveChromeWindow').disabled=chromeBusy||blocked;
+    for(const field of $('browserForm').querySelectorAll('input:not([type="hidden"])'))field.readOnly=chromeBusy&&chromeFreeze;
+    for(const button of $('browserList').querySelectorAll('button'))button.disabled=chromeBusy;
+    $('chromeEditorTitle').textContent=existing?'编辑窗口 · '+existing.name:'新增独立窗口';
+    $('chromeDraftStatus').textContent=existing&&chromeBaseline===chromeFingerprint()?'已保存配置':'尚未保存';
+    const erps=settings.erpConnections.filter(erp=>erp.browserKey===value.key),keys=new Set(erps.map(erp=>erp.key)),stores=settings.stores.filter(store=>keys.has(store.erpKey));
+    $('chromeImpactHint').hidden=!existing||!stores.length;
+    $('chromeImpactHint').textContent=stores.length?`此窗口关联 ${erps.length} 条 ERP 连接、${stores.length} 家店铺。更改连接后，相关店铺的母稿需重新核对；历史任务保留原绑定。`:'';
+  }
+  function renderChromeChoices(){
+    const current=$('browserForm').elements.key.value,exists=chromeBrowsers().some(browser=>browser.key===current);
+    $('savedChromeWindow').innerHTML=(exists?'':'<option value="">'+(current?'新增独立窗口（尚未保存）':'请选择已保存窗口')+'</option>')+chromeBrowsers().map(browser=>`<option value="${escape(browser.key)}">${escape(chromeLabel(browser))}</option>`).join('');
+    $('savedChromeWindow').value=exists?current:'';updateChromeControls();
+  }
+  function editBrowser(value){
+    const saved=value||chromeBrowsers().find(browser=>browser.key===$('browserForm').elements.key.value)||chromeBrowsers()[0];
+    const draft=saved||{key:uid(),type:'chrome',name:'谷歌窗口 1',debugPort:'',executable:''};
+    for(const field of $('browserForm').elements)if(field.name)field.value=field.name==='type'?'chrome':draft[field.name]??'';
+    chromeBaseline=saved?chromeFingerprint():null;chromeInspection=null;$('refreshChromeRevision').hidden=true;renderChromeChoices();chromeStatus(saved?'已载入保存的窗口配置。检查端口可确认当前是否可用。':'请填写新窗口名称，并选择一个空闲端口。');
+  }
+  function newBrowser(){
+    const draft={key:uid(),type:'chrome',name:'谷歌窗口 '+(chromeBrowsers().length+1),debugPort:'',executable:''};
+    for(const field of $('browserForm').elements)if(field.name)field.value=draft[field.name]??'';
+    chromeBaseline=null;chromeInspection=null;$('refreshChromeRevision').hidden=true;renderChromeChoices();chromeStatus('正在为新窗口选择空闲端口；原有窗口配置会保留。');
+  }
+  function validateChrome(requireName=false){const value=chromeValue();if(requireName&&!value.name)throw new Error('请填写连接名称。');if(!Number.isInteger(value.debugPort)||value.debugPort<1024||value.debugPort>65535)throw new Error('请填写 1024—65535 之间的整数端口。');return value;}
+  async function chromeAction(fn,{freeze=false}={}){
+    if(chromeBusy||!settings)return;chromeBusy=true;chromeFreeze=freeze;updateChromeControls();
+    try{await fn();}catch(error){chromeStatus(chromeError(error),'error');if(error.status===409)$('refreshChromeRevision').hidden=false;}
+    finally{chromeBusy=false;chromeFreeze=false;updateChromeControls();}
+  }
+  function acceptChromeSettings(next){settings=next;renderSettings({preserveModelInputs:true});if(templates.length)paintTemplateStatus();announceSettings();}
+  async function chooseChromePort(){
+    await chromeAction(async()=>{const fingerprint=chromeFingerprint(),key=chromeValue().key;chromeStatus('正在查找空闲端口…');const result=await api('/api/settings/chrome/suggest',{browserKey:key});if(fingerprint!==chromeFingerprint()){chromeStatus('输入已变化，未应用旧的端口建议，请重新选择。');return;}if(!Number.isInteger(result.debugPort))throw new Error('后台未返回有效的空闲端口。');$('browserForm').elements.debugPort.value=result.debugPort;chromeInspection=null;chromeStatus((result.message||'已选择空闲端口 '+result.debugPort)+' 点击“保存并应用”后生效。','suggested');});
+  }
+  $('savedChromeWindow').onchange=()=>{const saved=chromeBrowsers().find(browser=>browser.key===$('savedChromeWindow').value);if(saved)editBrowser(saved);};
+  $('newChromeWindow').onclick=async()=>{if(chromeBusy||!settings)return;newBrowser();await chooseChromePort();};
+  $('browserForm').addEventListener('input',()=>{chromeInspection=null;chromeStatus('配置已修改，请重新检查当前端口。');updateChromeControls();});
+  $('browserForm').addEventListener('change',()=>{chromeInspection=null;chromeStatus('配置已修改，请重新检查当前端口。');updateChromeControls();});
+  $('inspectChromePort').onclick=()=>chromeAction(async()=>{const value=validateChrome(),fingerprint=chromeFingerprint();chromeStatus('正在只读检查端口 '+value.debugPort+'…');const result=await api('/api/settings/chrome/inspect',{browser:{key:value.key,name:value.name||undefined,debugPort:value.debugPort,executable:value.executable}});if(fingerprint!==chromeFingerprint()){chromeStatus('输入已变化，刚才的检测结果已失效，请重新检查。');return;}chromeInspection={...result,fingerprint};chromeStatus(result.message||'端口检查完成。',result.state||'unavailable');});
+  $('suggestChromePort').onclick=chooseChromePort;
+  $('browserForm').onsubmit=event=>{event.preventDefault();chromeAction(async()=>{const browser=validateChrome(true),next=await api('/api/settings/chrome/save',{revision:settings.revision,browser});acceptChromeSettings(next);editBrowser(settings.browsers.find(saved=>saved.key===browser.key));chromeStatus(`已保存并应用：${chromeLabel(browser)}。关联的 ERP 与整个工作台会使用这份配置。`,'saved');notice('谷歌窗口配置已保存并应用。');},{freeze:true});};
+  $('resetBrowser').onclick=()=>chromeAction(async()=>{const key=chromeValue().key,next=await api('/api/settings');acceptChromeSettings(next);const saved=chromeBrowsers().find(browser=>browser.key===key);if(!saved)throw new Error('该窗口已在其他页面移除，请选择其他窗口或新增。');editBrowser(saved);chromeStatus('已从后台重新读取并恢复该窗口配置。');},{freeze:true});
+  $('refreshChromeRevision').onclick=()=>chromeAction(async()=>{acceptChromeSettings(await api('/api/settings'));chromeInspection=null;$('refreshChromeRevision').hidden=true;chromeStatus('已读取最新后台配置；当前窗口输入已保留，请核对后再次保存。');},{freeze:true});
   $('browserList').onclick=e=>{const b=e.target.closest('button');if(!b)return;action(b,async()=>{
     if(b.dataset.browserEdit)editBrowser(chromeBrowsers().find(v=>v.key===b.dataset.browserEdit));
     if(b.dataset.browserCheck){await api('/api/temu/erp/connection',{browserKey:b.dataset.browserCheck});notice('浏览器已连接，请在 ERP 连接中打开或检查对应的登录页面。');}
-    if(b.dataset.browserRemove){if(!confirm('删除这个浏览器配置？关联店铺需先改用其他连接。'))return;await saveSettings({browsers:settings.browsers.filter(v=>v.key!==b.dataset.browserRemove)});editBrowser();}
+    if(b.dataset.browserRemove){if(!confirm('删除这个浏览器配置？关联店铺需先改用其他连接。'))return;const selected=$('browserForm').elements.key.value;await saveSettings({browsers:settings.browsers.filter(v=>v.key!==b.dataset.browserRemove)});if(selected===b.dataset.browserRemove)editBrowser();}
   });};
   $('erpForm').elements.provider.onchange=erpFields;
   $('resetErp').onclick=()=>{$('erpForm').reset();$('erpForm').elements.key.value='';erpFields();};
