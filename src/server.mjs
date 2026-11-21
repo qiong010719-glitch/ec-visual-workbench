@@ -14,6 +14,7 @@ import {imageModels,resolveImageModel} from './image-models.mjs';
 import {TaobaoBenchmarks} from './taobao-benchmarks.mjs';
 import {validateTaobaoDraft} from './taobao-drafts.mjs';
 import {hydrateModelPayload,MODEL_IDENTITY_VERSION,MODEL_PLACEMENT_VERSION,modelDirection,modelPresence} from './taobao-model.mjs';
+import {validateSkuInputs,SKU_INPUT_VERSION} from './taobao-sku.mjs';
 import {createModelGeneration,MODEL_GENERATION_VERSION,imageHash} from './taobao-model-generation.mjs';
 
 export const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -127,6 +128,7 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
     const agent = store.state.tasks['agent_tasks/' + payload.agent_task_id];
     if(kind==='generate'&&!payload.mobile_reformat){
       payload=hydrateModelPayload(benchmarks.hydrate({...agent?.payload,...payload}),mediaDirectory,store.state.tasks);
+      validateSkuInputs(payload,slotPlan(payload));
       const bindings=p=>(p?.slot_directives||[]).filter(d=>d.benchmark).map(d=>[Number(d.slot??d.index),d.benchmark]).sort((a,b)=>a[0]-b[0]);
       if(agent?.plan&&JSON.stringify(bindings(payload))!==JSON.stringify(bindings(agent.payload)))throw fail(409,'对标绑定已改变，请重新构思后生成；没有提交出图请求。');
     }
@@ -144,7 +146,7 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
       let prompt=[payload.mobile_reformat?`将这张 A+ 图片重新排版为适合手机阅读的 4:3 单张图。保留产品和所有已提供的文案，文字清晰，版面简洁，不添加新卖点。标题：${task.title || ''}`:
         ordinary?promptForSlot(payload,section,design):kind==='ultra'?[payload.prompt || payload.sop_text,design.styleGuide,section?.detail || design.text].filter(Boolean).join('\n\n'):payload.prompt || payload.sop_text || design.text,
         ordinary?'':payload.strict_requirements || '',directive?JSON.stringify(directive):''].filter(Boolean).join('\n');
-      const names=directive?.ref_images?.length?directive.ref_images:ordinary?section?.ref_images:[];
+      const names=ordinary&&section?.outputRole==='sku'?section.ref_images:directive?.ref_images?.length?directive.ref_images:ordinary?section?.ref_images:[];
       const selected=names?.length?(merged.categorized_images || []).filter(m=>names.includes(m.filename)).map(m=>m.url):references(merged);
       if(directive?.ref_images?.length && selected.length!==new Set(directive.ref_images).size)throw fail(400,'逐张要求引用了不存在的产品参考图');
       let refs=payload.mobile_reformat?[task.source_image_url]:selected.length?selected:references(merged);
@@ -214,7 +216,7 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
       if(pathname==='/api/taobao/benchmark-analyses'&&request.method==='POST')return json(response,202,benchmarks.createAnalysis(await body(request,16000),enqueue));
       if(pathname.startsWith('/api/taobao/benchmarks/')&&request.method==='GET')return json(response,200,benchmarks.get(pathname.slice('/api/taobao/benchmarks/'.length)));
       if(pathname.startsWith('/api/taobao/benchmark-analyses/')&&request.method==='GET')return json(response,200,benchmarks.analysis(pathname.slice('/api/taobao/benchmark-analyses/'.length)));
-      if (pathname === '/api/status') return json(response,200,{mode:'local',modelIdentityVersion:MODEL_IDENTITY_VERSION,modelPlacementVersion:MODEL_PLACEMENT_VERSION,modelGenerationVersion:MODEL_GENERATION_VERSION, isolatedPreview:configuration.WORKBENCH_STYLE_PREVIEW==='true', imageProvider:provider ? 'test-fixture' : 'configured-image-api', imageConfigured:!!provider || !!configuration.SUANZHOU_IMAGE_API_KEY, model:resolveImageModel(undefined,configuration), imageModels, planner:configuration.PLANNER_API_KEY ? 'configured' : 'local-rules', active, queued:queue.length,downloadProxyConfigured:!!configuration.IMAGE_DOWNLOAD_PROXY,downloadRecoveryEnabled:true,recoverableDownloads:Object.values(store.state.tasks).filter(t=>t.resultUrl&&t.status==='failed'&&t.phase!=='edit_rejected' && !t.textMove).length, defaultProductStatus:'draft', paymentEnabled:false, publishEnabled:false});
+      if (pathname === '/api/status') return json(response,200,{mode:'local',skuInputVersion:SKU_INPUT_VERSION,modelIdentityVersion:MODEL_IDENTITY_VERSION,modelPlacementVersion:MODEL_PLACEMENT_VERSION,modelGenerationVersion:MODEL_GENERATION_VERSION, isolatedPreview:configuration.WORKBENCH_STYLE_PREVIEW==='true', imageProvider:provider ? 'test-fixture' : 'configured-image-api', imageConfigured:!!provider || !!configuration.SUANZHOU_IMAGE_API_KEY, model:resolveImageModel(undefined,configuration), imageModels, planner:configuration.PLANNER_API_KEY ? 'configured' : 'local-rules', active, queued:queue.length,downloadProxyConfigured:!!configuration.IMAGE_DOWNLOAD_PROXY,downloadRecoveryEnabled:true,recoverableDownloads:Object.values(store.state.tasks).filter(t=>t.resultUrl&&t.status==='failed'&&t.phase!=='edit_rejected' && !t.textMove).length, defaultProductStatus:'draft', paymentEnabled:false, publishEnabled:false});
       if (pathname === '/api/research/status' && request.method === 'GET') return json(response,200,research.status());
       if (pathname === '/api/research/design-patterns' && request.method === 'GET') return json(response,200,designPatterns(research.library.state));
       if (pathname === '/api/research/products' && request.method === 'GET') return json(response,200,Object.values(research.library.state.products).map(p=>({id:p.id,title:p.title,brand:p.brand,asin:p.asin,url:p.url,category:p.category,categoryMemberships:p.categoryMemberships||[],styleProfileIds:p.styleProfileIds||[],collectionIds:p.collectionIds||[],rank:p.rank,rankBasis:p.rankBasis,provenance:p.provenance,aplusStatus:p.aplusStatus,images:p.assets.length,downloaded:p.assets.filter(a=>a.status==='downloaded').length,analysisStatus:p.analysis?.status || 'pending',analysisError:p.analysis?.error || null,thumbnail:p.assets.find(a=>a.localUrl)?.localUrl || null,warnings:p.warnings})));
@@ -272,6 +274,7 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
         const prior = store.state.tasks[key];
         if (prior) return json(response,200,{ok:true,task_id:payload.agent_task_id},{'X-Request-Id':prior.requestId});
         payload=hydrateModelPayload(benchmarks.hydrate(payload),mediaDirectory,store.state.tasks);
+        validateSkuInputs(payload,slotPlan(payload));
         const requestId = uuid();
         store.task(key,{status:'pending',payload,requestId,createdAt:new Date().toISOString()});
         createCharge(requestId,[payload.agent_task_id],0);

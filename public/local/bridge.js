@@ -21,6 +21,12 @@
         let payload;
         try {payload=JSON.parse(init.body);}catch{}
         if(payload && typeof payload==='object') {
+          if(['/api/agent','/api/generate'].includes(url.pathname)&&!payload.mobile_reformat&&window.prepareTaobaoSkuPayload){
+            try{payload=await window.prepareTaobaoSkuPayload(payload);}catch(error){
+              window.aquaNotify?.('SKU规格',error.message,'⚠️');
+              return new Response(JSON.stringify({error:error.message}),{status:409,headers:{'Content-Type':'application/json'}});
+            }
+          }
           if(['/api/agent','/api/generate'].includes(url.pathname)&&!payload.mobile_reformat&&window.prepareTaobaoModelPayload){
             try{payload=await window.prepareTaobaoModelPayload(payload);}catch(error){
               window.aquaNotify?.('模特设置',error.message,'⚠️');

@@ -17,12 +17,12 @@ const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR
 
 test('Taobao selected ratios reach planning before image generation, including plain and custom sizes', () => {
   const raw = [{slot:0, requirement:'主图'}, {slot:1}, {slot:7, requirement:'详情'}];
-  const base = {mainCount:1, skuCount:1, detailCount:1, detailWhitespace:false, setStyle:'original'};
+  const base = {mainCount:1, skuCount:1, detailCount:1, detailWhitespace:false, setStyle:'original',skuMode:'manual',skuSpecs:[{unit:'cm',width:'40',height:'60'}]};
   for (const [customSizes, expected] of [[{}, ['1:1','1:1','3:4']],
     [{main:{width:800,height:1200},sku:{width:1000,height:800},detail:{width:900,height:1600}}, ['2:3','5:4','9:16']]]) {
     const slot_directives = layout.annotateDirectives(raw, {...base, customSizes}).directives;
     for (const visual_style of ['original','scene_advertising']) {
-      const plan = buildPlan({design_scope:'custom',custom_layout:{main:1,sub:1,aplus:1},slot_directives,visual_style});
+      const plan = buildPlan({design_scope:'custom',custom_layout:{main:1,sub:1,aplus:1},slot_directives,visual_style,categorized_images:[{filename:'产品主体图_1',url:'/media/product.png'}]});
       assert.deepEqual(plan.sections.map(s=>s.ratio), expected);
       assert.match(plan.sections[2].detail, /竖版/);
       assert.doesNotMatch(plan.text, /21:9|横幅|宽幅/);
@@ -305,6 +305,8 @@ test('everyday menus offer only the Taobao shell and CN, while hidden ids stay s
     Object.defineProperty(el, 'offsetWidth', {get() { return 280; }});
     Object.defineProperty(el, 'offsetHeight', {get() { return 160; }});
     el.closest = () => null;
+    el.setAttribute=(key,value)=>{el._attrs[key]=String(value);};
+    el.getAttribute=key=>el._attrs[key] ?? null;
     el.querySelectorAll = selector => descendants(el).filter(node => matches(node, selector));
     el.querySelector = selector => el.querySelectorAll(selector)[0] || null;
     if (tag === 'select') {
@@ -567,6 +569,8 @@ test('chosen set style is copied into every active slot prompt, including a one-
     {slot:1, title:'【卖点图1】', requirement:null, ref_images:[]},
     {slot:7, title:'【高级A+模块1】', requirement:'详情要求', ref_images:[]}
   ], spec).directives;
+  // This test reuses a saved legacy plan; explicit new input modes are tested separately.
+  dirs.forEach(d=>delete d.sku_input);
   const sent = await call('/api/generate', {
     agent_task_id:'tb_style', sop_text:agent.result, design_scope:'custom', custom_layout:layoutPayload,
     firebase_tasks:dirs.map(item => ({slot:item.slot, taskId:'tb_style_' + item.slot, aspect_ratio:layout.ratioForZone(layout.zoneForSlot(item.slot, spec).zone, spec)})),
@@ -683,6 +687,7 @@ test('custom width and height use generation while legacy text positions do not'
     {slot:1, title:'【卖点图1】', requirement:'SKU卖点原文', ref_images:[]},
     {slot:7, title:'【高级A+模块1】', requirement:'详情要求：已有风格句不要清掉', ref_images:[]}
   ], spec).directives;
+  dirs.forEach(d=>delete d.sku_input); // Saved legacy plan without the new source selector.
   const sent = await call('/api/generate', {
     agent_task_id:'tb_place', sop_text:agent.result, design_scope:'custom', custom_layout:layoutPayload,
     firebase_tasks:dirs.map(item => ({slot:item.slot, taskId:'tb_place_' + item.slot, aspect_ratio:layout.ratioForZone(layout.zoneForSlot(item.slot, spec).zone, spec)})),
@@ -761,6 +766,7 @@ test('SKU slot generate uses uploaded SKU photos and keeps the main-product path
   assert.deepEqual(agent.plan.sections.find(item => item.slot === 1).ref_images, ['产品主体图_1']);
   assert.deepEqual(agent.plan.sections.find(item => item.slot === 2).ref_images, ['产品主体图_1']);
   const styled = layout.annotateDirectives(raw, spec).directives;
+  styled.forEach(d=>delete d.sku_input); // Preserve the legacy fallback contract only for old plans.
   const old = await call('/api/generate', {
     agent_task_id:'tb_sku_refs', sop_text:agent.result, design_scope:'custom', custom_layout:layoutPayload,
     categorized_images:withSku,
@@ -916,6 +922,8 @@ test('gallery has no text movement controls while custom sizes, SKU references a
       visit(node);
       return found;
     };
+    el.setAttribute=(key,value)=>{el._attrs[key]=String(value);};
+    el.getAttribute=key=>el._attrs[key] ?? null;
     el.querySelectorAll = selector => walk(el).filter(node => matches(node, selector));
     el.querySelector = selector => el.querySelectorAll(selector)[0] || null;
     if (tag === 'select') {
@@ -1065,8 +1073,9 @@ test('gallery has no text movement controls while custom sizes, SKU references a
   assert.equal(inLegacy, false);
   assert.equal(document.getElementById('taobaoShell').hidden, false);
   assert.equal(document.getElementById('tbSkuFile').type, 'file');
-  assert.equal(document.getElementById('tbSkuUploadCount').textContent, '还没有 SKU 图');
-  assert.match(document.getElementById('tbSkuUploadHint').textContent, /没传规格图时只按本品外观/);
+  assert.equal(document.getElementById('tbSkuUploadCount').textContent, '已上传 0 张 SKU 图');
+  assert.match(document.getElementById('tbSkuManual').textContent, /没有 SKU 图.*填写尺寸/);
+  assert.match(document.getElementById('tbSkuUploadHint').textContent, /按提供的SKU图生成规格图片/);
   assert.match(document.getElementById('tbSkuUploadHint').textContent, /上传数量不改变出图张数/);
   const bare = sandbox.buildSlotDirectives();
   assert.equal(JSON.stringify(bare.find(item => item.slot === 5).ref_images), '[]');

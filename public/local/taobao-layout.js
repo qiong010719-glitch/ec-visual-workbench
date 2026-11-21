@@ -34,7 +34,7 @@
     mainCount:5, skuCount:1, detailCount:3,
     sizes:{main:'square', sku:'square', detail:'portrait'},
     customSizes:{main:null, sku:null, detail:null},
-    detailWhitespace:true, background:'off', setStyle:'off'
+    detailWhitespace:true, background:'off', setStyle:'off', skuMode:'photo', skuSpecs:[]
   };
   function clampInt(value, min, max) {
     const n = Number.parseInt(value, 10);
@@ -89,7 +89,13 @@
       customSizes: customSizesOf(spec || DEFAULTS),
       detailWhitespace: !!(spec && Object.prototype.hasOwnProperty.call(spec, 'detailWhitespace') ? spec.detailWhitespace : DEFAULTS.detailWhitespace),
       background: spec?.background === 'white' || spec?.background === 'transparent' ? spec.background : 'off',
-      setStyle: styleOf(spec).id
+      setStyle: styleOf(spec).id,
+      skuMode:spec?.skuMode==='manual'?'manual':'photo',
+      skuSpecs:Array.from({length:6},(_,i)=>{
+        const value=spec?.skuSpecs?.[i] || {};
+        return {name:String(value.name || '').slice(0,80),unit:['mm','cm','m'].includes(value.unit)?value.unit:'cm',
+          ...Object.fromEntries(['length','width','height','depth'].map(key=>[key,String(value[key] ?? '').slice(0,20)]))};
+      })
     };
   }
   function styleOf(spec) {
@@ -208,6 +214,7 @@
     return `本张 SKU 图以已上传的规格图「${filename}」为参考。完整展示这一款商品，保留清晰可辨的尺寸、单位、颜色和款式；清理截图界面，不做卖点拼版。不要只按产品主体图来画，也不要换成其他规格。`;
   }
   function attachSkuRefs(directives, spec, photos) {
+    if(spec?.skuMode==='manual')return {directives:(directives || []).map(item=>zoneForSlot(item.slot,spec)?.zone==='sku'?{...item,ref_images:[]}:item),attached:false};
     const names = [];
     for (const photo of photos || []) {
       const name = (typeof photo === 'string' ? photo : photo?.filename || '').trim();
@@ -241,6 +248,10 @@
       const next = {...item};
       if (zone) {
         next.taobao_role = zone;
+        if(zone==='sku'){
+          const normalized=normalize(spec),index=zoneForSlot(item.slot,spec).index-1;
+          next.sku_input={version:1,mode:normalized.skuMode,...(normalized.skuMode==='manual'?normalized.skuSpecs[index]:{})};
+        }else delete next.sku_input;
         next.aspect_ratio = ratioForZone(zone, spec);
         if (item.title) next.title = item.slot === 0 ? '【主图】' : item.slot < 7 ? `【卖点图${item.slot}】` : `【高级A+模块${item.slot - 6}】`;
       }
