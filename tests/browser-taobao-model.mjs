@@ -37,11 +37,19 @@ try{
   checks.push('默认否；选是无人物图时提前阻断；上传独立人物参考，不污染本品或SKU素材');
   await plan();await page.locator('#mainBtn').click();await page.waitForFunction(()=>[0,1,7].every(i=>imageSlots[i]?.url)&&activeKieTasks.length===0);
   await page.locator('#_ratingSkip').waitFor({state:'visible'});await page.locator('#_ratingSkip').click();assert.equal(calls.length,3);
-  for(const call of calls){assert.equal(call.references.at(-1),identity.references[0].url);assert.match(call.prompt,/模特出镜：是/);}
+  assert.equal(calls.filter(call=>call.references.includes(identity.references[0].url)).length,1);
+  for(const call of calls.filter(call=>!call.references.includes(identity.references[0].url)))assert.match(call.prompt,/本图人物安排：不出镜/);
   const urls=await page.evaluate(()=>imageSlots.map(i=>i?.url));
+  const agent=Object.values(app.store.state.tasks).find(task=>task.plan);
+  delete agent.plan.modelPlacementVersion;app.store.save();
+  await page.locator('#nav-dash').click();await page.locator('#mainBtn').click();
+  await page.locator('#logContent').filter({hasText:'模特分镜规则已更新'}).waitFor();
+  assert.equal(calls.length,3);assert.deepEqual(await page.evaluate(()=>imageSlots.map(i=>i?.url)),urls);
+  agent.plan.modelPlacementVersion=1;app.store.save();
+  checks.push('旧全人物方案在服务端拒绝，页面保留已有成图，未新增模拟生图调用');
   await page.reload({waitUntil:'networkidle'});await page.waitForFunction(()=>__idbRestored&&imageSlots[7]?.url);await page.locator('#nav-dash').click();
   assert.equal(await page.locator('#tbModelPresence').inputValue(),'yes');assert.deepEqual(await page.evaluate(()=>TaobaoModelState.capture()),identity);
-  checks.push('主图/SKU/详情实际模拟请求使用同一模特URL和身份；刷新保留开关、参考与已有图');
+  checks.push('仅人物主图携带固定模特；SKU与本次静物详情不携带人物参考；刷新保留模特和已有图');
   await page.locator('#localDraftButton').click();await page.locator('#draftNew').click();await page.locator('#draftTitle').fill('模特草稿');await page.locator('#draftForm button[type="submit"]').click();await page.locator('#draftError').filter({hasText:'已保存'}).waitFor();
   const saved=app.store.state.drafts.find(d=>d.title==='模特草稿');assert.equal(saved.workbench.modelIdentity.id,identity.id);
   await page.locator('#localDraftEditor [data-close]').click();await page.locator('#tbModelClear').click();await page.locator('#tbModelPresence').selectOption('no');
@@ -58,7 +66,8 @@ try{
   assert.equal(calls.length,6);for(const call of calls.slice(3)){assert.ok(!call.references.includes(identity.references[0].url));assert.match(call.prompt,/模特出镜：否/);}
   assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
   checks.push('切换否并重新构思后，全部图片请求不再携带模特图并明确不出镜');
-  const oldStatus=await(await fetch(base+'/api/status')).json();delete oldStatus.modelIdentityVersion;
+  await page.locator('#nav-dash').click();await page.locator('#tbModelPresence').selectOption('yes');
+  const oldStatus=await(await fetch(base+'/api/status')).json();delete oldStatus.modelPlacementVersion;
   await page.route(base+'/api/status',route=>route.fulfill({json:oldStatus}));
   await page.reload({waitUntil:'networkidle'});await page.waitForFunction(()=>__idbRestored);await page.locator('#nav-dash').click();
   const requestCount=requests.length;await page.locator('#agentBtn').click();

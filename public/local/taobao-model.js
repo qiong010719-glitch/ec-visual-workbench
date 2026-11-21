@@ -64,6 +64,7 @@
     if(busy)throw Error('请等待当前模特操作完成。');
     const status=await LocalWorkbench.imageModelStatus();
     if(status.modelIdentityVersion!==1)throw Error('本地服务尚未加载模特功能，请重启本项目服务并刷新网页；没有提交构思或出图。');
+    if(state.enabled&&status.modelPlacementVersion!==1)throw Error('本地服务尚未加载模特分镜修正，请重启本项目服务并刷新网页；没有提交构思或出图。');
     if(state.enabled&&state.source==='generated'&&status.modelGenerationVersion!==1)throw Error('本地服务尚未加载系统模特功能，请重启本项目服务并刷新网页；没有提交构思或出图。');
     if(state.enabled&&!state.references?.length)throw Error('已选择模特出镜，请先上传模特图，或生成候选后点击“使用这位模特”。');
     return {...payload,model_identity:state.enabled?copy():{version:1,enabled:false}};
@@ -83,7 +84,7 @@
     panel.style.cssText='border:1px solid #6b91a8;padding:12px;margin:12px 0;border-radius:10px;background:#101b2a88;font-size:12px';
     panel.innerHTML=`<label style="display:flex;gap:12px;align-items:center;font-weight:bold">是否模特出镜
       <select id="tbModelPresence" style="background:#0f172a;color:#fff;padding:6px;border-radius:6px"><option value="no">否 · 只展示商品</option><option value="yes">是 · 使用固定模特</option></select></label>
-      <p class="local-muted">选“是”后，主图、SKU和详情均使用同一位模特；SKU仍以商品和规格为主。图片与后续AI视频共用此人物参考，实际结果需核对是否同一人。</p>
+      <p class="local-muted">选“是”后，人物镜头使用同一位模特，不会每张都有人。首张主图由模特辅助展示；其余按分镜保留静物、微距、结构、仅手部与场景图。SKU图只展示商品和规格。图片与后续AI视频共用此人物参考，实际结果需核对是否同一人。</p>
       <div id="tbModelControls" hidden><p>上传或生成一位模特，选定后固定复用。后续视频使用这位模特及已确认的成图；视频生成功能尚未接入。</p>
       <label>模特来源 <select id="tbModelSource" style="background:#0f172a;color:#fff;padding:6px;border-radius:6px"><option value="upload">客户上传</option><option value="generated">系统生成</option></select></label>
       <div id="tbModelUploadArea" style="margin:8px 0"><p>上传一张单人、脸部清晰的模特图。</p><button id="tbModelUpload" type="button">上传固定模特参考图</button><input id="tbModelFile" type="file" accept="image/png,image/jpeg,image/webp" hidden></div>

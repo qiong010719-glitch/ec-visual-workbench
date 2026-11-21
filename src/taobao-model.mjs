@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import {generatedModelIdentity} from './taobao-model-generation.mjs';
 
 export const MODEL_IDENTITY_VERSION=1;
+export const MODEL_PLACEMENT_VERSION=1;
 const fail=message=>{throw Object.assign(Error(message),{status:400});};
 
 export function hydrateModelIdentity(value,mediaDirectory,{draft=false,tasks}={}) {
@@ -39,38 +40,53 @@ export function hydrateModelPayload(payload,mediaDirectory,tasks) {
   return {...payload,model_identity:identity};
 }
 
-export function modelDirection(payload,section={}) {
+// Casting fixes the identity of a person, not the content of every shot.
+export function modelPresence(payload,section) {
+  if(!payload.model_identity?.enabled||section.outputRole==='sku'||section.outputConstraint)return 'none';
+  const board=section.storyboard;
+  if(['none','hands','person'].includes(board?.humanPresence))return board.humanPresence;
+  if(board)return board.sceneType==='lifestyle'&&board.productRole!=='detail'?'person':'none';
+  // The hero can introduce the chosen model. Other unstructured layouts keep
+  // their original product/detail purpose; only scene/process slots use people.
+  if([0,3,7,9].includes(section.slot))return 'person';
+  if([10,12].includes(section.slot))return 'hands';
+  return 'none';
+}
+
+export function modelDirection(payload,section) {
   const identity=payload.model_identity;
   if(!identity)return '';
   if(!identity.enabled)return '模特出镜：否。本张只展示商品、物件或无人环境，不出现人物、脸、身体、手部或人物倒影。此设置优先于风格、对标和自动分镜中的人物安排。';
+  if(!section)return '模特出镜：是，按逐图分镜安排。固定模特只约束人物身份，不要求每张有人；保留无人静物、商品微距、结构图、仅手部操作与人物场景的不同用途。SKU规格图不添加模特。只有人物或手部镜头使用绑定的人物参考，图片与后续视频共用同一人物身份，不借用对标人物。不得为展示人脸而改变原镜头、商品比例或信息版式。';
+  const presence=modelPresence(payload,section);
+  if(presence==='none')return '本图人物安排：不出镜。保持本图的商品、微距、结构或规格用途，不出现人物、脸、身体、手部或人物倒影；即使整套启用了固定模特，本图也不添加人物，不采用人物参考或其他图的人物构图。参考图片里附带的人物不复刻。本图安排优先于通用风格和文字方案中的人物建议，已有商品画面中的印刷人像不作人物出镜处理。';
   return [
-    '模特出镜：是。本张必须出现所绑定参考图中的同一位模特，面部清晰可辨；保持其脸型、五官、发型、肤色、体态与服装，不随机换人，不把对标中的人当成本次模特，不增加第二位模特。',
+    presence==='hands'?'本图人物安排：仅手部。只保留原分镜需要的操作手部，肤色、袖口与绑定模特一致；不出现脸部、全身或人物肖像，不为识别人脸而拉远镜头。':'本图人物安排：人物出镜。使用所绑定参考图中的同一位模特，保持其脸型、五官、发型、肤色、体态与服装，不随机换人，不借用对标人物，不增加第二位模特。人物服从本图的场景与动作，不强制正面看镜头或全身展示。',
     '模特参考只定义人物身份，本品/SKU参考只定义商品。人物自然展示或配合商品的已知用途，不让商品被人体遮挡或变形，不凭空演示未知功能。',
-    section.outputRole==='sku'?'SKU图仍以完整商品及清晰规格为主，模特位于商品侧面，不遮挡尺寸、部件和规格文字，不改成小商品卖点拼版。':'本图兼顾完整商品和可辨认的模特，动作与镜头可以变化，但不通过换脸、换发型或换衣服制造多样性。',
-    '图片与后续视频共用这份人物参考。此设置优先于自动分镜的无人或仅手部安排；不得把规则、参考编号或文件名印到画面上。'
+    '保留本图原定镜头、商品比例、版式和信息重点，不改成统一的人物站在商品旁的海报；人物身份一致不等于构图一致。不得把规则、参考编号或文件名印到画面上。'
   ].join('\n');
 }
 
-export function modelStoryboard(board,payload,slot=0) {
+export function modelStoryboard(board,payload) {
   if(!board||!payload.model_identity)return board;
   const enabled=payload.model_identity.enabled;
   if(!enabled&&board.humanPresence==='none')return board;
-  if(enabled&&board.humanPresence==='person')return {...board,scene:board.scene+'；所有人物画面均使用绑定的同一位模特',action:board.action+'；不换人、不换服装'};
-  const camera=['商品与同一模特脸部均清楚的环境中景，商品完整入镜','商品大图与同一模特的侧向展示关系，面部可辨，不遮挡商品','同一模特的自然使用中景，辅以本品可见细节，面部及商品均清楚'][Math.abs(slot)%3];
-  return {...board,humanPresence:enabled?'person':'none',
-    scene:enabled?'与本品已知用途相符的空间，同一位参考模特与商品同时入镜':'与本品已知用途相符的无人环境或静物背景，只安排商品与必要物件',
-    camera:enabled?camera:'完整商品与真实局部构成视觉层次，不出现人物和手部',
-    action:enabled?'同一位模特自然展示商品，不演示未经提供的功能':'以商品静置、可见结构和物件关系表达当前信息',
-    composition:enabled?'商品和同一位模特共同组织画面，信息区不遮挡商品或面部':'以商品和已有事实组织图文层级，不使用人物、手部和人像装饰',
+  if(enabled)return board;
+  return {...board,humanPresence:'none',
+    scene:'与本品已知用途相符的无人环境或静物背景，只安排商品与必要物件',
+    camera:'完整商品与真实局部构成视觉层次，不出现人物和手部',
+    action:'以商品静置、可见结构和物件关系表达当前信息',
+    composition:'以商品和已有事实组织图文层级，不使用人物、手部和人像装饰',
     productScale:'完整商品清晰可识别，不被人物、道具和文字遮挡'};
 }
 
 export function modelStyleGuide(guide,payload) {
   if(!payload.model_identity)return guide;
-  return guide.split('\n').filter(line=>!line.startsWith('整套展示按卖点混合：')).join('\n')+'\n'+modelDirection(payload);
+  return guide.replace('不反复使用同一女性、','不反复使用同一人物构图、')+'\n'+modelDirection(payload);
 }
 
 const binding=value=>value?JSON.stringify({enabled:value.enabled,...(value.enabled?{id:value.id,references:value.references?.map(({url,sha256})=>({url,sha256}))}:{})}):'legacy';
 export function assertModelPlan(payload,plan) {
   if(binding(payload.model_identity)!==binding(plan.modelIdentity))throw Object.assign(Error('模特出镜设置或人物参考已改变，请重新构思后再生成；已有图片保留。'),{status:409});
+  if(payload.model_identity?.enabled&&plan.modelPlacementVersion!==MODEL_PLACEMENT_VERSION)throw Object.assign(Error('模特分镜规则已更新，请重新构思后再生成；旧方案会让每张图都带人，已有图片和已选模特保留。'),{status:409});
 }

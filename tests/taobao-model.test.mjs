@@ -23,22 +23,32 @@ async function fixture(t){
   return {...app,call,settled,calls,plans,payload,identity,own,sku,actor};
 }
 
-test('one fixed model reference reaches every main/SKU/detail request with its role and hash',async t=>{
-  const app=await fixture(t);assert.equal((await app.call('/api/agent',app.payload)).status,202);
+test('five main images, two SKUs and three details retain varied shots and receive the actor only when needed',async t=>{
+  const app=await fixture(t);
+  const slots=[0,1,2,3,4,5,6,7,8,9];
+  const payload={...app.payload,product_name:'帆布油画',custom_layout:{main:1,sub:6,aplus:3},slot_directives:slots.map(slot=>({slot,taobao_role:[5,6].includes(slot)?'sku':slot>=7?'detail':'main',ref_images:[[5,6].includes(slot)?'SKU图_1':'产品主体图_1']}))};
+  assert.equal((await app.call('/api/agent',payload)).status,202);
   const plan=await app.settled('agent_tasks/model_plan');assert.equal(plan.status,'completed');
-  assert.equal(plan.plan.modelIdentity.id,app.identity.id);assert.doesNotMatch(plan.result,/至少三张不出现完整人物/);
-  assert.equal(plan.plan.sections.find(s=>s.slot===7).storyboard.humanPresence,'person');
-  const request={agent_task_id:'model_plan',sop_text:plan.result,firebase_tasks:[0,1,7].map(slot=>({slot,taskId:'model_image_'+slot}))};
+  assert.equal(plan.plan.modelIdentity.id,app.identity.id);assert.match(plan.result,/至少三张不出现完整人物/);
+  const original=buildPlan({...payload,model_identity:undefined});
+  for(const section of original.sections)assert.deepEqual(plan.plan.sections.find(s=>s.slot===section.slot).storyboard,section.storyboard,'casting must not rewrite the shot');
+  const presence=['person','none','none','hands','none','none','none','none','none','person'];
+  const request={agent_task_id:'model_plan',sop_text:plan.result,firebase_tasks:slots.map(slot=>({slot,taskId:'model_image_'+slot}))};
   assert.equal((await app.call('/api/generate',request)).status,202);
-  for(const slot of [0,1,7]){
+  for(const slot of slots){
     const task=await app.settled('hyrule_tasks/model_image_'+slot);assert.equal(task.status,'completed');
     assert.equal(task.modelIdentity.id,app.identity.id);
-    assert.deepEqual(task.referenceImages,[slot===1?app.sku:app.own,app.actor]);
-    assert.deepEqual(task.referenceRoles.map(r=>r.role),['own-product','model-identity']);
-    assert.equal(task.referenceRoles[1].sha256,digest(png));
+    const usesActor=presence[slot]!=='none';
+    assert.equal(task.modelPresence,presence[slot]);
+    assert.deepEqual(task.referenceImages,[[5,6].includes(slot)?app.sku:app.own,...(usesActor?[app.actor]:[])]);
+    assert.deepEqual(task.referenceRoles.map(r=>r.role),usesActor?['own-product','model-identity']:['own-product']);
+    if(usesActor)assert.equal(task.referenceRoles[1].sha256,digest(png));
+    else assert.match(task.prompt,/本图人物安排：不出镜/);
+    assert.doesNotMatch(task.prompt,/本张必须出现|面部清晰可辨|模特位于商品侧面|优先于自动分镜的无人/);
   }
-  for(const call of app.calls){assert.match(call.prompt,/模特出镜：是/);assert.match(call.prompt,/第2张只定义固定模特/);assert.equal(call.model,'gpt-image-2');}
-  assert.match(app.calls.find(c=>c.references[0]===app.sku).prompt,/模特位于商品侧面/);
+  assert.equal(app.calls.length,10);
+  assert.match(app.store.state.tasks['hyrule_tasks/model_image_3'].prompt,/仅手部.*不出现脸部/);
+  for(const call of app.calls)assert.equal(call.model,'gpt-image-2');
 });
 
 test('no-model mode removes the person reference and overrides automatic people and hands',async t=>{
@@ -78,6 +88,24 @@ test('model-disabled and legacy plans cannot be silently reused for a selected a
   await app.call('/api/agent',legacy);const agent=await app.settled('agent_tasks/model_plan');
   const r=await app.call('/api/generate',{agent_task_id:'model_plan',sop_text:agent.result,model_identity:app.identity,firebase_tasks:[{slot:0,taskId:'legacy_actor'}]});
   assert.equal(r.status,409);assert.equal(app.calls.length,0);
+});
+
+test('old all-person plans are rejected before spending or changing existing results',async t=>{
+  const app=await fixture(t);
+  await app.call('/api/agent',app.payload);const agent=await app.settled('agent_tasks/model_plan');
+  delete agent.plan.modelPlacementVersion;app.store.save();
+  const before=JSON.stringify(app.store.state);
+  const r=await app.call('/api/generate',{agent_task_id:'model_plan',sop_text:agent.result,firebase_tasks:[{slot:0,taskId:'old_policy'}]});
+  assert.equal(r.status,409);assert.match(r.data.error,/模特分镜规则已更新/);
+  assert.equal(app.calls.length,0);assert.equal(JSON.stringify(app.store.state),before);
+});
+
+test('fixed identity preserves all existing storyboards across design modes and categories',()=>{
+  for(const generation_mode of ['fast','master'])for(const product_name of ['帆布油画','家具柜子','太阳镜','洗手液']){
+    const payload={product_name,product_desc:'仅按已提供外观',generation_mode,visual_style:'scene_advertising',design_scope:'custom',custom_layout:{main:1,sub:6,aplus:7}};
+    const original=buildPlan(payload),cast=buildPlan({...payload,model_identity:{version:1,enabled:true,id:'chosen',references:[]}});
+    for(const section of original.sections)assert.deepEqual(cast.sections.find(s=>s.slot===section.slot).storyboard,section.storyboard);
+  }
 });
 
 test('turning people off preserves existing nonhuman closeups and information layouts',()=>{

@@ -18,7 +18,7 @@ async function fixture(t,options={}){
   return {...app,call,settled,calls};
 }
 
-test('one confirmed model request yields a stable candidate reused by all three image roles',async t=>{
+test('one confirmed model candidate is reused only by planned person shots',async t=>{
   const app=await fixture(t);assert.equal((await app.call('/api/status')).data.modelGenerationVersion,1);
   assert.equal((await app.call('/api/taobao/models/generate',request)).status,202);
   await app.settled('hyrule_tasks/'+request.task_id);
@@ -38,8 +38,9 @@ test('one confirmed model request yields a stable candidate reused by all three 
   for(const slot of [0,1,7]){
     const task=await app.settled('hyrule_tasks/generated_person_image_'+slot);
     assert.equal(task.status,'completed');assert.deepEqual(task.modelIdentity,identity);
-    assert.deepEqual(task.referenceImages,[own,identity.references[0].url]);
-    assert.equal(task.referenceRoles[1].identityId,identity.id);
+    assert.deepEqual(task.referenceImages,slot===0?[own,identity.references[0].url]:[own]);
+    if(slot===0)assert.equal(task.referenceRoles[1].identityId,identity.id);
+    else assert.match(task.prompt,/本图人物安排：不出镜/);
   }
   assert.equal(app.calls.length,4,'one actor, three product images; no recasting per slot');
   for(const value of [identity,{...identity,enabled:false}])assert.deepEqual(hydrateModelIdentity(value,app.mediaDirectory,{draft:true,tasks:app.store.state.tasks}),value);

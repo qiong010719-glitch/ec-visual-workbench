@@ -42,8 +42,12 @@ test('configured planning preserves the selected model identity and explicit pre
   const api=await upstream(t,res=>reply(res));const plan=await planProduct(payload,api.configuration);
   assert.deepEqual(plan.modelIdentity,identity);
   assert.match(api.requests[0].messages.filter(m=>m.role==='system').at(-1).content,/模特出镜：是/);
-  assert.doesNotMatch(api.requests[0].messages.find(m=>m.role==='user').content,/至少三张不出现完整人物/);
-  for(const section of plan.sections)assert.match(promptForSlot(payload,section,plan),/参考图中的同一位模特/);
+  assert.match(api.requests[0].messages.find(m=>m.role==='user').content,/至少三张不出现完整人物/);
+  assert.match(api.requests[0].messages.filter(m=>m.role==='system').at(-1).content,/不能覆盖无人或仅手部分镜/);
+  assert.match(promptForSlot(payload,plan.sections[0],plan),/参考图中的同一位模特/);
+  for(const slot of [2,4,5,8,11])assert.match(promptForSlot(payload,plan.sections.find(s=>s.slot===slot),plan),/本图人物安排：不出镜/);
+  for(const slot of [3,6,10])assert.match(promptForSlot(payload,plan.sections.find(s=>s.slot===slot),plan),/本图人物安排：仅手部/);
+  for(const slot of [1,7,9])assert.match(promptForSlot(payload,plan.sections.find(s=>s.slot===slot),plan),/本图人物安排：人物出镜/);
 });
 
 test('configured planner receives selected per-slot ratios and invalid ratios retain legacy defaults',async t=>{

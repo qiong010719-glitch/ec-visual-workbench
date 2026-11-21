@@ -13,7 +13,7 @@ import {SCENE_STYLE_VERSION} from './rich-storytelling.mjs';
 import {imageModels,resolveImageModel} from './image-models.mjs';
 import {TaobaoBenchmarks} from './taobao-benchmarks.mjs';
 import {validateTaobaoDraft} from './taobao-drafts.mjs';
-import {hydrateModelPayload,MODEL_IDENTITY_VERSION,modelDirection} from './taobao-model.mjs';
+import {hydrateModelPayload,MODEL_IDENTITY_VERSION,MODEL_PLACEMENT_VERSION,modelDirection,modelPresence} from './taobao-model.mjs';
 import {createModelGeneration,MODEL_GENERATION_VERSION,imageHash} from './taobao-model-generation.mjs';
 
 export const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -149,7 +149,8 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
       if(directive?.ref_images?.length && selected.length!==new Set(directive.ref_images).size)throw fail(400,'逐张要求引用了不存在的产品参考图');
       let refs=payload.mobile_reformat?[task.source_image_url]:selected.length?selected:references(merged);
       const benchmark=ordinary?directive?._benchmark:null;
-      const person=ordinary&&merged.model_identity?.enabled?merged.model_identity:null;
+      const presence=ordinary&&merged.model_identity?modelPresence(merged,section):null;
+      const person=presence&&presence!=='none'?merged.model_identity:null;
       const productCount=refs.length;
       const referenceRoles=refs.map(url=>({url,role:'own-product'}));
       if(benchmark){
@@ -170,14 +171,14 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
       }
       if(refs.length>8)throw fail(400,'本图参考超过8张，请减少本品参考以保留固定模特；没有提交出图。');
       if(refs.some(r=>typeof r!=='string' || !r.trim()))throw fail(400,'图片参考地址无效，未提交生成任务');
-      return {task,section,prompt,refs,benchmark,referenceRoles};
+      return {task,section,prompt,refs,benchmark,referenceRoles,presence};
     });
     createCharge(requestId, tasks.map(t => t.taskId), payload.mobile_reformat ? 1 : 2);
-    for (const {task,section,prompt,refs,benchmark,referenceRoles} of prepared) {
+    for (const {task,section,prompt,refs,benchmark,referenceRoles,presence} of prepared) {
       const key = 'hyrule_tasks/' + task.taskId;
       store.task(key, {status:'pending', phase:'queued', taskId:task.taskId, slot:task.slot, requestId, model, prompt,referenceImages:refs.filter(r=>!r.startsWith('data:')),designReferences:design.references || [],visualStyle:design.visualStyle || null,generationMode:design.generationMode || null,promptVersion:design.visualStyle?.id==='scene_advertising'&&design.visualStyle.version===SCENE_STYLE_VERSION?'per-slot-v5':design.visualStyle?'per-slot-v3':'per-slot-v2',createdAt:new Date().toISOString()});
       if(benchmark)store.task(key,{benchmark:{jobId:benchmark.jobId,assetId:benchmark.assetId,localUrl:benchmark.localUrl,sha256:benchmark.sha256}});
-      if(benchmark||merged.model_identity)store.task(key,{referenceRoles,...(merged.model_identity?{modelIdentity:merged.model_identity}:{})});
+      if(benchmark||merged.model_identity)store.task(key,{referenceRoles,...(merged.model_identity?{modelIdentity:merged.model_identity,modelPresence:presence,modelPlacementVersion:MODEL_PLACEMENT_VERSION}:{})});
       enqueue(async () => {
         store.task(key, {status:'running',phase:'generating'});
         try {
@@ -213,7 +214,7 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
       if(pathname==='/api/taobao/benchmark-analyses'&&request.method==='POST')return json(response,202,benchmarks.createAnalysis(await body(request,16000),enqueue));
       if(pathname.startsWith('/api/taobao/benchmarks/')&&request.method==='GET')return json(response,200,benchmarks.get(pathname.slice('/api/taobao/benchmarks/'.length)));
       if(pathname.startsWith('/api/taobao/benchmark-analyses/')&&request.method==='GET')return json(response,200,benchmarks.analysis(pathname.slice('/api/taobao/benchmark-analyses/'.length)));
-      if (pathname === '/api/status') return json(response,200,{mode:'local',modelIdentityVersion:MODEL_IDENTITY_VERSION,modelGenerationVersion:MODEL_GENERATION_VERSION, isolatedPreview:configuration.WORKBENCH_STYLE_PREVIEW==='true', imageProvider:provider ? 'test-fixture' : 'configured-image-api', imageConfigured:!!provider || !!configuration.SUANZHOU_IMAGE_API_KEY, model:resolveImageModel(undefined,configuration), imageModels, planner:configuration.PLANNER_API_KEY ? 'configured' : 'local-rules', active, queued:queue.length,downloadProxyConfigured:!!configuration.IMAGE_DOWNLOAD_PROXY,downloadRecoveryEnabled:true,recoverableDownloads:Object.values(store.state.tasks).filter(t=>t.resultUrl&&t.status==='failed'&&t.phase!=='edit_rejected' && !t.textMove).length, defaultProductStatus:'draft', paymentEnabled:false, publishEnabled:false});
+      if (pathname === '/api/status') return json(response,200,{mode:'local',modelIdentityVersion:MODEL_IDENTITY_VERSION,modelPlacementVersion:MODEL_PLACEMENT_VERSION,modelGenerationVersion:MODEL_GENERATION_VERSION, isolatedPreview:configuration.WORKBENCH_STYLE_PREVIEW==='true', imageProvider:provider ? 'test-fixture' : 'configured-image-api', imageConfigured:!!provider || !!configuration.SUANZHOU_IMAGE_API_KEY, model:resolveImageModel(undefined,configuration), imageModels, planner:configuration.PLANNER_API_KEY ? 'configured' : 'local-rules', active, queued:queue.length,downloadProxyConfigured:!!configuration.IMAGE_DOWNLOAD_PROXY,downloadRecoveryEnabled:true,recoverableDownloads:Object.values(store.state.tasks).filter(t=>t.resultUrl&&t.status==='failed'&&t.phase!=='edit_rejected' && !t.textMove).length, defaultProductStatus:'draft', paymentEnabled:false, publishEnabled:false});
       if (pathname === '/api/research/status' && request.method === 'GET') return json(response,200,research.status());
       if (pathname === '/api/research/design-patterns' && request.method === 'GET') return json(response,200,designPatterns(research.library.state));
       if (pathname === '/api/research/products' && request.method === 'GET') return json(response,200,Object.values(research.library.state.products).map(p=>({id:p.id,title:p.title,brand:p.brand,asin:p.asin,url:p.url,category:p.category,categoryMemberships:p.categoryMemberships||[],styleProfileIds:p.styleProfileIds||[],collectionIds:p.collectionIds||[],rank:p.rank,rankBasis:p.rankBasis,provenance:p.provenance,aplusStatus:p.aplusStatus,images:p.assets.length,downloaded:p.assets.filter(a=>a.status==='downloaded').length,analysisStatus:p.analysis?.status || 'pending',analysisError:p.analysis?.error || null,thumbnail:p.assets.find(a=>a.localUrl)?.localUrl || null,warnings:p.warnings})));

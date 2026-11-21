@@ -59,14 +59,16 @@ try{
   checks.push('候选完成后必须明确使用才替换人物；独立身份、原图与哈希，不混进本品素材');
   await page.locator('#agentBtn').click();await page.locator('#agentConfirmOk').click();await page.waitForFunction(()=>!activeAgentTask&&document.querySelector('#sopText').value.includes('模特出镜'));await page.waitForFunction(()=>!document.querySelector('#championsOverlay').classList.contains('show'));
   await page.locator('#mainBtn').click();await page.waitForFunction(()=>[0,1,7].every(i=>imageSlots[i]?.url)&&activeKieTasks.length===0);await page.locator('#_ratingSkip').waitFor({state:'visible'});await page.locator('#_ratingSkip').click();
-  assert.equal(calls.length,4);for(const call of calls.slice(1)){assert.equal(call.references.at(-1),selected.references[0].url);assert.ok(!call.references.includes(original.references[0].url));}
+  assert.equal(calls.length,4);
+  assert.equal(calls.slice(1).filter(call=>call.references.includes(selected.references[0].url)).length,1);
+  for(const call of calls.slice(1)){assert.ok(!call.references.includes(original.references[0].url));if(!call.references.includes(selected.references[0].url))assert.match(call.prompt,/本图人物安排：不出镜/);}
   await page.locator('#nav-dash').click();
   await page.locator('#localDraftButton').click();await page.locator('#draftNew').click();await page.locator('#draftTitle').fill('系统模特草稿');await page.locator('#draftForm button[type="submit"]').click();await page.locator('#draftError').filter({hasText:'已保存'}).waitFor();
   const saved=app.store.state.drafts.find(d=>d.title==='系统模特草稿');assert.deepEqual(saved.workbench.modelIdentity,selected);
   await page.locator('#localDraftEditor [data-close]').click();await page.locator('#tbModelClear').click();
   await page.locator('#localDraftButton').click();await page.locator('#draftCards .local-card').filter({hasText:'系统模特草稿'}).locator('[data-restore]').click();await page.waitForFunction(()=>!document.querySelector('#localDraftList').open&&TaobaoModelState.capture().source==='generated');
   await page.reload({waitUntil:'domcontentloaded'});await page.waitForFunction(()=>__idbRestored);await page.locator('#nav-dash').click();assert.deepEqual(await page.evaluate(()=>TaobaoModelState.capture()),selected);
-  checks.push('主图/SKU/详情三种请求复用同一个系统模特；完整草稿、刷新保留同一来源与生成任务');
+  checks.push('系统模特仅送入人物镜头；SKU和静物详情不加人物；草稿及刷新保留来源与任务');
   const [zip]=await Promise.all([page.waitForEvent('download'),page.locator('#tbModelExport').click()]);await zip.saveAs(path.join(output,'generated-model-pack.zip'));
   const pack=await page.evaluate(async b64=>{const z=await JSZip.loadAsync(b64,{base64:true}),manifest=JSON.parse(await z.file('model-identity.json').async('string'));return {manifest,bytes:await z.file(manifest.references[0].file).async('base64')};},fs.readFileSync(path.join(output,'generated-model-pack.zip')).toString('base64'));
   assert.equal(pack.manifest.generationTaskId,selected.generationTaskId);assert.deepEqual(Buffer.from(pack.bytes,'base64'),generated);assert.equal(pack.manifest.videoGeneration,'not_implemented');assert.equal(pack.manifest.videoReview,'not_reviewed');
