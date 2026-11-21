@@ -22,13 +22,16 @@
     $('tbBenchmarkFetch').disabled=busy;$('tbBenchmarkAnalyze').disabled=busy||!selected().length;
     $('tbBenchmarkClear').disabled=busy;
     $('tbBenchmarkResume').hidden=!(job?.status==='failed'&&job.acquisition?.runId);$('tbBenchmarkResume').disabled=busy;
-    $('tbBenchmarkTitle').textContent=job?`${job.title||'正在读取'} · ${job.assets.filter(a=>a.status==='downloaded').length}张已保存${job.cachedFrom?'（复用已抓取资料）':''}`:'';
+    $('tbBenchmarkTitle').textContent=job?`${job.title||(job.status==='failed'?'读取未完成':'正在读取')} · ${job.assets.filter(a=>a.status==='downloaded').length}张已保存${job.cachedFrom?'（复用已抓取资料）':''}`:'';
+    const runLink=$('tbBenchmarkRun'),runId=job?.acquisition?.runId;
+    runLink.hidden=!/^[a-zA-Z0-9_-]+$/.test(runId||'');
+    if(!runLink.hidden)runLink.href='https://console.apify.com/actors/runs/'+encodeURIComponent(runId);
     const cost=job?.acquisition?.usageTotalUsd;
     $('tbBenchmarkCost').textContent=job?.cachedFrom?'本次复用已保存图片，没有新增抓取请求。':Number.isFinite(cost)?`Apify 已记录抓取费用：${cost.toFixed(4)} 美元（分析与生图另计）。`:'';
     $('tbBenchmarkWarnings').textContent=(job?.warnings||[]).join(' ');
     const downloaded=job?.assets.filter(a=>a.status==='downloaded')||[];
     $('tbBenchmarkAssets').innerHTML=downloaded.map(a=>`<a href="${escape(a.localUrl)}" target="_blank" rel="noopener"><img loading="lazy" src="${escape(a.localUrl)}" alt="${label[a.group]}参考${a.index}"><span>${label[a.group]} ${a.index}${a.layout?' · 已分析':''}</span></a>`).join('');
-    $('tbBenchmarkBindings').innerHTML=job?slots().map(s=>{
+    $('tbBenchmarkBindings').innerHTML=downloaded.length?slots().map(s=>{
       const options=downloaded.filter(a=>a.group===s.zone),value=state.mapping[s.slot]?.zone===s.zone?state.mapping[s.slot].assetId:'';
       return `<label>${escape(TaobaoLayout.customerLabel(s.slot,spec()))}<select data-benchmark-slot="${s.slot}" ${busy?'disabled':''}><option value="">不用对标，沿用原构思</option>${options.map(a=>`<option value="${escape(a.id)}" ${a.id===value?'selected':''}>${label[a.group]}参考 ${a.index}${a.layout?'（已分析）':''}</option>`).join('')}</select></label>`;
     }).join(''):'';
@@ -99,7 +102,7 @@
       <textarea id="tbBenchmarkLink" rows="3" placeholder="淘宝／天猫商品链接或分享文案" aria-label="对标商品链接"></textarea>
       <button type="button" id="tbBenchmarkFetch">Apify 读取链接图片</button><button type="button" id="tbBenchmarkRefresh">刷新状态</button><button type="button" id="tbBenchmarkResume" hidden>同步已有抓取</button>
       <p>每次只抓一个商品，不抓评论；Apify 单次费用上限 0.05 美元。分析与生图费用另计。</p>
-      <p id="tbBenchmarkConnection"></p><p id="tbBenchmarkTitle"></p><p id="tbBenchmarkCost"></p><p id="tbBenchmarkWarnings"></p><div id="tbBenchmarkAssets"></div><div id="tbBenchmarkBindings"></div>
+      <p id="tbBenchmarkConnection"></p><p id="tbBenchmarkTitle"></p><p id="tbBenchmarkCost"></p><a id="tbBenchmarkRun" target="_blank" rel="noopener" hidden>查看本次 Apify 运行记录</a><p id="tbBenchmarkWarnings"></p><div id="tbBenchmarkAssets"></div><div id="tbBenchmarkBindings"></div>
       <button type="button" id="tbBenchmarkAnalyze">分析并用于构思（使用视觉额度）</button><button type="button" id="tbBenchmarkClear">清除本次对标</button>
       <label><input type="checkbox" id="tbBenchmarkEnabled"> 使用本次对标版式</label>
       <p id="tbBenchmarkMessage" role="status"></p><p>读取和分析不会生图。对标未返回的分类不会用其他图冒充；没有绑定的图片使用原有构思。结果保存在本机，不自动发布。</p>`;

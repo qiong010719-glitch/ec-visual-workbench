@@ -44,7 +44,11 @@ export function createApifyTaobaoSource({configuration={},client,sleep=ms=>new P
           if(run.status!=='SUCCEEDED')throw Error(`Apify 抓取 ${run.status}，保留原运行编号，未自动重跑。`);
           if(!record.datasetId)throw Error('Apify 缺少数据集编号，请核对原任务。');
           const rows=await api.items(record.datasetId,2);
-          if(rows.length!==1)throw Error('Apify 未返回唯一商品记录；没有启动分析或生图。');
+          record.resultCount=rows.length;
+          record.resultCode=rows.length===0?'EMPTY_RESULT':rows.length>1?'MULTIPLE_RESULTS':'ONE_RESULT';
+          checkpoint({...record});
+          if(!rows.length)throw Error('Apify 任务已结束，但没有抓到这个商品（返回0条商品记录），因此没有取得图片。链接已解析成功；可能是商品暂时不可访问、地区限制或已下架，当前结果无法区分原因。同步已有抓取只核对原任务，不会重新抓取；没有启动分析或生图。');
+          if(rows.length>1)throw Error('Apify 返回了多条商品记录，无法唯一确认本次商品，未使用其中任何图片；没有启动分析或生图。');
           return apifyTaobaoProduct(rows[0],itemId);
         }
         await sleep(10000);

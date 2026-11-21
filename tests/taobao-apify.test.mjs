@@ -45,3 +45,20 @@ test('missing credentials stop before submission and terminal failures retain th
   let record;const failed=createApifyTaobaoSource({client:{configured:true,start:async()=>run,run:async()=>({...run,status:'FAILED'})}});
   await assert.rejects(failed.getItem(itemId,{checkpoint:r=>record=r}),/FAILED/);assert.equal(record.runId,'run1');
 });
+
+test('successful Actor with empty data reports zero results and resync never starts or charges another run',async()=>{
+  let starts=0,record,reads=0;
+  const source=createApifyTaobaoSource({client:{configured:true,start:async()=>{starts++;return run;},run:async()=>{reads++;return run;},items:async()=>[]}});
+  await assert.rejects(source.getItem(itemId,{checkpoint:r=>record=r}),/返回0条商品记录/);
+  assert.equal(record.resultCount,0);assert.equal(record.resultCode,'EMPTY_RESULT');assert.equal(record.runId,run.id);
+  assert.equal(record.usageTotalUsd,0.019);
+  await assert.rejects(source.getItem(itemId,{record,checkpoint:r=>record=r}),/同步已有抓取只核对原任务/);
+  assert.equal(starts,1);assert.equal(reads,2);
+});
+
+test('multiple results stay distinct from an empty capture and never use an arbitrary product',async()=>{
+  let record;
+  const source=createApifyTaobaoSource({client:{configured:true,start:async()=>run,run:async()=>run,items:async()=>[row,{...row,itemId:'999999'}]}});
+  await assert.rejects(source.getItem(itemId,{checkpoint:r=>record=r}),/多条商品记录/);
+  assert.equal(record.resultCount,2);assert.equal(record.resultCode,'MULTIPLE_RESULTS');
+});

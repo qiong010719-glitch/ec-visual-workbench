@@ -74,7 +74,7 @@ try {
   assert.equal(await cards.count(),3);
   for(const [index,label] of [[0,'淘宝主图 1'],[1,'SKU图 1'],[2,'详情 1']])assert.equal(await cards.nth(index).locator('.font-bold').first().textContent(),label);
   assert.equal(await page.locator('#clAplusType').isVisible(),false);
-  assert.match(await cards.nth(1).textContent(),/参考图：SKU图_1（按上传顺序自动对应）/);
+  assert.match(await cards.nth(1).textContent(),/参考图：SKU图_1；结合本款填写信息/);
   assert.equal(await cards.nth(1).locator('[onclick^="toggleCustomRef"]').first().isVisible(),false);
   await cards.nth(0).locator('textarea').fill('主图专属：暖色客厅展示完整商品');
   await cards.nth(1).locator('textarea').fill('规格专属：保持红色外观');
@@ -205,6 +205,17 @@ try {
   assert.equal(await page.evaluate(()=>window.__workbenchMaterials().length),2);
   assert.equal(captureCalls.length,1);assert.equal(analysisCalls.length,3);assert.equal(generated.length,3);
   checks.push('清除对标不删除本品素材或成图，不追加模型请求');
+  const failedId='empty-fixture',failed={id:failedId,status:'failed',assets:[],warnings:[],error:'Apify 任务已结束，但没有抓到这个商品（返回0条商品记录），因此没有取得图片。',acquisition:{runId:'fixtureRun1',usageTotalUsd:0.009,resultCount:0,resultCode:'EMPTY_RESULT'}};
+  await page.route(address+'/api/taobao/benchmarks/'+failedId,route=>route.fulfill({json:failed}));
+  await page.evaluate(id=>TaobaoBenchmarkState.restore({jobId:id,mapping:{},enabled:false,sourceUrl:'https://item.taobao.com/item.htm?id=123456789'}),failedId);
+  assert.match(await page.locator('#tbBenchmarkMessage').textContent(),/返回0条商品记录/);
+  assert.match(await page.locator('#tbBenchmarkTitle').textContent(),/读取未完成/);
+  assert.equal(await page.locator('#tbBenchmarkBindings select').count(),0);
+  assert.equal(await page.locator('#tbBenchmarkAnalyze').isDisabled(),true);
+  assert.equal(await page.locator('#tbBenchmarkRun').getAttribute('href'),'https://console.apify.com/actors/runs/fixtureRun1');
+  assert.match(await page.locator('#tbBenchmarkCost').textContent(),/0.0090/);
+  assert.equal(captureCalls.length,1);assert.equal(analysisCalls.length,3);assert.equal(generated.length,3);
+  checks.push('抓取空结果明确提示0条，隐藏空的逐图绑定，保留已有费用和原运行链接，不触发重抓/分析/生图');
   assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
   fs.writeFileSync(path.join(output,'report.json'),JSON.stringify({passed:true,checks,errors,external,simulatedGenerations:generated.length,realModelCalls:0},null,2));
   console.log(JSON.stringify({passed:true,checks,simulatedGenerations:generated.length,realModelCalls:0,output}));
