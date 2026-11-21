@@ -22,7 +22,7 @@ async function fixture(t){
 }
 
 test('manual dimensions stay with their SKU and use product identity instead of dormant SKU photos',async t=>{
-  const app=await fixture(t);assert.equal((await app.call('/api/status')).data.skuInputVersion,1);
+  const app=await fixture(t);assert.equal((await app.call('/api/status')).data.skuInputVersion,2);
   assert.equal((await app.call('/api/agent',app.payload)).status,202);const agent=await app.settled('agent_tasks/sku_manual');
   assert.equal(agent.status,'completed');
   assert.equal((await app.call('/api/generate',{agent_task_id:'sku_manual',sop_text:agent.result,firebase_tasks:[1,2].map(slot=>({slot,taskId:'manual_'+slot}))})).status,202);
@@ -65,4 +65,35 @@ test('changing sizes, units, name, source mode or removing the manual contract r
     assert.equal(r.status,409);assert.match(r.data.error,/重新构思/);
   }
   assert.equal(app.calls.length,0);assert.equal(app.store.state.balance,balance);
+});
+
+test('combined SKU cards send both their own image and supplemental specifications; mixed no-photo cards use the product',async t=>{
+  const app=await fixture(t),payload=structuredClone(app.payload);
+  payload.slot_directives[1].ref_images=['SKU图_1'];
+  for(const d of payload.slot_directives.slice(1))d.sku_input={...d.sku_input,version:2,mode:'combined'};
+  assert.equal((await app.call('/api/agent',payload)).status,202);
+  const agent=await app.settled('agent_tasks/sku_manual');
+  assert.equal((await app.call('/api/generate',{agent_task_id:'sku_manual',sop_text:agent.result,firebase_tasks:[1,2].map(slot=>({slot,taskId:'combined_'+slot}))})).status,202);
+  const small=await app.settled('hyrule_tasks/combined_1'),large=await app.settled('hyrule_tasks/combined_2');
+  assert.deepEqual(small.referenceImages,[app.photos[0]]);assert.deepEqual(large.referenceImages,[app.own]);
+  assert.match(small.prompt,/"宽":"40cm"/);assert.match(small.prompt,/"name":"小号"/);assert.match(small.prompt,/与图片中同项规格不一致时，以填写值为准/);
+  assert.doesNotMatch(small.prompt,/80cm|120cm|SKU图_2/);assert.match(large.prompt,/"宽":"80cm"/);assert.doesNotMatch(large.prompt,/40cm|60cm|SKU图_1/);
+  const balance=app.store.state.balance;
+  for(const change of [{width:'41'},{name:'更名'},{unit:'mm'}]){
+    const dirs=structuredClone(payload.slot_directives);Object.assign(dirs[1].sku_input,change);
+    const response=await app.call('/api/generate',{agent_task_id:'sku_manual',sop_text:agent.result,slot_directives:dirs,firebase_tasks:[{slot:1,taskId:'stale'}]});
+    assert.equal(response.status,409);
+  }
+  assert.equal(app.calls.length,2);assert.equal(app.store.state.balance,balance);
+});
+
+test('combined photo-only is valid; invalid or missing card inputs are rejected before planning',async t=>{
+  const app=await fixture(t),payload=structuredClone(app.payload);
+  payload.slot_directives[1]={slot:1,taobao_role:'sku',ref_images:['SKU图_1'],sku_input:{version:2,mode:'combined',unit:'cm',name:'图示款'}};
+  assert.equal((await app.call('/api/agent',payload)).status,202);await app.settled('agent_tasks/sku_manual');
+  for(const change of [{ref_images:[]},{ref_images:['SKU图_999']},{ref_images:['产品主体图_1']},{ref_images:['SKU图_1','SKU图_2']},{sku_input:{version:2,mode:'combined',unit:'cm',width:'0'}},{sku_input:{version:2,mode:'combined',unit:'cm',width:'20',photo_missing:true}}]){
+    const bad=structuredClone(payload);bad.agent_task_id='bad_'+crypto.randomUUID();Object.assign(bad.slot_directives[1],change);
+    assert.equal((await app.call('/api/agent',bad)).status,400);
+  }
+  assert.equal(app.plans.length,1);assert.equal(app.calls.length,0);
 });

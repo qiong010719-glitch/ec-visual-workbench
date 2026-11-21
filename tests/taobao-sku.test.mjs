@@ -11,7 +11,7 @@ const clone=value=>JSON.parse(JSON.stringify(value));
 
 // Mirrors the failing default webpage flow: no hand-authored SKU dimensions or SOP.
 function payloadFor(mainCount=5,skuCount=1) {
-  const spec=layout.normalize({mainCount,skuCount,detailCount:3});
+  const spec=layout.normalize({mainCount,skuCount,detailCount:3,skuMode:'photo'});
   const custom=layout.toCustomLayout(spec,{});
   const raw=layout.activeSlots(spec).map(s=>({slot:s.slot,title:s.slot===0?'【主图】':s.slot<7?`【卖点图${s.slot}】`:`【高级A+模块${s.slot-6}】`,ref_images:[]}));
   const photos=['SKU图_1','SKU图_2','SKU图_3','SKU图_4','SKU图_5'];

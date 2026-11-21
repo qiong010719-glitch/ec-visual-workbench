@@ -135,9 +135,9 @@ test('whole-set style notes land on every active Taobao slot and stay off by def
   assert.equal(stored.directives[3].req, '保留');
 });
 
-test('uploaded SKU photos map onto SKU slots and an empty upload leaves directives unchanged', () => {
+test('legacy photo-mode drafts retain their original positional binding', () => {
   const same = (actual, expected) => assert.equal(JSON.stringify(actual), JSON.stringify(expected));
-  const spec = layout.normalize({mainCount:1, skuCount:3, detailCount:1, setStyle:'morandi', detailWhitespace:false, background:'off'});
+  const spec = layout.normalize({skuMode:'photo', mainCount:1, skuCount:3, detailCount:1, setStyle:'morandi', detailWhitespace:false, background:'off'});
   const dirs = [
     {slot:0, requirement:'主图要求；整套风格：胶片质感', ref_images:['产品主体图_1']},
     {slot:1, requirement:'红', ref_images:[]},
@@ -175,7 +175,7 @@ test('uploaded SKU photos map onto SKU slots and an empty upload leaves directiv
   assert.doesNotMatch(bySlot[7].requirement, /已上传的规格图/);
   const oneSlot = layout.attachSkuRefs(
     [{slot:1, requirement:'SKU卖点原文；整套风格：胶片质感', ref_images:[]}],
-    {mainCount:1, skuCount:1, detailCount:0, setStyle:'off'},
+    {skuMode:'photo', mainCount:1, skuCount:1, detailCount:0, setStyle:'off'},
     ['SKU图_1', 'SKU图_2']
   );
   same(oneSlot.directives[0].ref_images, ['SKU图_1']);
@@ -191,9 +191,9 @@ test('provider contract and Taobao publish claims stay out of this slice', () =>
   assert.equal(provider.match(/没有自动更换模型/g).length, 2);
   const shell = fs.readFileSync(path.join(root, 'public/local/taobao-shell.js'), 'utf8');
   assert.match(shell, /淘宝主图/);
-  assert.match(shell, /上传 SKU 图/);
-  assert.match(shell, /id="tbSkuUpload"/);
-  assert.match(shell, /id="tbSkuFile" type="file" accept="image\/\*" multiple/);
+  assert.match(shell, /上传本款图片/);
+  assert.match(shell, /data-sku-upload/);
+  assert.match(shell, /id="tbSkuFile" type="file" accept="image\/\*"/);
   assert.match(shell, /SKU图/);
   assert.match(shell, /详情底部留白/);
   assert.match(shell, /整套风格/);
@@ -784,7 +784,7 @@ test('SKU slot generate uses uploaded SKU photos and keeps the main-product path
   assert.ok(captured.some(item => item.prompt.includes('红色规格')));
   assert.ok(captured.every(item => item.prompt.includes('整套风格：胶片质感')));
   assert.ok(captured.every(item => !item.prompt.includes('SKU图_')));
-  const linked = layout.attachSkuRefs(styled, spec, ['SKU图_1', 'SKU图_2']).directives;
+  const linked = layout.attachSkuRefs(styled, {...spec,skuMode:'photo'}, ['SKU图_1', 'SKU图_2']).directives;
   // Changing the SKU references requires a fresh plan, so old variant text cannot leak.
   await call('/api/agent', {agent_task_id:'tb_sku_linked', product_name:'杯子', product_desc:'白色杯身',
     design_scope:'custom', custom_layout:layoutPayload, categorized_images:withSku, slot_directives:linked});
@@ -1058,25 +1058,12 @@ test('gallery has no text movement controls while custom sizes, SKU references a
   sandbox.window = sandbox;
   vm.runInNewContext(layoutSource, sandbox, {filename:'taobao-layout.js'});
   vm.runInNewContext(fs.readFileSync(path.join(root, 'public/local/taobao-shell.js'), 'utf8'), sandbox, {filename:'taobao-shell.js'});
-  const upload = document.getElementById('tbSkuUpload');
-  assert.equal(upload.textContent, '上传 SKU 图');
-  assert.equal(upload.hidden, false);
-  let walk = upload;
-  let inShell = false;
-  let inLegacy = false;
-  while (walk) {
-    if (walk.id === 'taobaoShell') inShell = true;
-    if (walk.id === 'taobaoLegacyScope') inLegacy = true;
-    walk = walk.parentElement;
-  }
-  assert.equal(inShell, true);
-  assert.equal(inLegacy, false);
   assert.equal(document.getElementById('taobaoShell').hidden, false);
   assert.equal(document.getElementById('tbSkuFile').type, 'file');
-  assert.equal(document.getElementById('tbSkuUploadCount').textContent, '已上传 0 张 SKU 图');
-  assert.match(document.getElementById('tbSkuManual').textContent, /没有 SKU 图.*填写尺寸/);
-  assert.match(document.getElementById('tbSkuUploadHint').textContent, /按提供的SKU图生成规格图片/);
-  assert.match(document.getElementById('tbSkuUploadHint').textContent, /上传数量不改变出图张数/);
+  assert.equal(document.getElementById('tbSkuPhoto'),null);
+  assert.equal(document.getElementById('tbSkuManual'),null);
+  assert.ok(document.getElementById('tbSkuFields'));
+  assert.match(document.getElementById('tbSkuUploadHint').textContent,/同一卡片提供图片和信息/);
   const bare = sandbox.buildSlotDirectives();
   assert.equal(JSON.stringify(bare.find(item => item.slot === 5).ref_images), '[]');
   assert.equal(bare.find(item => item.slot === 5).requirement, 'SKU卖点原文');
@@ -1123,54 +1110,7 @@ test('gallery has no text movement controls while custom sizes, SKU references a
   assert.equal(document.querySelector('[data-taobao-text-origin]'),null);
   assert.equal(document.querySelector('.taobao-text-stage'),null);
   assert.equal(sandbox.saved, true);
-  const materials = [];
-  sandbox.__workbenchMaterials = () => materials;
-  sandbox.processNewFiles = (files, category) => {
-    sandbox.skuUpload = {category, length: files.length};
-    for (const file of files) {
-      if (!String(file.type || '').startsWith('image/')) continue;
-      const index = materials.filter(item => item.category === category).length + 1;
-      materials.push({id:'sku_' + file.name, category, filename:category + '_' + index, preview:file.preview, url:file.url});
-    }
-  };
-  sandbox.removeMaterial = id => {
-    const index = materials.findIndex(item => item.id === id);
-    if (index >= 0) materials.splice(index, 1);
-    sandbox.removed = id;
-  };
-  const input = document.getElementById('tbSkuFile');
-  input.value = 'picked';
-  input.files = [
-    {type:'image/jpeg', name:'red.jpg', url:'/media/sku-red.jpg', preview:'data:image/jpeg;base64,red'},
-    {type:'image/png', name:'blue.png', url:'/media/sku-blue.png', preview:'data:image/png;base64,blue'},
-    {type:'text/plain', name:'notes.txt', url:'/media/notes.txt'}
-  ];
-  input.dispatchEvent({type:'change'});
-  assert.equal(input.value, '');
-  assert.equal(sandbox.skuUpload.category, 'SKU图');
-  assert.equal(sandbox.skuUpload.length, 3);
-  assert.equal(materials.length, 2);
-  assert.equal(document.getElementById('tbSkuUploadCount').textContent, '已上传 2 张 SKU 图');
-  assert.equal(document.getElementById('tbSkuUpload').textContent, '上传 SKU 图');
-  const uploaded = sandbox.buildSlotDirectives();
-  const sku = uploaded.find(item => item.slot === 5);
-  assert.equal(JSON.stringify(sku.ref_images), JSON.stringify(['SKU图_1']));
-  assert.match(sku.requirement, /^SKU卖点原文/);
-  assert.match(sku.requirement, /整套风格：莫兰迪低饱和/);
-  assert.match(sku.requirement, /宽 1000 像素，高 800 像素/);
-  assert.match(sku.requirement, /SKU图_1/);
-  assert.match(sku.requirement, /不要只按产品主体图/);
-  assert.equal(JSON.stringify(uploaded.find(item => item.slot === 0).ref_images), '[]');
-  assert.equal(JSON.stringify(uploaded.find(item => item.slot === 7).ref_images), '[]');
-  assert.match(uploaded.find(item => item.slot === 0).requirement, /^主图要求：标题保持原句/);
-  document.querySelector('.tb-sku-remove').dispatchEvent({type:'click'});
-  assert.equal(sandbox.removed, 'sku_red.jpg');
-  assert.equal(materials.length, 1);
-  assert.equal(materials[0].filename, 'SKU图_2');
-  assert.equal(JSON.stringify(sandbox.buildSlotDirectives().find(item => item.slot === 5).ref_images), JSON.stringify(['SKU图_2']));
-  assert.equal(document.getElementById('tbSkuUploadCount').textContent, '已上传 1 张 SKU 图');
-  assert.match(sandbox.buildSlotDirectives().find(item => item.slot === 0).requirement, /^主图要求：标题保持原句/);
-  assert.equal(sandbox._aspectForTitle('【卖点图5】'), '5:4');
+  // Real upload, per-card binding and removals are exercised in the browser test.
   const generated=[];
   sandbox.triggerGeneration=index=>generated.push(index);
   sandbox.__customLayout.taobao.textPositions={0:{x:12,y:91}};

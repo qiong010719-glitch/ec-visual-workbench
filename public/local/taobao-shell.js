@@ -24,20 +24,15 @@
     #taobaoShell .tb-row{display:flex;flex-wrap:wrap;gap:8px 12px;margin-top:8px;color:#d5deee;font-size:12px}
     #taobaoShell button{border:1px solid rgba(0,255,197,.45);background:rgba(0,255,197,.12);color:#eafff8;border-radius:8px;padding:7px 10px;cursor:pointer}
     #taobaoShell .tb-sku-upload{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:0 0 8px}
-    #taobaoShell #tbSkuUpload{font-size:15px;font-weight:800;padding:10px 16px;background:#ffd36a;color:#1a1404;border:1px solid #ffd36a}
     #taobaoShell #tbSkuUploadCount{font-size:13px;font-weight:700;color:#ffd36a}
-    #taobaoShell [data-sku-mode][aria-pressed="true"]{background:#ffd36a;color:#1a1404;border-color:#ffd36a;font-weight:800}
+    #taobaoShell [data-sku-upload]{background:#ffd36a;color:#1a1404;border-color:#ffd36a;font-weight:800}
     #taobaoShell .tb-sku-spec{border:1px solid #ffffff33;border-radius:8px;padding:10px;margin:8px 0}
     #taobaoShell .tb-sku-spec legend{font-size:13px;color:#ffd36a;padding:0 4px}
     #taobaoShell .tb-sku-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
     #taobaoShell .tb-sku-fields input,#taobaoShell .tb-sku-fields select{width:100%;min-width:0;box-sizing:border-box;background:#101b32;color:#fff;border:1px solid #ffffff44;border-radius:6px;padding:7px}
     #taobaoShell .tb-sku-fields label{display:flex;flex-direction:column;align-items:stretch;gap:4px}
+    #taobaoShell .tb-sku-upload + label{flex-direction:column;align-items:stretch;gap:4px}
     #taobaoShell [hidden]{display:none !important}
-    #taobaoShell .tb-sku-thumbs{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 8px}
-    #taobaoShell .tb-sku-card{margin:0;display:flex;flex-direction:column;align-items:center;gap:2px;width:72px}
-    #taobaoShell .tb-sku-card img{width:64px;height:64px;object-fit:cover;border-radius:8px;border:1px solid rgba(255,211,106,.8);background:#111}
-    #taobaoShell .tb-sku-card figcaption{font-size:10px;color:#ffd36a;text-align:center}
-    #taobaoShell .tb-sku-remove{font-size:10px;padding:2px 6px}
     #tbSkuFile{position:fixed;left:-120px;top:0;width:1px;height:1px;opacity:0}
     .taobao-legacy{margin:0;padding:0;border:0}
     .taobao-legacy summary{display:none}
@@ -59,7 +54,17 @@
   function currentSpec() {
     const shell = window.__customLayout?.taobao;
     if (!shell?.applied || $('designScope')?.value !== 'custom') return null;
-    return layout.normalize(shell);
+    return unifiedSpec(shell);
+  }
+  function unifiedSpec(raw) {
+    const spec=layout.normalize(raw?.applied&&!raw.skuMode?{...raw,skuMode:'photo'}:raw);
+    if(spec.skuMode!=='combined'){
+      const photos=skuMaterials();
+      spec.skuSpecs.forEach((entry,i)=>{entry.photoId=spec.skuMode==='photo'?(photos[i]?.id||null):null;});
+      spec.skuMode='combined';
+      if(window.__customLayout?.taobao)Object.assign(window.__customLayout.taobao,spec);
+    }
+    return spec;
   }
   function readPanel() {
     return layout.normalize({
@@ -73,10 +78,10 @@
         detail:{width:$('tbDetailWidth')?.value, height:$('tbDetailHeight')?.value}
       },
       detailWhitespace:!!$('tbWhitespace')?.checked,
-      skuMode:$('tbSkuManual')?.getAttribute('aria-pressed')==='true'?'manual':'photo',
+      skuMode:'combined',
       skuSpecs:(()=>{
         const specs=layout.normalize(window.__customLayout?.taobao || {}).skuSpecs;
-        document.querySelectorAll('#tbSkuManualFields [data-sku-index]').forEach(row=>{
+        document.querySelectorAll('#tbSkuFields [data-sku-index]').forEach(row=>{
           const entry=specs[Number(row.dataset.skuIndex)];
           row.querySelectorAll('[data-sku-field]').forEach(input=>{entry[input.dataset.skuField]=input.value;});
         });
@@ -116,7 +121,7 @@
     if (layout.parseCustomSize({width:width.value, height:height.value})) { width.value = ''; height.value = ''; }
   }
   function syncPanel(spec) {
-    const value = layout.normalize(spec || layout.DEFAULTS);
+    const value = unifiedSpec(spec || layout.DEFAULTS);
     if ($('tbMainCount')) $('tbMainCount').value = value.mainCount;
     if ($('tbSkuCount')) $('tbSkuCount').value = value.skuCount;
     if ($('tbDetailCount')) $('tbDetailCount').value = value.detailCount;
@@ -190,20 +195,11 @@
     panel.id = 'taobaoShell';
     panel.innerHTML = `
       <h3>淘宝壳 · 主图 / SKU图 / 详情</h3>
-      <div class="tb-sku-upload" role="group" aria-label="SKU规格来源">
-        <button type="button" id="tbSkuPhoto" data-sku-mode="photo" aria-pressed="true">有 SKU 图</button>
-        <button type="button" id="tbSkuManual" data-sku-mode="manual" aria-pressed="false">没有 SKU 图 · 填写尺寸</button>
-      </div>
-      <div id="tbSkuPhotoFields">
-      <div class="tb-sku-upload">
-        <button type="button" id="tbSkuUpload">上传 SKU 图</button>
-        <input id="tbSkuFile" type="file" accept="image/*" multiple>
-        <span id="tbSkuUploadCount">已上传 0 张 SKU 图</span>
-      </div>
-      <p id="tbSkuUploadHint" class="local-muted">规格或颜色各传一张，按顺序对应 SKU图 1、2、3。按提供的SKU图生成规格图片，保留清晰的尺寸、颜色和款式；清理截图界面，不做卖点拼版。照片最多8张，上传数量不改变出图张数。照片比SKU槽少时，多出来的槽用最后一张规格图。只在本机使用，不会上传到淘宝。</p>
-      <div id="tbSkuThumbs" class="tb-sku-thumbs"></div>
-      </div>
-      <div id="tbSkuManualArea" hidden><p class="local-muted">填写商品实物尺寸（不是图片像素），未知项留空。每张SKU至少填一项；配合右侧产品主体图生成规格图片。切换模式保留尺寸与上传图，当前模式决定使用哪一种规格来源。</p><div id="tbSkuManualFields"></div></div>
+      <h3>SKU图片与规格信息</h3>
+      <p id="tbSkuUploadHint" class="local-muted">每款SKU在同一卡片提供图片和信息。有图可补充规格；没图请至少填写一项实物尺寸，并上传右侧产品主体图。填写的名称与尺寸优先于图片中的同项信息，未知项留空，不会借用其他SKU图。</p>
+      <input id="tbSkuFile" type="file" accept="image/*">
+      <span id="tbSkuUploadCount" class="local-muted"></span>
+      <div id="tbSkuFields"></div>
       <p id="tbSkuError" role="status" style="color:#ffd36a"></p>
       <p id="tbDisclaimer" class="local-muted">图片和草稿保存在本机，不是淘宝草稿，也未发布。自定义宽高用于构图，实际尺寸会显示在成图旁；下载保留原图尺寸和格式。</p>
       <div class="tb-grid">
@@ -243,30 +239,38 @@
     $('tbWhitespace').addEventListener('change', () => applySpec(readPanel()));
     document.querySelectorAll('input[name="tbBg"]').forEach(input => input.addEventListener('change', () => applySpec(readPanel())));
     $('tbBgEntry').addEventListener('click', redrawBackground);
-    $('tbSkuUpload').addEventListener('click', () => {
-      const input = $('tbSkuFile');
-      if (input && typeof input.click === 'function') input.click();
-    });
     $('tbSkuFile').addEventListener('change', onSkuFiles);
-    for(const mode of ['photo','manual'])$(mode==='photo'?'tbSkuPhoto':'tbSkuManual').addEventListener('click',()=>{
-      applySpec({...readPanel(),skuMode:mode});$('tbSkuError').textContent='已切换规格来源；生成前请重新构思。';
+    $('tbSkuFields').addEventListener('click',event=>{
+      const button=event.target.closest('[data-sku-upload],[data-sku-remove]');
+      if(!button||skuUploading)return;
+      const index=Number(button.closest('[data-sku-index]').dataset.skuIndex);
+      if(button.hasAttribute('data-sku-upload')){skuUploadIndex=index;$('tbSkuFile').click();}
+      else{
+        const spec=readPanel(),id=spec.skuSpecs[index].photoId;spec.skuSpecs[index].photoId=null;
+        applySpec(spec);
+        if(id&&!spec.skuSpecs.some(entry=>entry.photoId===id)&&typeof removeMaterial==='function')removeMaterial(id);
+      }
     });
-    $('tbSkuManualFields').addEventListener('input',()=>applySpec(readPanel()));
-    $('tbSkuManualFields').addEventListener('change',()=>applySpec(readPanel()));
+    $('tbSkuFields').addEventListener('change',event=>{
+      if(!event.target.matches('[data-sku-photo]'))return;
+      const spec=readPanel(),index=Number(event.target.closest('[data-sku-index]').dataset.skuIndex);
+      spec.skuSpecs[index].photoId=event.target.value||null;applySpec(spec);
+    });
+    for(const event of ['input','change'])$('tbSkuFields').addEventListener(event,e=>{
+      if(e.target.matches('[data-sku-field]'))applySpec(readPanel());
+    });
   }
   function syncSkuInputs(spec) {
-    if(!$('tbSkuManualFields'))return;
-    $('tbSkuPhoto').setAttribute('aria-pressed',String(spec.skuMode==='photo'));
-    $('tbSkuManual').setAttribute('aria-pressed',String(spec.skuMode==='manual'));
-    $('tbSkuPhotoFields').hidden=spec.skuMode!=='photo';$('tbSkuManualArea').hidden=spec.skuMode!=='manual';
-    const box=$('tbSkuManualFields');
+    if(!$('tbSkuFields'))return;
+    const box=$('tbSkuFields');
     if(box.querySelectorAll('[data-sku-index]').length!==spec.skuCount){
-      box.innerHTML=Array.from({length:spec.skuCount},(_,i)=>`<fieldset class="tb-sku-spec" data-sku-index="${i}"><legend>SKU图 ${i+1} · 实物规格</legend><div class="tb-sku-fields"><label>名称 / 款式（选填）<input data-sku-field="name" type="text" maxlength="80" aria-label="SKU ${i+1} 名称"></label><label>尺寸单位<select data-sku-field="unit" aria-label="SKU ${i+1} 单位"><option value="mm">毫米 mm</option><option value="cm">厘米 cm</option><option value="m">米 m</option></select></label>${[['length','长'],['width','宽'],['height','高'],['depth','深 / 厚']].map(([key,label])=>`<label>${label}<input data-sku-field="${key}" type="number" min="0" step="any" placeholder="未知留空" aria-label="SKU ${i+1} ${label}"></label>`).join('')}</div></fieldset>`).join('');
+      box.innerHTML=Array.from({length:spec.skuCount},(_,i)=>`<fieldset class="tb-sku-spec" data-sku-index="${i}"><legend>SKU图 ${i+1} · 图片与规格</legend><div class="tb-sku-upload"><img data-sku-preview alt="SKU ${i+1} 参考图" hidden style="width:72px;height:72px;object-fit:contain;border-radius:6px"><button type="button" data-sku-upload aria-label="上传SKU ${i+1} 图片">上传本款图片</button><button type="button" data-sku-remove hidden aria-label="移除SKU ${i+1} 图片">移除图片</button></div><label>本款参考图<select data-sku-photo aria-label="SKU ${i+1} 图片" style="width:100%"></select></label><p data-sku-photo-hint class="local-muted"></p><div class="tb-sku-fields"><label>名称 / 款式（选填）<input data-sku-field="name" type="text" maxlength="80" aria-label="SKU ${i+1} 名称"></label><label>尺寸单位<select data-sku-field="unit" aria-label="SKU ${i+1} 单位"><option value="mm">毫米 mm</option><option value="cm">厘米 cm</option><option value="m">米 m</option></select></label>${[['length','长'],['width','宽'],['height','高'],['depth','深 / 厚']].map(([key,label])=>`<label>${label}<input data-sku-field="${key}" type="number" min="0" step="any" placeholder="未知留空" aria-label="SKU ${i+1} ${label}"></label>`).join('')}</div></fieldset>`).join('');
     }
     box.querySelectorAll('[data-sku-index]').forEach(row=>row.querySelectorAll('[data-sku-field]').forEach(input=>{
       const value=spec.skuSpecs[Number(row.dataset.skuIndex)][input.dataset.skuField];
       if(input.value!==value)input.value=value;
     }));
+    renderSkuPhotos(spec);
   }
   const SKU_CATEGORY = 'SKU图';
   function skuMaterials() {
@@ -279,15 +283,15 @@
     const spec=currentSpec();
     if(!spec?.skuCount)return payload;
     const status=await LocalWorkbench.imageModelStatus();
-    if(status.skuInputVersion!==1)throw Error('本地服务尚未加载SKU尺寸功能，请重启本项目服务并刷新网页；没有提交构思或出图。');
-    if(spec.skuMode==='photo'&&!skuMaterials().length)throw Error('请先上传SKU图；没有SKU图请点击“没有 SKU 图 · 填写尺寸”。');
-    if(spec.skuMode==='manual'){
-      for(let i=0;i<spec.skuCount;i++){
-        const values=['length','width','height','depth'].map(key=>spec.skuSpecs[i][key].trim()).filter(Boolean);
-        if(!values.length)throw Error(`请为SKU图 ${i+1} 至少填写一项实物尺寸，未知项留空。`);
-        if(values.some(value=>!/^\d+(?:\.\d+)?$/.test(value)||Number(value)<=0||Number(value)>999999))throw Error(`SKU图 ${i+1} 的实物尺寸须为大于0的数字。`);
-      }
-      if(!window.__workbenchMaterials?.().some(item=>item.category==='产品主体图'))throw Error('请上传产品主体图，系统将结合本品外观与手填尺寸生成SKU规格图。');
+    if(status.skuInputVersion!==2)throw Error('本地服务尚未加载SKU图片与信息合并功能，请重启本项目服务并刷新网页；没有提交构思或出图。');
+    if(skuUploading)throw Error('SKU图片仍在读取，请完成后再构思。');
+    for(let i=0;i<spec.skuCount;i++){
+      const entry=spec.skuSpecs[i],photo=skuMaterials().find(p=>p.id===entry.photoId);
+      const values=['length','width','height','depth'].map(key=>entry[key].trim()).filter(Boolean);
+      if(entry.photoId&&!photo)throw Error(`SKU图 ${i+1} 的图片已移除，请重新选择图片或点击移除图片清除绑定。`);
+      if(values.some(value=>!/^\d+(?:\.\d+)?$/.test(value)||Number(value)<=0||Number(value)>999999))throw Error(`SKU图 ${i+1} 的实物尺寸须为大于0的数字。`);
+      if(!photo&&!values.length)throw Error(`请为SKU图 ${i+1} 上传图片或至少填写一项实物尺寸。`);
+      if(!photo&&!window.__workbenchMaterials?.().some(item=>item.category==='产品主体图'))throw Error('请上传产品主体图，系统将结合本品外观与填写尺寸生成SKU规格图。');
     }
     $('tbSkuError').textContent='';return payload;
   };
@@ -295,51 +299,47 @@
     try{await window.prepareTaobaoSkuPayload({});return true;}
     catch(error){if($('tbSkuError'))$('tbSkuError').textContent=error.message;notify(error.message,true);return false;}
   }
-  function refreshSkuStrip() {
-    const photos = skuMaterials();
-    const count = $('tbSkuUploadCount');
-    if (count) count.textContent = `已上传 ${photos.length} 张 SKU 图`;
-    const box = $('tbSkuThumbs');
-    if (!box) return;
-    box.innerHTML = '';
-    photos.forEach((photo, index) => {
-      const card = document.createElement('figure');
-      card.className = 'tb-sku-card';
-      const src = photo.preview || photo.url || '';
-      if (src) {
-        const img = document.createElement('img');
-        img.src = src;
-        img.alt = `SKU图 ${index + 1}`;
-        card.appendChild(img);
-      }
-      const caption = document.createElement('figcaption');
-      caption.textContent = photo.filename || `SKU图 ${index + 1}`;
-      card.appendChild(caption);
-      const remove = document.createElement('button');
-      remove.type = 'button';
-      remove.className = 'tb-sku-remove';
-      remove.textContent = '移除';
-      remove.addEventListener('click', () => {
-        if (typeof removeMaterial === 'function') removeMaterial(photo.id);
-        refreshSkuStrip();
-      });
-      card.appendChild(remove);
-      box.appendChild(card);
+  let skuUploadIndex=0,skuUploading=false;
+  function renderSkuPhotos(spec){
+    const photos=skuMaterials();
+    const count=$('tbSkuUploadCount');if(count)count.textContent=`已上传 ${photos.length} 张 SKU 图`;
+    $('tbSkuFields')?.querySelectorAll('[data-sku-index]').forEach(row=>{
+      const entry=spec.skuSpecs[Number(row.dataset.skuIndex)],photo=photos.find(p=>p.id===entry.photoId);
+      const select=row.querySelector('[data-sku-photo]'),img=row.querySelector('[data-sku-preview]');
+      const options='<option value="">无SKU图 · 使用产品主体图与填写尺寸</option>'+photos.map(p=>`<option value="${escapeHtml(p.id)}">${escapeHtml(p.filename)}</option>`).join('')+(entry.photoId&&!photo?`<option value="${escapeHtml(entry.photoId)}">图片已移除，请重新选择</option>`:'');
+      if(select.innerHTML!==options)select.innerHTML=options;
+      select.value=entry.photoId||'';select.disabled=skuUploading;
+      img.hidden=!photo;if(photo)img.src=photo.preview||photo.url||'';else img.removeAttribute('src');
+      const upload=row.querySelector('[data-sku-upload]');upload.disabled=skuUploading;upload.textContent=photo?'更换本款图片':'上传本款图片';
+      const remove=row.querySelector('[data-sku-remove]');remove.hidden=!entry.photoId;remove.disabled=skuUploading;
+      row.querySelector('[data-sku-photo-hint]').textContent=photo?'按本款图片生成，可在下方补充名称与尺寸。':'没有本款图片时，请在下方至少填写一项商品实物尺寸（不是图片像素）。';
     });
   }
-  function onSkuFiles() {
-    const input = $('tbSkuFile');
-    const files = input?.files ? Array.from(input.files) : [];
-    if (input) input.value = '';
-    if (!files.length) { refreshSkuStrip(); return; }
-    applySpec({...readPanel(),skuMode:'photo'});
-    if (typeof processNewFiles !== 'function') {
-      notify('SKU 图还没接上现有参考图库。', true);
-      return;
-    }
-    processNewFiles(files, SKU_CATEGORY);
-    refreshSkuStrip();
-    setTimeout(refreshSkuStrip, 700);
+  function refreshSkuStrip() {
+    renderSkuPhotos(currentSpec()||layout.normalize(window.__customLayout?.taobao||layout.DEFAULTS));
+  }
+  async function onSkuFiles() {
+    const input=$('tbSkuFile'),file=input?.files?.[0],index=skuUploadIndex;
+    if(input)input.value='';if(!file||skuUploading)return;
+    if(!file.type.startsWith('image/')){notify('请选择图片文件。',true);return;}
+    const oldId=readPanel().skuSpecs[index].photoId;
+    const replaceOld=oldId&&!readPanel().skuSpecs.some((entry,i)=>i!==index&&entry.photoId===oldId)&&globalMaterials.some(m=>m.id===oldId);
+    if(globalMaterials.length>=8&&!replaceOld){notify('参考图最多8张，请先移除不需要的图片。',true);return;}
+    skuUploading=true;refreshSkuStrip();
+    try{
+      const dataUrl=await compressImageFile(file).catch(()=>new Promise((resolve,reject)=>{
+        const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(Error('读取失败'));reader.readAsDataURL(file);
+      }));
+      const spec=readPanel();
+      if(globalMaterials.length-(replaceOld&&globalMaterials.some(m=>m.id===oldId)?1:0)>=8)throw Error('参考图已满');
+      if(replaceOld)globalMaterials=globalMaterials.filter(m=>m.id!==oldId);
+      const photo={id:'mat_'+crypto.randomUUID(),base64:dataUrl.split(',')[1],preview:dataUrl,category:SKU_CATEGORY};
+      globalMaterials.push(photo);updateFilenames();renderMaterialGrid();
+      $('uploadCountIndicator').innerText=globalMaterials.length+'/8';
+      spec.skuSpecs[index].photoId=photo.id;applySpec(spec);
+      $('tbSkuError').textContent='图片与信息已绑定到本款SKU；生成前请重新构思。';
+    }catch(error){notify(error.message==='参考图已满'?'参考图最多8张，请先移除不需要的图片。':'这张图片无法读取，请换一张JPG或PNG图片。',true);}
+    finally{skuUploading=false;refreshSkuStrip();}
   }
   function hookMaterialChanges() {
     if (typeof processNewFiles === 'function' && !processNewFiles.__tbSku) {
@@ -358,6 +358,7 @@
       const wrapped = function (...args) {
         const result = original.apply(this, args);
         refreshSkuStrip();
+        if(typeof saveAppState==='function')saveAppState();
         return result;
       };
       wrapped.__tbSku = true;
@@ -532,17 +533,18 @@
       layout.activeSlots(spec).forEach((item, i) => {
         const heading = cards[i]?.querySelector('.font-bold');
         if (heading) heading.textContent = layout.customerLabel(item.slot, spec);
-        if (item.zone === 'sku' && (spec.skuMode==='manual'||photos.length)) {
+        if (item.zone === 'sku') {
           const picker = cards[i]?.querySelector('[onclick^="toggleCustomRef"]')?.parentElement;
           if (picker) {
             picker.hidden = true;
             picker.style.display = 'none';
-            picker.previousElementSibling.textContent = spec.skuMode==='manual'?'参考图：产品主体图；规格来自工作台手填尺寸':`参考图：${photos[Math.min(item.index - 1, photos.length - 1)].filename}（按上传顺序自动对应）`;
+            const photo=photos.find(p=>p.id===spec.skuSpecs[item.index-1].photoId);
+            picker.previousElementSibling.textContent = photo?`参考图：${photo.filename}；结合本款填写信息`:'参考图：产品主体图；规格来自本款填写信息';
           }
         }
       });
       const hint = $('customSlotCards').previousElementSibling;
-      if (hint) hint.textContent = '数量、画幅与SKU实物尺寸在工作台设置。每张要求可单独填写；主图、详情可勾参考图。SKU按所选模式使用上传规格图或本品图加手填尺寸。';
+      if (hint) hint.textContent = '数量、画幅与SKU实物尺寸在工作台设置。每张要求可单独填写；主图、详情可勾参考图。SKU在同一卡片绑定本款图片与填写信息。';
     };
   }
   function decorateGallery() {

@@ -25,37 +25,55 @@ try{
   await page.locator('#modeBtn_fast').click();for(const [id,n] of [['tbMainCount','1'],['tbSkuCount','2'],['tbDetailCount','1']]){await page.locator('#'+id).fill(n);await page.locator('#'+id).dispatchEvent('change');}
   await field('prodName','帆布油画');await field('prodDesc','保持上传图中的外观');
   const chooser=page.waitForEvent('filechooser');await page.locator('[onclick="openUploader(\'产品主体图\')"]').click();await(await chooser).setFiles({name:'product.png',mimeType:'image/png',buffer:product});await page.waitForFunction(()=>__workbenchMaterials().length===1);
-  await page.locator('#agentBtn').click();await page.locator('#tbSkuError').filter({hasText:'请先上传SKU图'}).waitFor();assert.equal(requests.length,0);
-  await page.locator('#tbSkuManual').click();assert.equal(await page.locator('#tbSkuManual').getAttribute('aria-pressed'),'true');assert.equal(await page.locator('#tbSkuUpload').isVisible(),false);
-  await page.locator('#agentBtn').click();await page.locator('#tbSkuError').filter({hasText:'SKU图 1 至少填写'}).waitFor();assert.equal(requests.length,0);
+  assert.equal(await page.locator('#tbSkuPhoto,#tbSkuManual').count(),0);
+  await page.locator('#agentBtn').click();await page.locator('#tbSkuError').filter({hasText:'上传图片或至少填写'}).waitFor();assert.equal(requests.length,0);
   await entry(0,'width').fill('0');await page.locator('#agentBtn').click();await page.locator('#tbSkuError').filter({hasText:'大于0'}).waitFor();assert.equal(requests.length,0);
   for(const [i,name,width,height] of [[0,'小号','40','60'],[1,'大号','80','120']]){await entry(i,'name').fill(name);await entry(i,'width').fill(width);await entry(i,'height').fill(height);}
-  checks.push('两个模式可点击；缺少上传图、空尺寸和0尺寸均在构思提交前拦截');
+  const upload=async(i,name,buffer)=>{
+    const chooser=page.waitForEvent('filechooser');await page.locator(`[data-sku-index="${i}"] [data-sku-upload]`).click();
+    await(await chooser).setFiles({name,mimeType:'image/png',buffer});await page.locator(`[data-sku-index="${i}"] [data-sku-preview]`).waitFor({state:'visible'});
+  };
+  await upload(0,'small.png',small);await upload(1,'large.png',large);
+  await page.waitForFunction(()=>__workbenchMaterials().length===3);
+  const ids=await page.evaluate(()=>__customLayout.taobao.skuSpecs.map(s=>s.photoId));assert.notEqual(ids[0],ids[1]);
+  checks.push('图片与信息在同一SKU卡片，两个上传入口分别绑定；空卡片和0尺寸在构思提交前拦截');
   await page.locator('#tbSkuCount').fill('1');await page.locator('#tbSkuCount').dispatchEvent('change');await page.locator('#tbSkuCount').fill('2');await page.locator('#tbSkuCount').dispatchEvent('change');assert.equal(await entry(1,'width').inputValue(),'80');
-  await page.locator('#tbSkuPhoto').click();const skuChooser=page.waitForEvent('filechooser');await page.locator('#tbSkuUpload').click();await(await skuChooser).setFiles([{name:'small.png',mimeType:'image/png',buffer:small},{name:'large.png',mimeType:'image/png',buffer:large}]);await page.waitForFunction(()=>__workbenchMaterials().length===3);
-  await page.locator('#tbSkuManual').click();assert.equal(await entry(1,'height').inputValue(),'120');
-  await page.reload({waitUntil:'domcontentloaded'});await page.waitForFunction(()=>__idbRestored);await page.locator('#nav-dash').click();assert.equal(await page.locator('#tbSkuManual').getAttribute('aria-pressed'),'true');assert.equal(await entry(0,'width').inputValue(),'40');assert.equal(await entry(1,'height').inputValue(),'120');
-  await page.locator('#taobaoShell').screenshot({path:path.join(output,'manual-dimensions.png')});
-  checks.push('切换模式、减少再增加SKU数量和刷新均保留各SKU尺寸与已上传图');
+  await page.reload({waitUntil:'domcontentloaded'});await page.waitForFunction(()=>__idbRestored);await page.locator('#nav-dash').click();
+  assert.equal(await entry(0,'width').inputValue(),'40');assert.equal(await entry(1,'height').inputValue(),'120');
+  assert.deepEqual(await page.evaluate(()=>__customLayout.taobao.skuSpecs.map(s=>s.photoId)),ids);
+  await page.locator('[data-sku-index="0"]').screenshot({path:path.join(output,'sku-image-and-info.png')});
+  checks.push('减少再增加SKU数量与刷新均保留每款图片绑定、名称、尺寸和单位');
   await plan();await finish();assert.equal(calls.length,4);
-  const material=await page.evaluate(()=>__workbenchMaterials().map(({filename,url})=>({filename,url}))),own=material.find(m=>m.filename==='产品主体图_1').url;
+  const material=await page.evaluate(()=>__workbenchMaterials().map(({id,filename,url})=>({id,filename,url}))),own=material.find(m=>m.filename==='产品主体图_1').url;
   const skuCalls=calls.filter(p=>p.prompt.includes('本图职责：SKU规格确认'));assert.equal(skuCalls.length,2);
-  for(const p of skuCalls)assert.deepEqual(p.references,[own]);
-  assert.ok(skuCalls.some(p=>p.prompt.includes('"宽":"40cm"')&&!p.prompt.includes('"宽":"80cm"')));assert.ok(skuCalls.some(p=>p.prompt.includes('"宽":"80cm"')&&!p.prompt.includes('"宽":"40cm"')));
-  const urls=await page.evaluate(()=>imageSlots.map(s=>s?.url));checks.push('手填模式实际模拟请求逐SKU带正确尺寸，只用本品主体图，不读取未启用的SKU图');
-  await page.locator('#nav-dash').click();await page.locator('#localDraftButton').click();await page.locator('#draftNew').click();await page.locator('#draftTitle').fill('手填尺寸草稿');await page.locator('#draftForm button[type="submit"]').click();await page.locator('#draftError').filter({hasText:'已保存'}).waitFor();
-  const saved=app.store.state.drafts.find(d=>d.title==='手填尺寸草稿');assert.equal(saved.workbench.app.customLayout.taobao.skuSpecs[1].height,'120');
+  for(const [i,width,other] of [[0,40,80],[1,80,40]]){
+    const call=skuCalls.find(p=>p.prompt.includes('"宽":"'+width+'cm"'));
+    assert.ok(call);assert.deepEqual(call.references,[material.find(m=>m.id===ids[i]).url]);assert.ok(!call.prompt.includes('"宽":"'+other+'cm"'));
+  }
+  const urls=await page.evaluate(()=>imageSlots.map(s=>s?.url));checks.push('两款模拟生成请求同时携带各自图片和所填规格，互不串款');
+  await page.locator('#nav-dash').click();await page.locator('#localDraftButton').click();await page.locator('#draftNew').click();await page.locator('#draftTitle').fill('SKU图片与信息草稿');await page.locator('#draftForm button[type="submit"]').click();await page.locator('#draftError').filter({hasText:'已保存'}).waitFor();
+  const saved=app.store.state.drafts.find(d=>d.title==='SKU图片与信息草稿');assert.equal(saved.workbench.app.customLayout.taobao.skuSpecs[1].height,'120');assert.equal(saved.workbench.app.customLayout.taobao.skuSpecs[1].photoId,ids[1]);
   await page.locator('#localDraftEditor [data-close]').click();await entry(0,'width').fill('41');await page.locator('#mainBtn').click();await page.locator('#logContent').filter({hasText:'重新构思'}).waitFor();assert.equal(calls.length,4);assert.deepEqual(await page.evaluate(()=>imageSlots.map(s=>s?.url)),urls);
-  await page.locator('#nav-dash').click();await page.locator('#tbSkuPhoto').click();await page.locator('#localDraftButton').click();await page.locator('#draftCards .local-card').filter({hasText:'手填尺寸草稿'}).locator('[data-restore]').click();await page.waitForFunction(()=>!document.querySelector('#localDraftList').open&&document.querySelector('#tbSkuManual').getAttribute('aria-pressed')==='true');assert.equal(await entry(0,'width').inputValue(),'40');assert.equal(calls.length,4);
-  checks.push('修改尺寸后旧方案被拒绝且保留成图；完整草稿恢复手填模式、各SKU尺寸和单位');
-  await page.locator('#nav-dash').click();await page.locator('#tbSkuPhoto').click();await plan();await finish(urls);assert.equal(calls.length,8);
-  const photoCalls=calls.slice(4).filter(p=>p.prompt.includes('本图职责：SKU规格确认'));
-  assert.deepEqual(photoCalls.map(p=>p.references[0]).sort(),material.filter(m=>m.filename.startsWith('SKU图_')).map(m=>m.url).sort());
-  for(const p of photoCalls){assert.equal(p.references.length,1);assert.ok(!p.prompt.includes('本SKU已确认数据'));}
-  checks.push('上传模式重新构思后分别使用两张对应SKU图，忽略仍保存的手填尺寸');
-  const status=await(await fetch(base+'/api/status')).json();delete status.skuInputVersion;await page.route(base+'/api/status',route=>route.fulfill({json:status}));
-  await page.reload({waitUntil:'domcontentloaded'});await page.waitForFunction(()=>__idbRestored);await page.locator('#nav-dash').click();const count=requests.length;await page.locator('#agentBtn').click();await page.locator('#tbSkuError').filter({hasText:'尚未加载SKU尺寸功能'}).waitFor();assert.equal(requests.length,count);assert.equal(calls.length,8);
-  checks.push('旧服务缺少SKU输入能力时提前阻断，不静默忽略尺寸');
+  await page.locator('#nav-dash').click();await page.locator('#localDraftButton').click();await page.locator('#draftCards .local-card').filter({hasText:'SKU图片与信息草稿'}).locator('[data-restore]').click();await page.waitForFunction(()=>!document.querySelector('#localDraftList').open);assert.equal(await entry(0,'width').inputValue(),'40');assert.equal(calls.length,4);
+  checks.push('完整草稿恢复图片与信息；修改尺寸后旧方案被拒绝且保留已有成图');
+  await page.locator('#nav-dash').click();await page.locator('[data-sku-index="0"] [data-sku-remove]').click();
+  assert.equal(await entry(0,'width').inputValue(),'40');assert.equal(await page.locator('[data-sku-index="0"] [data-sku-preview]').isVisible(),false);
+  assert.equal(await page.locator('[data-sku-index="1"] [data-sku-photo]').inputValue(),ids[1]);
+  assert.equal(await page.evaluate(id=>__workbenchMaterials().find(m=>m.id===id).filename,ids[1]),'SKU图_1');
+  // Choosing an existing material must not be undone by the select's input event.
+  await page.locator('[data-sku-index="0"] [data-sku-photo]').selectOption(ids[1]);
+  assert.equal(await page.locator('[data-sku-index="0"] [data-sku-photo]').inputValue(),ids[1]);
+  await page.locator('[data-sku-index="0"] [data-sku-photo]').selectOption('');
+  assert.equal(await page.locator('[data-sku-index="1"] [data-sku-photo]').inputValue(),ids[1]);
+  checks.push('删除第一款图片后第二款仍绑定原图；选取已有图可用，清除绑定保留填写信息');
+  await plan();await finish(urls);assert.equal(calls.length,8);
+  const mixed=calls.slice(4).filter(p=>p.prompt.includes('本图职责：SKU规格确认'));
+  assert.deepEqual(mixed.find(p=>p.prompt.includes('"宽":"40cm"')).references,[own]);
+  assert.deepEqual(mixed.find(p=>p.prompt.includes('"宽":"80cm"')).references,[material.find(m=>m.id===ids[1]).url]);
+  checks.push('同一套允许部分SKU有图、部分仅填尺寸；无图款只取产品主体图，不借用别款图');
+  const status=await(await fetch(base+'/api/status')).json();status.skuInputVersion=1;await page.route(base+'/api/status',route=>route.fulfill({json:status}));
+  await page.reload({waitUntil:'domcontentloaded'});await page.waitForFunction(()=>__idbRestored);await page.locator('#nav-dash').click();const count=requests.length;await page.locator('#agentBtn').click();await page.locator('#tbSkuError').filter({hasText:'尚未加载SKU图片与信息合并功能'}).waitFor();assert.equal(requests.length,count);assert.equal(calls.length,8);
+  checks.push('旧服务提前阻断，不静默丢弃合并输入');
   assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
   const report={passed:true,checks,fixtureImageCalls:calls.length,realImageCalls:0,realPlannerCalls:0,errors,external};fs.writeFileSync(path.join(output,'report.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report));
 }catch(error){await page.screenshot({path:path.join(output,'failure.png'),fullPage:true});fs.writeFileSync(path.join(output,'failure.json'),JSON.stringify({error:error.message,checks,errors,requests:requests.map(r=>r.path)},null,2));throw error;}
