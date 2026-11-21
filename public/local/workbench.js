@@ -167,7 +167,7 @@
   let currentDraft=null;
   function currentImages() {
     return [...new Set([
-      ...(typeof imageSlots!=='undefined'?imageSlots:[]).filter(Boolean).map(v=>v.url),
+      ...(typeof imageSlots!=='undefined'?imageSlots:[]).filter(Boolean).map(v=>v.history?.[v.currentIndex]||v.url),
       ...(typeof editHistory!=='undefined'?editHistory:[]),
       ...(typeof mobileSlots!=='undefined'?mobileSlots:[]).filter(Boolean).map(v=>v.url)
     ].filter(v=>typeof v==='string' && v.startsWith('/media/')))];
@@ -178,10 +178,12 @@
     row.querySelector('button').onclick=()=>row.remove();return row;
   }
   async function openDraftEditor(draft) {
+    let workbench;
+    try{workbench=draft?.workbench || (!draft && await window.TaobaoDrafts?.capture());}catch(error){notify(error.message,true);return;}
     currentDraft=draft || null;
-    const images=draft?.images || currentImages();
+    const images=draft?.images || (workbench ? TaobaoLayout.activeSlots(workbench.app.customLayout.taobao).map(({slot})=>workbench.app.imageSlots[slot]).filter(Boolean).map(s=>s.history?.[s.currentIndex]||s.url) : currentImages());
     const dialog=modal('localDraftEditor',`<div class="local-head"><h2>${draft?'编辑':'保存'}商品草稿</h2><button data-close>关闭</button></div>
-      <p class="local-muted">保存到本机草稿，不是淘宝草稿箱，也没有发布到淘宝。资料包可交给人工上架；平台必填字段仍需按实际类目匹配。</p>
+      <p class="local-muted">保存到本机草稿，不是淘宝草稿箱，也没有发布到淘宝。${workbench?'本品素材、工作台设置、逐图要求、对标选择和成图会一并保存。':'此旧草稿只含商品资料和成图。'}</p>
       <form id="draftForm"><label>商品标题<input id="draftTitle" required maxlength="160" value="${escape(draft?.title || $('prodName').value)}"></label>
       <div class="local-grid"><label>目标平台<select id="draftPlatform"><option>通用</option><option>淘宝</option><option>抖店</option><option>Amazon</option></select></label><label>状态<input value="草稿 · 未发布" readonly></label></div>
       <label>商品说明<textarea id="draftDescription" rows="3">${escape(draft?.description || $('prodDesc').value)}</textarea></label>
@@ -197,7 +199,9 @@
         if(!data.code || !data.name || data.price==='' || data.stock==='') throw new Error('请补齐每条 SKU 的编码、名称、价格和库存');
         return {...data,price:Number(data.price),stock:Number(data.stock)};
       });
-      return {id:currentDraft?.id,title:$('draftTitle').value,platform:$('draftPlatform').value,description:$('draftDescription').value,skus,images,sop:draft?.sop || $('sopText').value,status:'draft'};
+      const result={id:currentDraft?.id,title:$('draftTitle').value,platform:$('draftPlatform').value,description:$('draftDescription').value,skus,images,sop:draft?.sop ?? $('sopText').value,status:'draft'};
+      if(workbench){result.workbench=structuredClone(workbench);Object.assign(result.workbench.app,{prodName:result.title,prodDesc:result.description,sopText:result.sop});}
+      return result;
     };
     async function save() {
       const result=await api('/api/drafts',read());
@@ -231,7 +235,8 @@
       if(!drafts.length) $('draftCards').innerHTML='<p class="local-muted" style="margin-top:24px">尚未保存草稿。可以先完善产品资料，再添加生成图片。</p>';
       for(const draft of drafts) {
         const card=document.createElement('article');card.className='local-card';
-        card.innerHTML=`<div class="local-head"><strong>${escape(draft.title)}</strong><span class="local-pill">草稿 · 未发布</span></div><p class="local-muted">${escape(draft.platform)} · ${draft.skus.length} 个 SKU · ${draft.images.length} 张图片 · ${escape(new Date(draft.updatedAt).toLocaleString('zh-CN'))}</p><div class="local-row"><button data-edit>打开草稿</button><button data-export>导出 ZIP</button></div>`;
+        card.innerHTML=`<div class="local-head"><strong>${escape(draft.title)}</strong><span class="local-pill">草稿 · 未发布</span></div><p class="local-muted">${escape(draft.platform)} · ${draft.images.length} 张图片 · ${escape(new Date(draft.updatedAt).toLocaleString('zh-CN'))}</p><div class="local-row">${draft.workbench?'<button class="primary" data-restore>继续编辑</button>':''}<button data-edit>查看资料</button><button data-export>导出 ZIP</button></div>`;
+        card.querySelector('[data-restore]')?.addEventListener('click',async event=>{event.currentTarget.disabled=true;try{await window.TaobaoDrafts.restore(draft.id);dialog.close();}catch(error){notify(error.message,true);event.currentTarget.disabled=false;}});
         card.querySelector('[data-edit]').onclick=()=>{dialog.close();openDraftEditor(draft);};
         card.querySelector('[data-export]').onclick=()=>exportDraft(draft).catch(e=>notify(e.message,true));
         $('draftCards').appendChild(card);

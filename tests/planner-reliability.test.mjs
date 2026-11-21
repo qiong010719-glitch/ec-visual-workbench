@@ -21,6 +21,35 @@ function reply(res,content=completeText,finishReason='stop'){
   res.end(JSON.stringify({model:'test-planner',choices:[{message:{content},finish_reason:finishReason}],usage:{prompt_tokens:100,completion_tokens:200,total_tokens:300}}));
 }
 
+test('configured text planner cannot turn the SKU specification into a marketing collage',async t=>{
+  const payload={...product,product_name:'玄关柜子',product_desc:'耐看耐用',generation_mode:'fast',visual_style:'scene_advertising',
+    custom_layout:{main:1,sub:5,aplus:3},slot_directives:[{slot:5,taobao_role:'sku',ref_images:['SKU图_1']}]};
+  const seed=buildPlan(payload);
+  const bad='共享标题：耐看耐用营销拼版。\n\n'+seed.sections.map(s=>s.title+'\n'+(s.slot===5?'完整SKU商品占约10%—20%，标题：要点，一眼看清。采用ENF级板材。':'本图独立方案，保留原文。')).join('\n\n');
+  const api=await upstream(t,res=>reply(res,bad));
+  const plan=await planProduct(payload,api.configuration);
+  assert.equal(api.requests.length,1);
+  assert.equal(splitPlan(plan.text).blocks.size,9);
+  assert.match(splitPlan(plan.text).blocks.get('【主图】'),/保留原文/);
+  const prompt=promptForSlot(payload,plan.sections.find(s=>s.slot===5),plan);
+  assert.doesNotMatch(prompt,/要点，一眼看清|10%—20%|采用ENF|共享标题/);
+  assert.match(prompt,/SKU规格确认/);assert.match(prompt,/清晰可辨/);
+});
+
+test('configured planning preserves the selected model identity and explicit presence policy',async t=>{
+  const identity={version:1,enabled:true,id:'chosen_actor',references:[{url:'/media/actor.png',sha256:'fixture-hash',filename:'actor.png'}]};
+  const payload={...product,visual_style:'scene_advertising',model_identity:identity};
+  const api=await upstream(t,res=>reply(res));const plan=await planProduct(payload,api.configuration);
+  assert.deepEqual(plan.modelIdentity,identity);
+  assert.match(api.requests[0].messages.filter(m=>m.role==='system').at(-1).content,/模特出镜：是/);
+  assert.match(api.requests[0].messages.find(m=>m.role==='user').content,/至少三张不出现完整人物/);
+  assert.match(api.requests[0].messages.filter(m=>m.role==='system').at(-1).content,/不能覆盖无人或仅手部分镜/);
+  assert.match(promptForSlot(payload,plan.sections[0],plan),/参考图中的同一位模特/);
+  for(const slot of [2,4,5,8,11])assert.match(promptForSlot(payload,plan.sections.find(s=>s.slot===slot),plan),/本图人物安排：不出镜/);
+  for(const slot of [3,6,10])assert.match(promptForSlot(payload,plan.sections.find(s=>s.slot===slot),plan),/本图人物安排：仅手部/);
+  for(const slot of [1,7,9])assert.match(promptForSlot(payload,plan.sections.find(s=>s.slot===slot),plan),/本图人物安排：人物出镜/);
+});
+
 test('configured planner receives selected per-slot ratios and invalid ratios retain legacy defaults',async t=>{
   const payload={design_scope:'custom',custom_layout:{main:1,sub:1,aplus:1},slot_directives:[
     {slot:0,aspect_ratio:'2:3'},{slot:1,aspect_ratio:'5:4'},{slot:7,aspect_ratio:'3:4'}]};

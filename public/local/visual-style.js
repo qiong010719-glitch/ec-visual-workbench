@@ -30,6 +30,7 @@
       }
     });
     document.getElementById('generationMode')?.addEventListener('change',update);update();
+    window.restoreLocalVisualStyle=(value,currentMode)=>{saved[currentMode]=value;localStorage.setItem(key,JSON.stringify(saved));update();};
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',setup);else setup();
 })();

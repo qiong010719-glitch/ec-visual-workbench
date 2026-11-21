@@ -971,9 +971,8 @@ window.addEventListener('DOMContentLoaded', function () {
         }
 
         function isTextDepthOn() { const el = document.getElementById('textDepth'); return !!(el && el.checked); }
-        function saveAppState() {
-            if (!__idbRestored) return; // Do not overwrite stored state during startup.
-            const state = { 
+        function captureAppState() {
+            return {
                 generationMode: document.getElementById('generationMode').value,
                 designScope: document.getElementById('designScope').value,
                 targetMarket: document.getElementById('targetMarket').value, 
@@ -1001,6 +1000,10 @@ window.addEventListener('DOMContentLoaded', function () {
                 customLayout: window.__customLayout || null,
                 mobileSlots: (Array.isArray(mobileSlots) ? mobileSlots.map(s => s ? { url: s.url, id: s.id } : null) : [])
             };
+        }
+        function saveAppState() {
+            if (!__idbRestored) return; // Do not overwrite stored state during startup.
+            const state = captureAppState();
             // ⛑️ localStorage 超配额兜底：存档失败绝不能抛异常掐死构思/生图流程（这正是"点一键构思没反应"的根因）。
             //    降级顺序：完整存 → 丢图片 base64 只存 url 等轻量字段 → 彻底放弃本次存档但流程照常。
             try { __idbSaveDebounced(state); } catch (_e) {}
@@ -2007,8 +2010,11 @@ if (!headers) return
 const response = await fetch('/api/agent', { method: 'POST', headers: headers, body: JSON.stringify(payload) });
 rememberChargeId(agentTaskId, response.headers.get('X-Request-Id'));   // 构思失败时凭它退款
 if (response.status === 402) { clearInterval(progressInterval); document.getElementById('championsOverlay').classList.remove('show'); activeAgentTask = null; saveAppState(); triggerError('点数不足', '剩余点数不够用了，请充值后继续。'); return; }
-if (!response.ok) throw new Error(`HTTP 错误: ${response.status}`);
-            } catch (err) { clearInterval(progressInterval); document.getElementById('championsOverlay').classList.remove('show'); activeAgentTask = null; saveAppState(); db.ref('agent_tasks/' + agentTaskId).off(); triggerError('NETWORK ERROR', '无法连接到远端智脑节点。'); }
+if (!response.ok) {
+    const detail = await response.json().catch(() => ({}));
+    throw new Error(detail.error || `构思请求未完成（HTTP ${response.status}）`);
+}
+            } catch (err) { clearInterval(progressInterval); document.getElementById('championsOverlay').classList.remove('show'); activeAgentTask = null; saveAppState(); db.ref('agent_tasks/' + agentTaskId).off(); triggerError('构思未完成', String(err.message || '服务暂时无法连接，请先核对任务记录。').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))); }
         }
 
         // 各槽位的画幅（重绘/加工时随任务带上，避免比例丢失变方图；与内部版一致）
@@ -3011,13 +3017,21 @@ function billNote(t) { return `<div class="bill-sub">${t}</div>`; }
             if(targetIdx === null) {
                 for(let i=0; i<14; i++) { 
                     if(titles[i] !== null) {
-                        imageSlots[i] = null; const taskId = `task_${batchId}_${i}`; 
-                        generatedTasks.push({ slot: i, taskId: taskId, aspect_ratio: _aspectForTitle(titles[i]) }); activeKieTasks.push({ slot: i, taskId: taskId }); resumeKieListener(i, taskId); 
+                        const taskId = `task_${batchId}_${i}`;
+                        generatedTasks.push({ slot: i, taskId: taskId, aspect_ratio: _aspectForTitle(titles[i]) });
                     }
                 }
             } else { 
-                const taskId = `task_${batchId}_${targetIdx}`; generatedTasks.push({ slot: targetIdx, taskId: taskId, aspect_ratio: _aspectForTitle(titles[targetIdx]) }); activeKieTasks.push({ slot: targetIdx, taskId: taskId }); resumeKieListener(targetIdx, taskId); 
+                const taskId = `task_${batchId}_${targetIdx}`; generatedTasks.push({ slot: targetIdx, taskId: taskId, aspect_ratio: _aspectForTitle(titles[targetIdx]) });
             }
+            const watchSubmittedTasks = clearPrevious => {
+                for (const task of generatedTasks) {
+                    if (clearPrevious && targetIdx === null) imageSlots[task.slot] = null;
+                    activeKieTasks.push({slot:task.slot,taskId:task.taskId});
+                    resumeKieListener(task.slot,task.taskId);
+                }
+                saveAppState();
+            };
             saveAppState(); 
 
             try {
@@ -3069,7 +3083,13 @@ function billNote(t) { return `<div class="bill-sub">${t}</div>`; }
                 const _chargeId = response.headers.get('X-Request-Id');
                 generatedTasks.forEach(t => rememberChargeId(t.taskId, _chargeId));
                 if (response.status === 402) { btn.disabled = false; btn.classList.add('ready-to-fuse'); btn.innerHTML = `<img src="totk-what-were-your-favorite-ultrahand-creations-v0-c6lyir7oo06e1.png" class="ultrahand-icon-fixed"><span>开始生成</span>`; triggerError('点数不足', '剩余点数不够用了，请充值后继续。'); return; }
-                if (!response.ok) throw new Error("HTTP 错误");
+                if (!response.ok) {
+                    const detail = await response.json().catch(() => ({}));
+                    const error = new Error(detail.error || `提交失败（HTTP ${response.status}）`);
+                    error.submissionRejected = response.status >= 400 && response.status < 500;
+                    throw error;
+                }
+                watchSubmittedTasks(true);
                 
                 btn.disabled = false; btn.innerHTML = `<img src="totk-what-were-your-favorite-ultrahand-creations-v0-c6lyir7oo06e1.png" class="ultrahand-icon-fixed"><span>开始生成</span>`;
                 // 备用通道是「全部跑完一次性写回」，中途槽位不会有任何变化 —— 必须提前说清楚，
@@ -3079,8 +3099,16 @@ function billNote(t) { return `<div class="bill-sub">${t}</div>`; }
                         ? "任务已下发（备用通道）。<span class='text-zonai-yellow'>本通道会等整套图全部生成完毕后一起显示，中途槽位没有变化是正常的</span>，请耐心等待，正常约 2-3 分钟。"
                         : "任务已下发，云端正在生成，出图会自动出现在右侧…";
             } catch (error) { 
-                btn.disabled = false; btn.innerHTML = `任务已下发 (慢通道确认中)`;
-                document.getElementById('logContent').innerHTML = "⚠️ 通道确认超时：任务大概率已抵达云端并在生成中，Firebase 监听保持在线，图片完成后会自动点亮。若 5 分钟后毫无动静，请重新点击生成。"; saveAppState();
+                btn.disabled = false;
+                if (error.submissionRejected) {
+                    btn.innerHTML = `开始生成`;
+                    document.getElementById('logContent').textContent = error.message;
+                } else {
+                    watchSubmittedTasks(false);
+                    btn.innerHTML = `提交状态待确认`;
+                    document.getElementById('logContent').textContent = '提交结果尚未确认，正在查询任务状态。原图保留；请先核对任务记录，不要重复提交以免重复计费。';
+                }
+                saveAppState();
             }
         }
         // ===== 评分 / 单图归档 / 单图差评 =====
