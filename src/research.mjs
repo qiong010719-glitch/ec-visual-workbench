@@ -36,7 +36,7 @@ export class ResearchService {
     if(this.library.state.campaigns[key])return this.library.state.campaigns[key];
     let input;
     if(kind==='collect') {
-      if(!this.client.configured)throw new Error('请先在 .env.apify 填写 APIFY_API_TOKEN');
+      if(!this.client.configured)throw new Error('请先在设置中保存链接分析密钥（Apify API Token）');
       if(!Array.isArray(payload.categoryUrls) || !payload.categoryUrls.length || payload.categoryUrls.length>50)throw new Error('每批需要 1–50 个类目畅销榜链接');
       const urls=[...new Set(payload.categoryUrls)].map(value=>{
         const u=amazonUrl(value);

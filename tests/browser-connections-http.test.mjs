@@ -7,9 +7,9 @@ import {createWorkbench} from '../src/server.mjs';
 
 async function fixture(t){
   const directory=fs.mkdtempSync(path.join(os.tmpdir(),'chrome-settings-http-'));
-  const state={snapshot:{listeners:[],processes:[]},external:0,probes:0};
+  const state={snapshot:{listeners:[],processes:[]},external:0,probes:0,existingProbes:0};
   const forbidden=async()=>{state.external++;throw new Error('External operation must not run');};
-  const app=createWorkbench({dataDirectory:directory,configuration:{WORKBENCH_FRESH:'true'},chromeInspector:async()=>{state.probes++;return state.inspect?state.inspect():state.snapshot;},provider:forbidden,planner:forbidden,erpAdapter:{preflight:forbidden,verifyMother:forbidden,verifyTemplate:forbidden,open:forbidden,runDraft:forbidden,publishDraft:forbidden},sourcingClient:forbidden,collectionAdapter:{preflight:forbidden,importProduct:forbidden}});
+  const app=createWorkbench({dataDirectory:directory,configuration:{WORKBENCH_FRESH:'true'},chromeInspector:async()=>{state.probes++;return state.inspect?state.inspect():state.snapshot;},chromeExistingInspector:async()=>{state.existingProbes++;return {state:'unavailable',connected:false,message:'测试 Chrome 不可达'};},provider:forbidden,planner:forbidden,erpAdapter:{preflight:forbidden,verifyMother:forbidden,verifyTemplate:forbidden,open:forbidden,openLogin:forbidden,checkConnection:forbidden,runDraft:forbidden,publishDraft:forbidden},sourcingClient:forbidden,collectionAdapter:{preflight:forbidden,importProduct:forbidden}});
   app.preferences.update({revision:0,browsers:[{key:'chrome-one',type:'chrome',name:'已绑定窗口',debugPort:9222},{key:'chrome-two',type:'chrome',name:'另一个窗口',debugPort:9233}],erpConnections:[{key:'erp-one',provider:'dianxiaomi',name:'店小秘',browserKey:'chrome-one'}],stores:[{key:'temu-one',platform:'temu',expectedStore:'Temu 店',expectedSite:'加拿大站',erpKey:'erp-one',templates:[{key:'mother-one',name:'原母稿',draftId:'123456789'}]}]});
   await new Promise(resolve=>app.server.listen(0,'127.0.0.1',resolve));
   const base='http://127.0.0.1:'+app.server.address().port,token=(await fetch(base+'/api/session').then(r=>r.json())).token;
@@ -54,6 +54,27 @@ test('running old profile and occupied ports block saving; inspection stays read
   f.app.sourcing.isBusy=()=>false;f.state.inspect=async()=>{f.app.products.isBusy=()=>true;return {listeners:[],processes:[]};};
   assert.equal((await f.post('save',{revision:before.revision,browser})).status,409);f.app.products.isBusy=()=>false;
   assert.deepEqual(f.app.preferences.view(),before);
+});
+
+test('existing Chrome can be saved while unreachable, preserving ERP links and historical task bindings without connecting', {skip:process.platform!=='win32'},async t=>{
+  const f=await fixture(t),before=f.app.preferences.view(),old=before.browsers[0],browser={key:old.key,type:'chrome',connectionMode:'existing',name:'已登录 Chrome'};
+  f.app.store.state.productBatches.previous={id:'previous',label:'历史批次',platform:'temu',phase:'completed',connectionBinding:{browserConfig:old},products:[]};f.app.store.save();
+  const history=fs.readFileSync(f.app.store.file);
+  assert.equal((await f.post('save',{revision:before.revision,browser},{session:null})).status,403);
+  assert.equal((await f.post('inspect',{browser})).body.state,'unavailable');
+  assert.equal(f.state.existingProbes,1);
+  f.app.freeSourcing.isBusy=()=>true;
+  assert.equal((await f.post('save',{revision:before.revision,browser})).status,409);
+  f.app.freeSourcing.isBusy=()=>false;
+  const saved=await f.post('save',{revision:before.revision,browser});
+  assert.equal(saved.status,200,JSON.stringify(saved.body));
+  assert.equal(saved.body.browsers[0].connectionMode,'existing');
+  assert.equal(saved.body.browsers[0].userDataDir,path.join(process.env.LOCALAPPDATA,'Google','Chrome','User Data'));
+  assert.equal(Object.hasOwn(saved.body.browsers[0],'debugPort'),false);
+  assert.deepEqual(saved.body.erpConnections,before.erpConnections);assert.deepEqual(saved.body.stores,before.stores);assert.deepEqual(saved.body.browsers[1],before.browsers[1]);
+  assert.deepEqual((await f.request('/api/settings')).body,saved.body);assert.deepEqual(fs.readFileSync(f.app.store.file),history);
+  assert.equal((await f.post('save',{revision:before.revision,browser})).status,409);
+  assert.equal(f.state.existingProbes,1,'saving does not discover or authorize Chrome');assert.equal(f.state.probes,0);assert.equal(f.state.external,0);
 });
 
 test('a concurrent settings write during inspection wins and does not get overwritten by Chrome save',async t=>{

@@ -21,7 +21,7 @@ try{
   await app.evaluate(({dialog},selected)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[selected]});},selected);
   await page.click('#browseFolder');assert.equal(await page.inputValue('#folderPath'),selected);
   await page.click('#importFolder');await page.locator('[data-product="0"]').waitFor();assert.equal(await page.locator('[data-field="productCode"]').inputValue(),'DESKTOP-001');assert.equal(await page.locator('#productInputs [data-field="name"]').inputValue(),'桌面导入测试');
-  await page.getByRole('link',{name:'连接设置',exact:true}).click();await page.locator('#modelForm').waitFor();
+  await page.getByRole('link',{name:'设置',exact:true}).click();await page.locator('#modelForm').waitFor();
   await page.fill('input[name="PLANNER_API_KEY"]','test-desktop-secret');await page.locator('#modelForm button').click();await page.getByText('配置已保存在本机。',{exact:true}).waitFor();
   const secretText=fs.readFileSync(path.join(directory,'preferences/secrets.json'),'utf8');assert.ok(!secretText.includes('test-desktop-secret'));
   assert.equal(await page.inputValue('input[name="PLANNER_API_KEY"]'),'');await page.reload();await page.waitForFunction(()=>document.querySelector('#modelStatus').textContent.includes('文本密钥：已配置'));

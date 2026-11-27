@@ -1,0 +1,18 @@
+Fluid Glass UI shader attribution
+Copyright 2026 csuyincs-creator (清晨方白晓)
+https://github.com/csuyincs-creator/fluidglass-ui
+Fixed source revision: 91f54e49a804ddb325503c7f8979b02a58e9aaa0
+License: Apache-2.0 (see LICENSE in this directory)
+
+The vertex and fragment shader embedded in public/local/cockpit-fluid.js
+are adapted from references/canonical-vertex-shader.glsl and
+references/canonical-fragment-shader.glsl in the above source revision.
+
+Modifications, 2026-11-21:
+- Scoped, dependency-free lifecycle for four commerce dashboard metric cards.
+- Capped pixel ratio and frame rate, hidden/offscreen suspension, reduced motion.
+- Per-card palettes and pointer interaction, graceful CSS fallback.
+- Shader edge fading expressed with ordered smoothstep endpoints.
+- Fragment precision follows the browser's supported high precision range.
+
+No upstream author portrait, branding assets, or 3D-card-acrylic code is included.

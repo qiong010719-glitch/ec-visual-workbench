@@ -99,7 +99,7 @@ try{
   assert.equal(await page.locator('#productInputs [data-field="productCode"]').inputValue(),'FRESH-001');
   assert.equal(await page.locator('#productInputs [data-field="name"]').inputValue(),'新电脑导入测试');
   checks.push('bundled image/Excel readers import Chinese-path material');
-  await page.getByRole('link',{name:'连接设置',exact:true}).click();await page.locator('#modelForm').waitFor();
+  await page.getByRole('link',{name:'设置',exact:true}).click();await page.locator('#modelForm').waitFor();
   await page.fill('input[name="PLANNER_API_KEY"]','fresh-install-fixture-secret');await page.locator('#modelForm button').click();
   await page.getByText('配置已保存在本机。',{exact:true}).waitFor();
   assert.equal(await page.inputValue('input[name="PLANNER_API_KEY"]'),'');
@@ -117,7 +117,7 @@ try{
   await stop();session=await start();page=session.page;api=session.api;
   settings=(await api('/api/settings')).value;
   assert.equal(settings.models.PLANNER_API_KEYConfigured,true);assert.equal(settings.browsers[0].name,'隔离验收浏览器');assert.equal(settings.erpConnections[0].key,'fresh-erp');assert.deepEqual(settings.stores,[]);
-  await page.getByRole('link',{name:'连接设置',exact:true}).click();await page.waitForFunction(()=>document.querySelector('#modelStatus')?.textContent.includes('文本密钥：已配置'));
+  await page.getByRole('link',{name:'设置',exact:true}).click();await page.waitForFunction(()=>document.querySelector('[data-secret-status=PLANNER_API_KEY]')?.textContent==='已保存');
   assert.equal(await page.inputValue('input[name="PLANNER_API_KEY"]'),'');checks.push('close/relaunch preserves browser/ERP configuration and decrypts the fixture key');
   for(const route of ['/temu','/temu/listings','/settings']){await page.locator(`.workbench-nav a[href="${route}"]`).click();await page.locator(`.workbench-nav a[href="${route}"][aria-current="page"]`).waitFor();}
   checks.push('three workbench pages render after relaunch');assert.deepEqual(errors,[]);

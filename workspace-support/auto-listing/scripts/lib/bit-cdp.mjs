@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import {chromeConnection} from './chrome-cdp.mjs';
+import {isExistingChromeEndpoint,existingChromeHandle,existingChromePage} from './chrome-existing.mjs';
 
 export const root = new URL('../../', import.meta.url);
 export const config = await readFile(new URL('config/test-draft.json', root), 'utf8').then(JSON.parse).catch(()=>null);
@@ -69,6 +70,7 @@ export async function connection(configOverride = config) {
   return { http, ws: info.ws, targets: () => request(http + '/json/list') };
 }
 export async function connect(url) {
+  if(isExistingChromeEndpoint(url))return existingChromeHandle(url);
   local(url);
   const ws = new WebSocket(url);
   const pending = new Map();
@@ -117,6 +119,7 @@ export async function connect(url) {
   };
 }
 export async function pageById(info, targetId) {
+  if(isExistingChromeEndpoint(info.ws))return existingChromePage(info.ws,targetId);
   const target = (await info.targets()).find(item => item.id === targetId && item.type === 'page');
   if (!target) throw new Error('Required page is closed');
   return connect(target.webSocketDebuggerUrl);

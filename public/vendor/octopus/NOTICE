@@ -1,0 +1,7 @@
+UI reference attribution
+
+The workspace composition was informed by Octopus Knowledge Workbench, by 张鱼烧脑🐙,
+commit ce8e963573b9d9c04940eec8439e69f45ff78002 (MIT).
+The commerce dashboard, data binding and orbit interaction are independently implemented.
+Fluid Glass UI shaders and their license are documented in ../fluidglass/NOTICE.
+No source code, images or branding from 3D-card-acrylic are included in this application.

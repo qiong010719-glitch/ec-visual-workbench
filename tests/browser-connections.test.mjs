@@ -11,8 +11,8 @@ function fixture(t){
   const directory=fs.mkdtempSync(path.join(os.tmpdir(),'chrome-connections-'));
   const preferences=createSettings({directory,configuration:{},legacyDirectory:null});
   preferences.update({revision:0,browsers:[{key:'one',type:'chrome',name:'现有窗口',debugPort:9222},{key:'two',type:'chrome',name:'其他窗口',debugPort:9233},{key:'bit',browserId:'legacy',name:'保留旧比特配置',browserSequence:1,localApi:'http://127.0.0.1:54346'}],erpConnections:[{key:'erp-one',provider:'dianxiaomi',name:'店小秘',browserKey:'one'}],stores:[{key:'temu-store',platform:'temu',expectedStore:'已跑通的店铺',expectedSite:'加拿大站',erpKey:'erp-one',templates:[{key:'mother',name:'原母稿',draftId:'123456789'}]},{key:'amazon-store',platform:'amazon',expectedStore:'Amazon 店',expectedSite:'美国站',erpKey:'erp-one',templates:[]}]});
-  const state={snapshot:{listeners:[],processes:[]},busy:false,probes:0};
-  const service=createBrowserConnections({preferences,inspector:async()=>{state.probes++;return state.inspect?state.inspect():state.snapshot;},isBusy:()=>state.busy});
+  const state={snapshot:{listeners:[],processes:[]},busy:false,probes:0,existingProbes:0};
+  const service=createBrowserConnections({preferences,inspector:async()=>{state.probes++;return state.inspect?state.inspect():state.snapshot;},existingInspector:async()=>{state.existingProbes++;return {state:'unavailable',connected:false,message:'测试 Chrome 不可达'};},isBusy:()=>state.busy});
   const browser=()=>({...preferences.browser('one'),debugPort:9232});
   t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
   return {preferences,state,service,browser,directory};
@@ -64,6 +64,38 @@ test('save rejects occupied or running profiles and fails closed on unavailable 
   f.state.inspect=async()=>{throw new Error('private command line and token');};
   const unavailable=await f.service.inspect({browser:f.browser()});assert.equal(unavailable.state,'unavailable');assert.doesNotMatch(unavailable.message,/private|token/);
   assert.deepEqual(f.preferences.view(),before);
+});
+
+test('explicitly switching a legacy binding to existing Chrome saves offline without probing or changing related data', {skip:process.platform!=='win32'},async t=>{
+  const f=fixture(t),before=f.preferences.view(),old=before.browsers[0];
+  fs.mkdirSync(old.userDataDir,{recursive:true});
+  const profileMarker=path.join(old.userDataDir,'preserved-profile.txt');fs.writeFileSync(profileMarker,'existing dedicated profile');
+  const browser={...old,connectionMode:'existing',name:'日常 Chrome'};
+  assert.equal((await f.service.inspect({browser})).state,'unavailable');
+  assert.equal(f.state.existingProbes,1);assert.equal(f.state.probes,0);
+  const saved=await f.service.save({revision:before.revision,browser});
+  assert.deepEqual(saved.browsers[0],{key:old.key,type:'chrome',name:'日常 Chrome',connectionMode:'existing',userDataDir:path.join(process.env.LOCALAPPDATA,'Google','Chrome','User Data')});
+  assert.equal(f.state.existingProbes,1,'saving does not retry discovery or request a browser connection');
+  assert.equal(f.state.probes,0,'saving existing Chrome does not inspect or open dedicated profiles');
+  assert.equal(saved.revision,before.revision+1);
+  assert.deepEqual(saved.erpConnections,before.erpConnections);assert.deepEqual(saved.stores,before.stores);
+  assert.deepEqual(saved.browsers.slice(1),before.browsers.slice(1));
+  assert.equal(fs.readFileSync(profileMarker,'utf8'),'existing dedicated profile');
+  const restored=createSettings({directory:f.directory,configuration:{},legacyDirectory:null});
+  assert.equal(restored.browser(old.key).connectionMode,'existing');assert.equal(restored.erp('erp-one').browserKey,old.key);
+});
+
+test('existing Chrome saves retain busy, revision and normalized-configuration guards without discovering a browser', {skip:process.platform!=='win32'},async t=>{
+  const f=fixture(t),before=f.preferences.view(),request={revision:before.revision,browser:{key:'daily',type:'chrome',connectionMode:'existing',name:'日常 Chrome'}};
+  f.state.busy=true;await assert.rejects(f.service.save(request),error=>error.status===409);
+  f.state.busy=false;await assert.rejects(f.service.save({...request,revision:0}),error=>error.status===409);
+  await assert.rejects(f.service.save({...request,browser:{...request.browser,name:''}}),error=>error.status===400);
+  assert.deepEqual(f.preferences.view(),before);
+  const saved=await f.service.save(request);
+  assert.deepEqual(saved.browsers.slice(0,before.browsers.length),before.browsers);
+  await assert.rejects(f.service.save({revision:saved.revision,browser:{...request.browser,key:'another-daily'}}),/已有连接配置/);
+  assert.equal(f.preferences.view().revision,saved.revision);
+  assert.equal(f.state.probes,0);assert.equal(f.state.existingProbes,0);
 });
 
 test('save checks busy and revision both before and after the asynchronous probe',async t=>{

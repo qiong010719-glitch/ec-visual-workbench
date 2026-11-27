@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {createRequire} from 'node:module';
-import {normalizeRawProduct,writeProductWorkbook,validateImportTemplate,DXM_HEADERS} from '../src/dxm-product-import.mjs';
+import {normalizeRawProduct,normalizePackageDefaults,writeProductWorkbook,validateImportTemplate,DXM_HEADERS} from '../src/dxm-product-import.mjs';
 import {compareImportedProduct} from '../src/collection-browser.mjs';
 import {createSourcing} from '../src/sourcing.mjs';
 import {rawFixture} from './fixtures/geekbi-raw.mjs';
@@ -30,6 +30,48 @@ test('official workbook preserves text IDs, variant facts and unknown dimensions
   validateImportTemplate(fs.readFileSync(file));sheet.A1.v='changed';assert.throws(()=>validateImportTemplate(XLSX.write(book,{type:'buffer',bookType:'xlsx'})),/模板字段已变化/);
 });
 
+test('explicit package defaults fill every SKU with numeric cm and kg without changing variant facts',t=>{
+  const r=rawFixture();r.data.json.sku.push({...structuredClone(r.data.json.sku[0]),skuId:'101130239481328',stockQuantity:125});
+  const packageDefaults={lengthCm:'62',widthCm:'42',heightCm:'4.5',weightKg:'0.75'};
+  const product=normalizeRawProduct(r,id,{packageDefaults}),file=path.join(folder(t),'packages.xlsx');
+  assert.deepEqual(product.packageDefaults,{lengthCm:62,widthCm:42,heightCm:4.5,weightKg:0.75});
+  assert.deepEqual(packageDefaults,{lengthCm:'62',widthCm:'42',heightCm:'4.5',weightKg:'0.75'});
+  assert.match(product.warnings.join('\n'),/统一默认值/);
+  writeProductWorkbook(product,file);
+  const book=XLSX.readFile(file),sheet=book.Sheets[book.SheetNames[0]],rows=XLSX.utils.sheet_to_json(sheet,{header:1,defval:''});
+  assert.deepEqual(rows[0],DXM_HEADERS);
+  for(const row of rows.slice(1))assert.deepEqual(row.slice(16,20),[62,42,4.5,0.75]);
+  for(const address of ['Q2','R2','S2','T2','Q3','R3','S3','T3'])assert.equal(sheet[address].t,'n');
+  assert.equal(rows[1][15],748);assert.equal(rows[2][15],125);assert.equal(rows[1][10],'蓝色');assert.equal(rows[1][12],'30x45cm');
+});
+
+test('invalid or incomplete package defaults cannot become a partially filled workbook',t=>{
+  const valid={lengthCm:62,widthCm:42,heightCm:4.5,weightKg:0.75};
+  for(const value of [0,-1,Infinity,NaN,'',' ','0','bad','1e3',true,null,undefined]){
+    assert.throws(()=>normalizePackageDefaults({...valid,weightKg:value}),/重量.*有效数值/);
+  }
+  assert.equal(normalizePackageDefaults(undefined),undefined);
+  assert.equal(normalizePackageDefaults(null),undefined);
+  assert.throws(()=>normalizePackageDefaults([]),/必须包含/);
+  assert.throws(()=>normalizePackageDefaults({lengthCm:62}),/宽.*有效数值/);
+  assert.throws(()=>normalizeRawProduct(rawFixture(),id,{packageDefaults:{...valid,heightCm:0}}),/高.*有效数值/);
+  const product=normalizeRawProduct(rawFixture(),id);product.packageDefaults={...valid,widthCm:0};
+  const file=path.join(folder(t),'invalid.xlsx');assert.throws(()=>writeProductWorkbook(product,file),/宽.*有效数值/);assert.equal(fs.existsSync(file),false);
+});
+
+test('source categories retain separate Temu category and navigation identities outside the import columns',t=>{
+  const r=rawFixture();Object.assign(r.data.json.goods,{catId:12869,catId1:9711,catId2:12865,catId3:12869,catId4:0});
+  r.data.json.crumbOptList=[{optId:-100,optName:'Home'},{optId:36,optName:'Home & Kitchen',pRec:'not retained'},{optId:761,optName:'Wall Art'}];
+  const product=normalizeRawProduct(r,id);
+  assert.deepEqual(product.sourceCategory,{platform:'temu',categoryId:'12869',categoryPathIds:['9711','12865','12869'],breadcrumbs:[{navigationId:'36',name:'Home & Kitchen'},{navigationId:'761',name:'Wall Art'}],namePath:'Home & Kitchen > Wall Art'});
+  assert.equal(JSON.stringify(product).includes('not retained'),false);
+  const file=path.join(folder(t),'categories.xlsx');writeProductWorkbook(product,file);
+  const book=XLSX.readFile(file),rows=XLSX.utils.sheet_to_json(book.Sheets[book.SheetNames[0]],{header:1,defval:''});
+  assert.equal(rows[0].length,21);assert.equal(rows[1].length,21);assert.equal(rows[1].includes('12869'),false);
+  assert.deepEqual(normalizeRawProduct(rawFixture(),id).sourceCategory,{platform:'temu',categoryId:null,categoryPathIds:[],breadcrumbs:[],namePath:''});
+  r.data.json.goods.catId=9007199254740992;assert.throws(()=>normalizeRawProduct(r,id),/分类编号/);
+});
+
 test('wrong identity, currency, missing inventory and unsupported specs cannot silently import',()=>{
   const cases=[
     [r=>r.data.json.goods.goodsId='601105252678121',/商品ID/],
@@ -37,7 +79,7 @@ test('wrong identity, currency, missing inventory and unsupported specs cannot s
     [r=>delete r.data.json.sku[0].stockQuantity,/库存/],
     [r=>r.data.json.sku[0].specs.push({specKey:'款式',specValue:'A'}),/两组规格/],
     [r=>r.data.json.sku[0].skuId=9007199254740992,/精度/],
-    [r=>r.data.json.sku[0].normalPriceStr='$5.51',/美元显示价格/],
+    [r=>r.data.json.sku[0].normalPriceStr='$5.51',/显示价格/],
     [r=>r.data.json.moduleMap.shareModule.data.share.linkUrl='/search_result.html?search_key='+id,/来源链接/],
     [r=>r.data.json.goods.bannerList[0].url='https://localhost/private',/素材地址/]
   ];
@@ -51,6 +93,16 @@ test('verification detects altered stock, missing images, mismatched variants an
   for(const mutate of [a=>a.skus[0].stock=38,a=>a.images=[],a=>a.skus[0].specs[0].value='红色',a=>a.videoEntry=false,a=>a.skus.push(a.skus[0])]){
     const changed=structuredClone(actual);mutate(changed);assert.equal(compareImportedProduct(changed,product).status,'needs-review');
   }
+});
+
+test('package verification requires every declared cm and kg value for the correct SKU',()=>{
+  const packageDefaults={lengthCm:62,widthCm:42,heightCm:4.5,weightKg:0.75},product=normalizeRawProduct(rawFixture(),id,{packageDefaults});
+  const actual={sourceUrl:product.sourceUrl,title:product.title,spu:id,skus:product.skus.map(s=>({...structuredClone(s),package:{lengthCm:'62.00',widthCm:'42',heightCm:'4.5',weightKg:'0.750'}})),images:product.images.map(url=>({url,loaded:true})),variantImages:product.skus.map(s=>({url:s.image,loaded:true})),detailImages:product.detailImages,videoEntry:true};
+  const verified=compareImportedProduct(actual,product);assert.equal(verified.status,'verified');assert.equal(verified.evidence.packageChecksPassed,true);
+  for(const mutate of [a=>delete a.skus[0].package,a=>a.skus[0].package.lengthCm=null,a=>a.skus[0].package.widthCm='',a=>a.skus[0].package.heightCm='0',a=>a.skus[0].package.weightKg='750',a=>a.skus[0].id='another-sku']){
+    const changed=structuredClone(actual);mutate(changed);const result=compareImportedProduct(changed,product);assert.equal(result.status,'needs-review');assert.equal(result.evidence.packageChecksPassed,false);assert.match(result.error,/包裹尺寸或重量/);
+  }
+  const withoutDefaults=normalizeRawProduct(rawFixture(),id);delete actual.skus[0].package;assert.equal(compareImportedProduct(actual,withoutDefaults).evidence.packageChecksPassed,null);
 });
 
 test('preflight failure buys no raw detail and never invokes the Temu resolver',async t=>{

@@ -11,8 +11,9 @@ function desktopProfile({env=process.env,root,packaged,resourcesPath,userDataPat
     WORKBENCH_FRESH:'true',
     WORKBENCH_ADAPTER_ROOT:packaged?path.join(resourcesPath,'erp-scripts'):path.resolve(root,'../scripts')
   }:{...env};
-  return {dataDirectory,configuration,port,test,isolated,reuseService:!isolated&&port!==0,
-    title:isolated?'独立预览 · 跨境电商工作台':'跨境电商工作台'};
+  const primary=env.WORKBENCH_DESKTOP_PRIMARY==='true';
+  return {dataDirectory,configuration,port,test,isolated,reuseService:(!isolated||primary)&&port!==0,
+    title:isolated&&!primary?'独立预览 · 跨境电商工作台':'跨境电商工作台'};
 }
 
 module.exports={desktopProfile};

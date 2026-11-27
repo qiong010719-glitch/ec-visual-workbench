@@ -2,8 +2,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {spawn} from 'node:child_process';
 import {inspectChromeOwner as owner} from './chrome-owner.mjs';
+import {connectExistingChrome} from './chrome-existing.mjs';
+export {inspectExistingChrome} from './chrome-existing.mjs';
 
 export async function chromeConnection(config){
+  if(config.connectionMode==='existing')return connectExistingChrome(config);
   if(await owner(config)!=='owned')throw new Error('Chrome 专用窗口未打开或端口被其他程序占用，请在连接设置打开对应 ERP 的登录窗口');
   const http='http://127.0.0.1:'+config.debugPort;
   const get=async route=>{const r=await fetch(http+route,{redirect:'error',signal:AbortSignal.timeout(5000)});if(!r.ok)throw new Error('Chrome 调试连接失败');return r.json();};
@@ -12,6 +15,7 @@ export async function chromeConnection(config){
   return {http,ws:version.webSocketDebuggerUrl,targets:()=>get('/json/list')};
 }
 export async function openChrome(config){
+  if(config.connectionMode==='existing')return connectExistingChrome(config);
   const status=await owner(config);
   if(status==='owned')return chromeConnection(config);
   if(status!=='closed')throw new Error('此 Chrome 端口已被其他窗口使用，请更换端口');

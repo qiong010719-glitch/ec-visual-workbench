@@ -51,6 +51,18 @@ test('search preserves provider fields, does not use the GeekBI page as a Temu s
   assert.throws(()=>service.startSearch({...query,keywords:'changed'}),/同一个查询编号/);
 });
 
+test('view reports other workbench tasks as busy while the sourcing-only busy accessor remains independent',async t=>{
+  let otherBusy=false,accessorReads=0,service;
+  const f=await fixture(t,{isOtherBusy:()=>{accessorReads++;assert.equal(typeof(service?.isBusy()||false),'boolean');return otherBusy;}});service=f.service;
+  otherBusy=true;const initialReads=accessorReads,view=service.view();
+  assert.equal(view.busy,true);assert.equal(view.otherBusy,true);assert.equal(accessorReads,initialReads+1);
+  assert.equal(service.isBusy(),false);assert.equal(accessorReads,initialReads+1,'isBusy must not consult the outer workbench lock');
+  assert.throws(()=>service.startSearch(query),e=>e.status===409&&/任务正在运行/.test(e.message));assert.equal(f.calls.filter(c=>c.kind==='search').length,0);
+  otherBusy=false;assert.equal(service.view().busy,false);assert.equal(service.view().otherBusy,false);
+  service.startSearch(query);assert.equal(service.view().busy,true);assert.equal(service.view().otherBusy,false);await idle(service);
+  assert.equal(service.view().busy,false);
+});
+
 test('keyword and explicit match mode reach the signed API independently for consecutive searches',async t=>{
   const sent=[];
   const client=createGeekbiClient(configuration,{fetcher:async url=>{
@@ -122,4 +134,62 @@ test('workbench serves new module and rejects cross-site collection requests',as
   const {token}=await (await fetch(base+'/api/session')).json();const response=await fetch(base+'/api/sourcing/sites',{method:'POST',headers:{'X-Workbench-Token':token,'Content-Type':'application/json'},body:'{}'});
   assert.equal(response.status,200);assert.deepEqual(await response.json(),sites);
   const status=await (await fetch(base+'/api/status')).json();assert.ok(status.sourcingRevision);
+});
+
+const targetStore={key:'temu:shop-a',platform:'temu',name:'目标店铺'};
+const packageDefaults={lengthCm:40,widthCm:30,heightCm:3,weightKg:0.8};
+function listingFixture(t,overrides={}){
+  const steps=[];
+  const preferences={...prefs,view:()=>({erpConnections:[prefs.erp()],stores:[{key:'configured-a',erpKey:'erp-a',platform:'temu',expectedStore:'目标店铺',expectedSite:'加拿大站',templates:[{key:'template-a',draftId:'220114595122686336',verifiedAt:'2026-11-19'}]}]})};
+  return fixture(t,{preferences,adapter:{preflight:async()=>{},importProduct:async args=>{steps.push('import');assert.deepEqual(args.product.packageDefaults,packageDefaults);args.beforeSubmit();return {status:'verified',evidence:{editUrl:'https://www.dianxiaomi.com/web/productCrawl/edit?id=123456'}};}},
+    claimAdapter:{listStores:async()=>({stores:[targetStore]}),claimProduct:async args=>{steps.push('claim');assert.equal(args.targetStore.name,'目标店铺');args.beforeClaim();return {status:'claimed',evidence:{platformEditUrl:'https://www.dianxiaomi.com/web/popTemu/edit?id=123456'}};},verifyClaim:async()=>({status:'claimed',evidence:{platformEditUrl:'https://www.dianxiaomi.com/web/popTemu/edit?id=123456'}})},
+    listingPreparer:{readDefaults:async()=>({packageDefaults}),prepare:async args=>{steps.push('prepare');args.beforeSave();return {status:'prepared',ready:true,saved:true,published:false};},verify:async args=>{steps.push('verify');assert.equal(args.previousPreparation.saved,true);return {status:'prepared',ready:true,saved:true,published:false};}},...overrides}).then(f=>({...f,steps}));
+}
+async function readyStore(f){await f.service.syncStores('erp-a');await f.service.storeDefaults({erpKey:'erp-a',targetStoreKey:targetStore.key});f.service.startSearch(query);await idle(f.service);}
+test('store choice carries through import, exact-store claim and draft preparation with persisted intents',async t=>{
+  const f=await listingFixture(t);await readyStore(f);
+  f.service.startBatch({requestId:'batch-claim-1',searchId:query.requestId,erpKey:'erp-a',goodsIds:[goodsId],targetStoreKey:targetStore.key});await idle(f.service);
+  const b=f.service.getBatch('batch-claim-1');assert.equal(b.status,'completed');assert.equal(b.rows[0].status,'prepared');assert.equal(b.targetStore.name,'目标店铺');assert.deepEqual(f.steps,['import','claim','prepare']);assert.ok(b.rows[0].claimSubmittedAt&&b.rows[0].prepareSubmittedAt);assert.equal(b.rows[0].preparation.published,false);
+});
+test('missing target defaults blocks paid detail and import',async t=>{
+  const f=await listingFixture(t);await f.service.syncStores('erp-a');f.service.startSearch(query);await idle(f.service);
+  assert.throws(()=>f.service.startBatch({requestId:'batch-claim-2',searchId:query.requestId,erpKey:'erp-a',goodsIds:[goodsId],targetStoreKey:targetStore.key}),/默认值/);assert.equal(f.calls.filter(c=>c.kind==='rawDetail').length,0);assert.deepEqual(f.steps,[]);
+});
+test('uncertain claim is only reconciled and never submitted again or marked publish-ready',async t=>{
+  let claims=0;
+  const f=await listingFixture(t,{claimAdapter:{listStores:async()=>[targetStore],claimProduct:async args=>{claims++;args.beforeClaim();throw new Error('claim result unknown');},verifyClaim:async()=>({status:'claimed'})}});await readyStore(f);
+  f.service.startBatch({requestId:'batch-claim-3',searchId:query.requestId,erpKey:'erp-a',goodsIds:[goodsId],targetStoreKey:targetStore.key});await idle(f.service);
+  assert.equal(f.service.getBatch('batch-claim-3').rows[0].status,'needs-review');await f.service.reconcile('batch-claim-3');assert.equal(claims,1);assert.equal(f.service.getBatch('batch-claim-3').rows[0].status,'claimed');assert.notEqual(f.service.getBatch('batch-claim-3').status,'completed');
+});
+test('previous verified import is reused for store claim without another detail charge or upload',async t=>{
+  const f=await listingFixture(t);await readyStore(f);
+  f.service.startBatch({requestId:'batch-claim-old',searchId:query.requestId,erpKey:'erp-a',goodsIds:[goodsId],targetStoreKey:targetStore.key});await idle(f.service);
+  const before=f.calls.filter(c=>c.kind==='rawDetail').length;
+  f.service.startBatch({requestId:'batch-claim-reuse',searchId:query.requestId,erpKey:'erp-a',goodsIds:[goodsId],targetStoreKey:targetStore.key});await idle(f.service);
+  assert.equal(f.calls.filter(c=>c.kind==='rawDetail').length,before);assert.equal(f.steps.filter(s=>s==='import').length,1);assert.equal(f.service.getBatch('batch-claim-reuse').estimatedPoints,0);assert.equal(f.service.getBatch('batch-claim-reuse').rows[0].status,'prepared');
+});
+test('claim reconciliation cannot clear an unknown save or permit another save attempt',async t=>{
+  let saves=0;const f=await listingFixture(t,{listingPreparer:{readDefaults:async()=>({packageDefaults}),prepare:async args=>{saves++;args.beforeSave();throw new Error('save response missing');}}});await readyStore(f);
+  f.service.startBatch({requestId:'batch-save-unknown',searchId:query.requestId,erpKey:'erp-a',goodsIds:[goodsId],targetStoreKey:targetStore.key});await idle(f.service);
+  await f.service.reconcile('batch-save-unknown');assert.equal(f.service.getBatch('batch-save-unknown').rows[0].status,'needs-review');
+  assert.throws(()=>f.service.startBatch({requestId:'batch-save-replay',searchId:query.requestId,erpKey:'erp-a',goodsIds:[goodsId],targetStoreKey:targetStore.key}),/保存结果尚未核对/);assert.equal(saves,1);
+});
+test('persisted expected save can be reconciled by a read-only verification',async t=>{
+  let saves=0,reads=0;const intent={url:'https://www.dianxiaomi.com/web/popTemu/edit?id=123456',expectedSnapshot:{sourceUrl:original,packageDefaults}};
+  const f=await listingFixture(t,{listingPreparer:{readDefaults:async()=>({packageDefaults}),prepare:async args=>{saves++;args.beforeSave(intent);throw new Error('saved but toast missing');},verify:async args=>{reads++;assert.deepEqual(args.preparationIntent,intent);return {status:'prepared',saved:true,ready:true,published:false};}}});await readyStore(f);
+  f.service.startBatch({requestId:'batch-save-reconcile',searchId:query.requestId,erpKey:'erp-a',goodsIds:[goodsId],targetStoreKey:targetStore.key});await idle(f.service);
+  const result=await f.service.reconcile('batch-save-reconcile');assert.equal(result.status,'completed');assert.equal(result.rows[0].status,'prepared');assert.equal(saves,1);assert.equal(reads,1);
+});
+
+test('reconciliation restores legacy product category from cached detail without another paid call',async t=>{
+  let details=0,saves=0,reads=0;
+  const f=await listingFixture(t,{client:async kind=>{
+    if(kind==='rawDetail'){details++;const raw=rawFixture(goodsId);raw.data.json.goods.catId='12869';raw.data.json.crumbOptList=[{optId:761,optName:'Wall Art'}];return raw;}
+    return {data:kind==='sites'?sites:{list:[sample],total:1}};
+  },listingPreparer:{readDefaults:async()=>({packageDefaults}),prepare:async args=>{saves++;args.beforeSave({expectedSnapshot:{sourceUrl:original}});throw new Error('save result unknown');},verify:async args=>{reads++;assert.equal(args.product.sourceCategory.categoryId,'12869');assert.equal(args.product.sourceCategory.namePath,'Wall Art');return {status:'prepared',saved:true,ready:true,published:false};}}});
+  await readyStore(f);f.service.startBatch({requestId:'batch-legacy-category',searchId:query.requestId,erpKey:'erp-a',goodsIds:[goodsId],targetStoreKey:targetStore.key});await idle(f.service);
+  const file=path.join(f.directory,'imports',f.service.getBatch('batch-legacy-category').rows[0].fileName+'.json');
+  const manifest=JSON.parse(fs.readFileSync(file,'utf8'));delete manifest.product.sourceCategory;fs.writeFileSync(file,JSON.stringify(manifest));
+  const restored=createSourcing(f.options),result=await restored.reconcile('batch-legacy-category');
+  assert.equal(result.status,'completed');assert.equal(details,1);assert.equal(saves,1);assert.equal(reads,1);
 });

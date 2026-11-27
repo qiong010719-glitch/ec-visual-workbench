@@ -40,7 +40,7 @@ export async function inspectChromeOwner(config,{run=execute,platform=process.pl
   if(typeof directory!=='string'||!path.win32.isAbsolute(directory))throw new Error('Chrome 专用数据目录无效，请检查连接设置');
   const netstat=path.win32.join(systemRoot,'System32','netstat.exe');
   let output;
-  try{({stdout:output}=await run(netstat,['-ano','-p','tcp'],{windowsHide:true,timeout:10000,maxBuffer:8*1024*1024,encoding:'utf8'}));}
+  try{({stdout:output}=await run(netstat,['-ano','-p','tcp'],{windowsHide:true,timeout:45000,maxBuffer:8*1024*1024,encoding:'utf8'}));}
   catch(error){throw failure(timedOut(error)?'读取 Chrome 端口超时，本次尚未连接 ERP。请稍后重新检查连接。':'无法读取 Chrome 端口，请检查 Windows 网络服务后重试。','CHROME_PORT_CHECK_FAILED');}
   const listeners=listeningOwners(output,port);
   if(!listeners.length)return 'closed';

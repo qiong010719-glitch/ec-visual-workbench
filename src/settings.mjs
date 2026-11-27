@@ -2,11 +2,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
 import {platformFor,platforms} from './platforms.mjs';
-import {resolveImageModel} from './image-models.mjs';
 import {erpProviders,erpProviderFor,requireListingProvider} from './erp-providers.mjs';
+import {collectionPlatforms,normalizeCollectionStores} from './listing-destinations.mjs';
 
 const fail=message=>Object.assign(new Error(message),{status:400});
-const secrets=['SUANZHOU_IMAGE_API_KEY','PLANNER_API_KEY','GB_APP_KEY','GB_APP_SECRET'];
+const secrets=['SUANZHOU_IMAGE_API_KEY','PLANNER_API_KEY','SUANZHOU_VIDEO_API_KEY','APIFY_API_TOKEN','GB_APP_KEY','GB_APP_SECRET','SADCAPTCHA_API_KEY'];
 const fields=['SUANZHOU_IMAGE_BASE_URL','SUANZHOU_IMAGE_MODEL','PLANNER_BASE_URL','PLANNER_API_FORMAT','PLANNER_MODEL','PLANNER_REASONING_EFFORT','PLANNER_TIMEOUT_MS','TITLE_MODEL','TITLE_API_FORMAT'];
 const defaults={SUANZHOU_IMAGE_BASE_URL:'https://api.suanzhou.vip/v1',SUANZHOU_IMAGE_MODEL:'gpt-image-2',PLANNER_BASE_URL:'https://api.suanzhou.vip/v1',PLANNER_API_FORMAT:'responses',PLANNER_MODEL:'gpt-6.1-sol',PLANNER_TIMEOUT_MS:'600000',TITLE_MODEL:'gpt-6.1-sol',TITLE_API_FORMAT:'responses'};
 const text=(v,max=240)=>typeof v==='string'?v.trim().slice(0,max):'';
@@ -34,12 +34,18 @@ export function createSettings({directory,configuration,legacyDirectory,codec={e
     for(const s of state.stores)s.erpKey=state.erpConnections.find(e=>e.browserKey===s.browserKey)?.key;
     atomic(file,state);
   }
+  state.collectionStores??=[];
   let storedSecrets=fs.existsSync(secretFile)?JSON.parse(codec.decode(JSON.parse(fs.readFileSync(secretFile,'utf8')).protected)):{};
   const apply=()=>{for(const k of [...fields,...secrets]){const value=secrets.includes(k)?storedSecrets[k]??inherited[k]:state.models[k]??inherited[k]??defaults[k];if(value)configuration[k]=value;else delete configuration[k];}};
   apply();
-  const view=()=>({...structuredClone(state),erpProviders:structuredClone(Object.values(erpProviders)),platforms:Object.values(platforms),models:{...Object.fromEntries(fields.map(k=>[k,configuration[k]||''])),...Object.fromEntries(secrets.map(k=>[k+'Configured',!!configuration[k]]))}});
+  const view=()=>({...structuredClone(state),erpProviders:structuredClone(Object.values(erpProviders)),platforms:Object.values(platforms),collectionPlatforms:structuredClone(collectionPlatforms),models:{...Object.fromEntries(fields.map(k=>[k,configuration[k]||''])),...Object.fromEntries(secrets.map(k=>[k+'Configured',!!configuration[k]]))}});
   function update(payload,{verifiedTemplates=new Map(),dryRun=false}={}){
     if(payload.revision!==state.revision)throw fail('配置已更新，请刷新后再保存');
+    if(payload.models!==undefined){
+      if(!payload.models||typeof payload.models!=='object'||Array.isArray(payload.models))throw fail('密钥配置格式无效');
+      if(Object.keys(payload.models).some(k=>!secrets.includes(k)))throw fail('服务地址、模型和调用方式由网站内置，不支持修改；请只填写对应服务的密钥。');
+      if(Object.values(payload.models).some(v=>typeof v!=='string'||v.length>4000))throw fail('密钥格式无效，请填写不超过 4000 字符的文本');
+    }
     const next=structuredClone(state);
     if(payload.browsers!==undefined){
       if(!Array.isArray(payload.browsers)||payload.browsers.length>100)throw fail('浏览器配置数量无效');
@@ -47,9 +53,18 @@ export function createSettings({directory,configuration,legacyDirectory,codec={e
         if(!validKey(b.key))throw fail('浏览器编号无效');
         if(b.type==='chrome'){
           if(!text(b.name))throw fail('请填写浏览器名称');
+          const connectionMode=b.connectionMode??'dedicated';
+          if(!['dedicated','existing'].includes(connectionMode))throw fail('Chrome 连接方式无效');
+          if(connectionMode==='existing'){
+            const localAppData=process.env.LOCALAPPDATA;
+            if(process.platform!=='win32'||!localAppData||!path.isAbsolute(localAppData))throw fail('当前 Chrome 会话连接需要 Windows 本机用户目录。');
+            // Only discover Chrome's own endpoint file. Never adopt a path,
+            // debugging URL, cookie store, or port supplied by a web request.
+            return {key:b.key,type:'chrome',name:text(b.name),connectionMode:'existing',userDataDir:path.join(localAppData,'Google','Chrome','User Data')};
+          }
           const port=Number(b.debugPort||9222);if(!Number.isInteger(port)||port<1024||port>65535)throw fail('Chrome 连接端口应为 1024—65535');
           const executable=text(b.executable,1000);if(executable&&(!path.isAbsolute(executable)||path.basename(executable).toLowerCase()!=='chrome.exe'||!fs.existsSync(executable)))throw fail('请选择已安装的 chrome.exe 完整路径，或留空自动查找');
-          return {key:b.key,type:'chrome',name:text(b.name),debugPort:port,localApi:'http://127.0.0.1:'+port,executable,userDataDir:path.resolve(directory,'chrome-profiles',b.key)};
+          return {key:b.key,type:'chrome',name:text(b.name),...(b.connectionMode?{connectionMode:'dedicated'}:{}),debugPort:port,localApi:'http://127.0.0.1:'+port,executable,userDataDir:path.resolve(directory,'chrome-profiles',b.key)};
         }
         if(b.type&&b.type!=='bit')throw fail('不支持的浏览器类型');
         if(!validKey(b.browserId))throw fail('比特窗口 ID 无效');
@@ -59,7 +74,8 @@ export function createSettings({directory,configuration,legacyDirectory,codec={e
         return {key:b.key,browserId:b.browserId,name:text(b.name),localApi:u.origin,browserSequence:seq};
       });
       if(new Set(next.browsers.map(b=>b.key)).size!==next.browsers.length)throw fail('浏览器编号重复');
-      const ports=next.browsers.filter(b=>b.type==='chrome').map(b=>b.debugPort);if(new Set(ports).size!==ports.length)throw fail('Chrome 专用窗口的端口不能重复');
+      const ports=next.browsers.filter(b=>b.type==='chrome'&&b.connectionMode!=='existing').map(b=>b.debugPort);if(new Set(ports).size!==ports.length)throw fail('Chrome 专用窗口的端口不能重复');
+      if(next.browsers.filter(b=>b.type==='chrome'&&b.connectionMode==='existing').length>1)throw fail('当前 Chrome 已有连接配置，请复用该连接绑定 ERP。');
     }
     if(payload.erpConnections!==undefined){
       if(!Array.isArray(payload.erpConnections))throw fail('ERP 连接列表无效');
@@ -95,6 +111,7 @@ export function createSettings({directory,configuration,legacyDirectory,codec={e
       });
       if(new Set(next.stores.map(s=>s.key)).size!==next.stores.length)throw fail('店铺编号重复');
     }
+    next.collectionStores=normalizeCollectionStores(payload.collectionStores===undefined?next.collectionStores:payload.collectionStores,{erpConnections:next.erpConnections,browsers:next.browsers});
     for(const e of next.erpConnections)if(!next.browsers.some(b=>b.key===e.browserKey))throw fail('ERP 关联的浏览器不存在，请先调整 ERP 连接');
     for(const s of next.stores){const e=next.erpConnections.find(e=>e.key===s.erpKey);if(!e)throw fail('店铺关联的 ERP 连接不存在');if(s.platform==='temu')requireListingProvider(e,s.platform);s.browserKey=e.browserKey;
       const before=state.erpConnections.find(old=>old.key===s.erpKey),browser=next.browsers.find(b=>b.key===e.browserKey),oldBrowser=state.browsers.find(b=>b.key===before?.browserKey);
@@ -102,13 +119,8 @@ export function createSettings({directory,configuration,legacyDirectory,codec={e
     }
     const nextSecrets={...storedSecrets};
     if(payload.models){
-      for(const k of fields)if(Object.hasOwn(payload.models,k))next.models[k]=text(payload.models[k],1000);
       for(const k of secrets)if(Object.hasOwn(payload.models,k)&&payload.models[k])nextSecrets[k]=text(payload.models[k],4000);
       for(const k of payload.clearSecrets||[])if(secrets.includes(k))nextSecrets[k]='';
-      for(const k of ['PLANNER_BASE_URL','SUANZHOU_IMAGE_BASE_URL'])if(next.models[k]){const u=new URL(next.models[k]);if(u.protocol!=='https:'||u.username||u.password||u.search||u.hash)throw fail('模型接口须为不带密钥的 HTTPS 地址');}
-      if(next.models.SUANZHOU_IMAGE_MODEL)resolveImageModel(next.models.SUANZHOU_IMAGE_MODEL);
-      if(next.models.PLANNER_API_FORMAT&&!['responses','chat'].includes(next.models.PLANNER_API_FORMAT))throw fail('构思模型接口格式无效');
-      if(next.models.TITLE_API_FORMAT&&!['responses','chat'].includes(next.models.TITLE_API_FORMAT))throw fail('标题模型接口格式无效');
     }
     if(dryRun)return next;
     // Encrypt before modifying settings, so a failed encryption cannot partially apply configuration.
@@ -119,5 +131,6 @@ export function createSettings({directory,configuration,legacyDirectory,codec={e
   const browser=key=>{const b=state.browsers.find(b=>b.key===key);if(!b)throw fail('请选择已配置的浏览器');return structuredClone(b);};
   const erp=key=>{const e=state.erpConnections.find(e=>e.key===key);if(!e)throw fail('请选择 ERP 连接');return structuredClone(e);};
   const store=key=>{const s=state.stores.find(s=>s.key===key);if(!s)throw fail('请选择已配置的店铺');return structuredClone(s);};
-  return {view,update,preview:payload=>update(payload,{dryRun:true}),browser,store,erp};
+  const collectionStore=key=>{const s=state.collectionStores.find(s=>s.key===key);if(!s)throw fail('请选择已绑定的采集箱店铺');return structuredClone(s);};
+  return {view,update,preview:payload=>update(payload,{dryRun:true}),browser,store,collectionStore,erp};
 }

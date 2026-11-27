@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
+import {fileURLToPath,pathToFileURL} from 'node:url';
 
 const execute=promisify(execFile);
 const fail=(status,message)=>Object.assign(new Error(message),{status});
@@ -64,12 +65,20 @@ function freePort(snapshot,browsers,browserKey){
   throw fail(503,'未找到未占用的 Chrome 端口，请关闭不需要的专用窗口后重试。');
 }
 
-export function createBrowserConnections({preferences,inspector=readChromeSnapshot,isBusy=()=>false}){
+export function createBrowserConnections({preferences,inspector=readChromeSnapshot,existingInspector,configuration={},isBusy=()=>false}){
   const assertIdle=()=>{if(isBusy())throw fail(409,'有任务正在运行，请完成或暂停后修改浏览器连接配置。');};
   const assertRevision=revision=>{if(!Number.isSafeInteger(revision)||revision!==preferences.view().revision)throw fail(409,'连接配置已更新，请刷新后再保存。');};
   const snapshot=async()=>{
     try{return checkedSnapshot(await inspector());}
     catch{throw fail(503,unavailable);}
+  };
+  const inspectExisting=async browser=>{
+    try{
+      const directory=configuration.WORKBENCH_ADAPTER_ROOT||path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../../scripts');
+      const inspect=existingInspector||(await import(pathToFileURL(path.join(directory,'lib/chrome-existing.mjs')).href)).inspectExistingChrome;
+      const result=await inspect(browser),state=['available','needs-authorization','unavailable'].includes(result?.state)?result.state:'unavailable';
+      return {state,connectionMode:'existing',connected:result?.connected===true,message:String(result?.message||'无法核对当前 Chrome，请先在日常浏览器开启远程调试后重新检查。').slice(0,700)};
+    }catch{return {state:'unavailable',connectionMode:'existing',connected:false,message:'无法核对当前 Chrome，请先在日常浏览器开启远程调试后重新检查；不会另开独立浏览器。'};}
   };
 
   function prepare(input,{saving=false}={}){
@@ -81,12 +90,20 @@ export function createBrowserConnections({preferences,inspector=readChromeSnapsh
     if(input.type!==undefined&&input.type!=='chrome'||previous&&previous.type!=='chrome')throw fail(400,'此入口仅支持 Chrome 专用窗口，请使用新的窗口编号。');
     const name=typeof input.name==='string'?input.name.trim():saving?'':previous?.name||'谷歌浏览器';
     if(!name)throw fail(400,'请填写浏览器名称。');
+    const mode=input.connectionMode??previous?.connectionMode??'dedicated';
+    if(!['existing','dedicated'].includes(mode))throw fail(400,'Chrome 连接方式无效。');
+    if(mode==='existing'){
+      const browser={key,type:'chrome',name,connectionMode:'existing'};
+      const browsers=before.browsers.map(saved=>saved.key===key?browser:saved);if(!previous)browsers.push(browser);
+      const normalized=preferences.preview({revision:before.revision,browsers}).browsers.find(saved=>saved.key===key);
+      return {before,previous,browser:normalized,browsers,reserved:null};
+    }
     const debugPort=typeof input.debugPort==='number'||typeof input.debugPort==='string'&&/^\d+$/.test(input.debugPort)?Number(input.debugPort):NaN;
     if(!Number.isInteger(debugPort)||debugPort<1024||debugPort>65535)throw fail(400,'Chrome 连接端口应为 1024—65535 的整数。');
-    const browser={key,type:'chrome',name,debugPort,executable:input.executable??previous?.executable??''};
+    const browser={key,type:'chrome',name,...(input.connectionMode||previous?.connectionMode?{connectionMode:'dedicated'}:{}),debugPort,executable:input.executable??previous?.executable??''};
     const browsers=before.browsers.map(saved=>saved.key===key?browser:saved);
     if(!previous)browsers.push(browser);
-    const reserved=before.browsers.find(saved=>saved.key!==key&&saved.type==='chrome'&&Number(saved.debugPort)===debugPort);
+    const reserved=before.browsers.find(saved=>saved.key!==key&&saved.type==='chrome'&&saved.connectionMode!=='existing'&&Number(saved.debugPort)===debugPort);
     // A reserved port is a useful inspection result, not a generic preview
     // validation error. All saveable candidates use the existing normalizer.
     const normalized=reserved?null:preferences.preview({revision:before.revision,browsers}).browsers.find(saved=>saved.key===key);
@@ -110,6 +127,7 @@ export function createBrowserConnections({preferences,inspector=readChromeSnapsh
 
   async function inspect({browser}={}){
     const prepared=prepare(browser);
+    if(prepared.browser.connectionMode==='existing')return inspectExisting(prepared.browser);
     try{return inspectPrepared(prepared,await snapshot());}
     catch(error){if(error.status!==503)throw error;return {state:'unavailable',debugPort:prepared.browser.debugPort,message:error.message};}
   }
@@ -124,11 +142,14 @@ export function createBrowserConnections({preferences,inspector=readChromeSnapsh
   async function save({revision,browser}={}){
     assertIdle();assertRevision(revision);
     const prepared=prepare(browser,{saving:true});
-    const result=inspectPrepared(prepared,await snapshot());
-    // Probe is asynchronous: another page may save settings or start a task
-    // while it runs. Recheck immediately before the synchronous atomic write.
+    // Saving an existing-Chrome binding only records the user's choice. Chrome
+    // may be closed or awaiting authorization; discovery and consent belong to
+    // an explicit inspection/connection, not this configuration write.
+    const result=prepared.browser.connectionMode==='existing'?null:inspectPrepared(prepared,await snapshot());
+    // The dedicated-profile probe is asynchronous: another page may save or
+    // start a task while it runs. Recheck before the synchronous atomic write.
     assertIdle();assertRevision(revision);
-    if(!['available','owned'].includes(result.state))throw fail(409,result.message);
+    if(result&&!['available','owned'].includes(result.state))throw fail(409,result.message);
     return preferences.update({revision,browsers:prepared.browsers});
   }
   return {inspect,suggest,save};

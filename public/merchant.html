@@ -1,49 +1,248 @@
 <!doctype html>
-<html lang="zh-CN"><head><script>if(location.pathname==='/app')location.replace('/temu/listings'+location.search);</script><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>商品裂变工作台</title><link rel="stylesheet" href="/local/theme-tokens.css"><link rel="stylesheet" href="/local/merchant.css"><script src="/local/merchant.js" defer></script><link rel="stylesheet" href="/local/navigation.css"></head>
-<body class="has-workbench-header"><header class="workbench-header"><a class="workbench-brand" href="/temu/listings" aria-label="Temu 工作台首页"><span class="workbench-logo">T</span><span>Temu 工作台</span></a><nav class="workbench-nav" aria-label="工作流程"><a href="/temu">单品设计</a><a href="/temu/listings">店铺上架</a><a href="/sourcing">自动选品上架</a><a href="/settings" aria-current="page">连接设置</a></nav></header>
-<main><div id="notice" role="status" aria-live="polite" hidden></div>
-<section id="settingsPage"><div class="heading"><div><h1>连接设置</h1><p>配置模型与浏览器，选择 ERP，再关联已接入的店铺和商品母稿。</p><p><a href="#modelSettings">模型服务</a> · <a href="#browserSettings">浏览器环境</a> · <a href="#erpSettings">ERP 连接</a> · <a href="#storeSettings">店铺与母稿</a></p></div></div>
-<section class="panel" id="modelSettings"><h2>模型服务</h2><p id="modelStatus"></p><form id="modelForm"><div class="fields"><label>图片服务地址<input name="SUANZHOU_IMAGE_BASE_URL" type="url" required></label><label>图片密钥<input name="SUANZHOU_IMAGE_API_KEY" type="password" autocomplete="new-password" placeholder="已配置时留空保留"></label><label>文本服务地址<input name="PLANNER_BASE_URL" type="url" required></label><label>文本密钥<input name="PLANNER_API_KEY" type="password" autocomplete="new-password" placeholder="用于构思和标题，留空保留"></label><label>构思模型<input name="PLANNER_MODEL" required></label><label>标题模型<input name="TITLE_MODEL" required></label></div><details><summary>高级模型设置</summary><div class="fields"><label>构思接口格式<select name="PLANNER_API_FORMAT"><option value="responses">Responses</option><option value="chat">Chat Completions</option></select></label><label>标题接口格式<select name="TITLE_API_FORMAT"><option value="responses">Responses</option><option value="chat">Chat Completions</option></select></label><label>推理强度<input name="PLANNER_REASONING_EFFORT" placeholder="默认"></label></div></details><p class="muted">默认使用算舟。密钥保存在本机 Windows 账户加密存储中，不写入素材或 Excel。</p><button class="primary">保存模型配置</button></form></section>
-<section class="panel" id="geekbiSettings"><h2>极鲸云选品</h2><p>在自动选品上架板块配置调用标识和应用密钥，按关键词、站点及类目筛选商品。</p><a href="/sourcing">前往极鲸云连接与选品 →</a></section>
-<section class="panel" id="browserSettings">
-  <h2>谷歌窗口与连接端口</h2>
-  <p>为不同 ERP 账号选择独立的 Chrome 窗口。保存后，关联该窗口的 ERP、选品与上架共用这份连接设置。</p>
-  <div class="chrome-window-picker"><label for="savedChromeWindow">已保存的谷歌窗口<select id="savedChromeWindow"><option value="">正在读取窗口配置…</option></select></label><button type="button" id="newChromeWindow">＋ 新增独立窗口</button></div>
-  <div id="browserList"></div>
+<html lang="zh-CN" class="workspace-shell-enabled">
+<head><script src="/local/workspace-appearance.js"></script>
+  <script>if(location.pathname==='/app')location.replace('/temu/listings'+location.search);</script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>设置 · 跨境工作台</title>
+  <link rel="stylesheet" href="/local/theme-tokens.css">
+  <link rel="stylesheet" href="/local/merchant.css">
+  <script src="/local/merchant.js" defer></script>
+  <link rel="stylesheet" href="/local/navigation.css">
+<script src="/local/workspace-state.js"></script><script src="/local/workspace-shell.js" defer></script><link rel="stylesheet" href="/local/workspace-shell.css"><link rel="stylesheet" href="/local/workspace-glass-business.css" data-glass-business></head>
+<body class="has-workbench-header settings-view">
+  <header class="workbench-header workspace-shell" data-workspace-shell="glass" aria-label="跨境电商工作台导航">
+  <a class="workbench-brand" href="/cockpit.html" aria-label="跨境工作台，前往总览"><span class="workbench-logo" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18"/></svg></span><span class="ws-shell-brand-copy"><span>跨境工作台</span><span class="ws-shell-brand-subtitle">Commerce workspace</span></span></a>
+  <button id="workspaceMenuToggle" class="ws-shell-menu-toggle" type="button" aria-label="展开工作台导航" aria-expanded="false" aria-controls="workspaceShellMenu"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+  <div id="workspaceShellMenu" class="ws-shell-menu">
+    <div class="ws-shell-nav-caption">工作空间</div>
+    <nav class="workbench-nav" aria-label="工作台导航">
+      <a href="/cockpit.html" data-workspace-entry="overview"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><path d="M14 17.5h7m-3.5-3.5v7"/></svg><span>工作台总览</span><i class="ws-shell-active-dot" aria-hidden="true" hidden></i></a>
+      <a href="/products" data-workspace-entry="products"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5Zm-9 5v9l9 5 9-5V8M12 13v9M7.5 5.5l9 5"/></svg><span>商品库</span><i class="ws-shell-active-dot" aria-hidden="true" hidden></i></a>
+      <a href="/sourcing" data-workspace-entry="sourcing"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5m-13-10h5m-2.5-2.5v5"/></svg><span>选品与采集</span><i class="ws-shell-active-dot" aria-hidden="true" hidden></i></a>
+      <a href="/content" data-workspace-entry="content"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m13 3 1.8 5.2L20 10l-5.2 1.8L13 17l-1.8-5.2L6 10l5.2-1.8ZM5 15l1 3 3 1-3 1-1 3-1-3-3-1 3-1ZM20 2v4m-2-2h4"/></svg><span>内容制作</span><i class="ws-shell-active-dot" aria-hidden="true" hidden></i></a>
+      <a href="/listings?mode=images" data-workspace-entry="listings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 11v9h14v-9M3 7l2-4h14l2 4v4a3 3 0 0 1-6 0 3 3 0 0 1-6 0 3 3 0 0 1-6 0ZM9 20v-6h6v6"/></svg><span>上架中心</span><i class="ws-shell-active-dot" aria-hidden="true" hidden></i></a>
+      <a href="/tasks" data-workspace-entry="tasks"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5h12M8 12h12M8 19h12m-17-14 1 1 2-3m-3 9 1 1 2-3m-3 9 1 1 2-3"/></svg><span>任务记录</span><i class="ws-shell-active-dot" aria-hidden="true" hidden></i></a>
+      <a href="/settings" data-workspace-entry="settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6l.7 2.4 2.2 1.3 2.4-.6 3 5-1.8 1.8v2.4l1.8 1.8-3 5-2.4-.6-2.2 1.3L15 25H9l-.7-2.4-2.2-1.3-2.4.6-3-5 1.8-1.8v-2.4L.7 10.9l3-5 2.4.6 2.2-1.3Z" transform="translate(1.7 0) scale(.78)"/><circle cx="11" cy="11" r="3"/></svg><span>设置</span><i class="ws-shell-active-dot" aria-hidden="true" hidden></i></a>
+    </nav>
+    <div class="ws-shell-bottom">
+      <div class="ws-shell-platforms"><span class="ws-shell-platform amazon">a</span><span class="ws-shell-platform temu">T</span><span>多平台协作</span></div>
+      <button id="workspaceShellAppearance" class="ws-shell-appearance" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16M8 4v6m8 4v6"/></svg><span>外观与动效</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>
+      <div class="ws-shell-local"><span class="ws-shell-local-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18"/></svg></span><div><strong>本机工作区</strong><span id="workspaceShellContext" class="ws-shell-context">读取共享资料…</span></div></div>
+      <button id="workspaceShellSync" class="ws-shell-sync" type="button" data-state="loading" title="刷新商品、当前选择与连接状态"><span class="ws-shell-sync-dot" aria-hidden="true"></span><span>同步中</span></button>
+    </div>
+  </div>
+</header>
+  <main>
+    <div id="notice" role="status" aria-live="polite" hidden></div>
+    <section id="settingsPage" aria-labelledby="settingsTitle">
+      <div class="heading setup-heading">
+        <div>
+          <h1 id="settingsTitle">设置</h1>
+          <p>填写服务密钥，管理浏览器与 ERP 连接。配置保存在本机，后续直接复用。</p>
+        </div>
+        <a class="quiet-link" href="#browserSettings">浏览器与 ERP 连接</a>
+      </div>
+
+      <section class="panel service-keys-panel" id="modelSettings" aria-labelledby="serviceKeysTitle">
+        <div class="section-heading">
+          <div><h2 id="serviceKeysTitle">服务密钥</h2><p>按需要填写对应服务的密钥，留空可保留已保存的密钥。</p></div>
+          <span class="section-step">网站内置配置</span>
+        </div>
+        <div class="service-config-hint" id="serviceConfigHint">
+          <strong>密钥获取提示</strong>
+          <p>请在对应服务的网站获取对应的密钥。文字生成、图片生成、视频生成和链接抓取的服务地址、模型及调用方式均由网站内置，用户无法修改，只需填写密钥。</p>
+        </div>
+        <form id="modelForm" aria-describedby="serviceConfigHint serviceKeyStorage">
+          <div class="service-key-grid">
+            <section class="service-key-card" aria-labelledby="imageKeyTitle">
+              <div class="service-key-heading"><h3 id="imageKeyTitle">生图密钥</h3><span class="service-key-state" data-secret-status="SUANZHOU_IMAGE_API_KEY" role="status">读取中</span></div>
+              <p>用于生成商品图片和图片编辑。</p>
+              <label for="imageApiKey">生图密钥<input id="imageApiKey" name="SUANZHOU_IMAGE_API_KEY" type="password" autocomplete="new-password" maxlength="4000" placeholder="填写生图 API 密钥，留空保留"></label>
+              <small>请到算舟网站获取图片服务的 API 密钥。</small>
+            </section>
+            <section class="service-key-card" aria-labelledby="textKeyTitle">
+              <div class="service-key-heading"><h3 id="textKeyTitle">文字密钥</h3><span class="service-key-state" data-secret-status="PLANNER_API_KEY" role="status">读取中</span></div>
+              <p>用于方案构思、标题和文案生成。</p>
+              <label for="textApiKey">文字密钥<input id="textApiKey" name="PLANNER_API_KEY" type="password" autocomplete="new-password" maxlength="4000" placeholder="填写文字 API 密钥，留空保留"></label>
+              <small>请到算舟网站获取文字服务的 API 密钥。</small>
+            </section>
+            <section class="service-key-card" aria-labelledby="videoKeyTitle">
+              <div class="service-key-heading"><h3 id="videoKeyTitle">视频密钥</h3><span class="service-key-state" data-secret-status="SUANZHOU_VIDEO_API_KEY" role="status">读取中</span></div>
+              <p>视频生成接入准备中，可先保存密钥。</p>
+              <label for="videoApiKey">视频密钥<input id="videoApiKey" name="SUANZHOU_VIDEO_API_KEY" type="password" autocomplete="new-password" maxlength="4000" placeholder="填写视频 API 密钥，留空保留"></label>
+              <small>请到算舟网站获取视频服务的 API 密钥。</small>
+            </section>
+            <section class="service-key-card" aria-labelledby="linkKeyTitle">
+              <div class="service-key-heading"><h3 id="linkKeyTitle">链接分析密钥</h3><span class="service-key-state" data-secret-status="APIFY_API_TOKEN" role="status">读取中</span></div>
+              <p>用于商品链接抓取，供后续内容分析使用。</p>
+              <label for="linkApiKey">链接分析密钥<input id="linkApiKey" name="APIFY_API_TOKEN" type="password" autocomplete="new-password" maxlength="4000" placeholder="填写链接抓取 API 密钥，留空保留"></label>
+              <small>请到 Apify 网站获取 API Token。</small>
+            </section>
+          </div>
+          <div class="service-key-footer"><p class="muted" id="serviceKeyStorage">密钥使用本机 Windows 账户加密保存，不回显，也不写入素材或 Excel。</p><button class="primary" type="submit">保存密钥</button></div>
+          <p id="modelStatus" role="status" aria-live="polite"></p>
+        </form>
+      </section>
+
+      <div class="setup-guide">
+        <div class="setup-next-row">
+          <p id="setupSummary" role="status" aria-live="polite">正在读取已保存的配置…</p>
+          <button type="button" class="primary" id="setupNext">开始配置</button>
+        </div>
+        <nav id="setupSteps" aria-label="连接步骤">
+          <a href="#browserSettings"><span class="setup-number" aria-hidden="true">1</span><span><strong>准备浏览器</strong><small id="browserStepStatus">读取中</small></span></a>
+          <a href="#erpSettings"><span class="setup-number" aria-hidden="true">2</span><span><strong>登录 ERP</strong><small id="erpStepStatus">读取中</small></span></a>
+          <a href="#storeSettings"><span class="setup-number" aria-hidden="true">3</span><span><strong>选择上架方式</strong><small id="storeStepStatus">按商品来源选择</small></span></a>
+        </nav>
+      </div>
+
+      <section class="panel setup-panel" id="browserSettings" aria-labelledby="browserTitle">
+        <div class="section-heading">
+          <div><h2 id="browserTitle">连接 Chrome 浏览器</h2><p>推荐使用已打开的 Chrome，在同一浏览器中新开工作窗口，复用店小秘登录和采集插件。</p></div>
+          <span class="section-step">第 1 步</span>
+        </div>
+        <div id="browserList"></div>
+        <p id="browserStatus" class="muted" role="status"></p>
+        <button type="button" class="primary" id="browserDefault">使用当前 Chrome</button>
+        <details class="settings-editor" id="browserEditor">
+          <summary>浏览器设置</summary><div class="chrome-window-picker"><label for="savedChromeWindow">已保存的 Chrome 连接<select id="savedChromeWindow"></select></label><button type="button" id="newChromeWindow">＋ 新增浏览器连接</button></div>
   <form id="browserForm">
     <input name="key" type="hidden"><input name="type" type="hidden" value="chrome">
     <div class="chrome-editor-heading"><h3 id="chromeEditorTitle">窗口连接设置</h3><span id="chromeDraftStatus" class="binding-badge">正在读取</span></div>
-    <div class="fields chrome-connection-fields"><label>连接名称<input name="name" id="chromeConnectionName" required maxlength="160" placeholder="例如：店小秘主账号窗口"></label><label>Chrome 连接端口<input name="debugPort" id="chromeDebugPort" type="number" required min="1024" max="65535" step="1" inputmode="numeric" placeholder="例如：9232"></label></div>
-    <div class="chrome-port-actions"><button type="button" id="inspectChromePort">检查端口</button><button type="button" id="suggestChromePort">选择空闲端口</button><span>只检查端口，不打开浏览器或登录账号。</span></div>
-    <p id="chromePortStatus" class="chrome-port-status" role="status" aria-live="polite">选择一个已保存窗口，或新增独立窗口。</p>
-    <details class="chrome-executable"><summary>Chrome 程序路径（可选）</summary><label>程序路径<input name="executable" placeholder="留空自动查找已安装的 Chrome"></label></details>
+    <label>连接方式<select name="connectionMode" id="chromeConnectionMode"><option value="existing">使用已打开的 Chrome（复用登录和插件）</option><option value="dedicated">使用独立 Chrome 配置窗口</option></select></label>
+    <p id="chromeExistingHelp" class="muted">在已登录店小秘、装好采集插件的 Chrome 用户资料中保留一个店小秘页面，再打开 <code>chrome://inspect/#remote-debugging</code>，启用远程调试。点击“检查登录”或“打开登录”时，在 Chrome 弹窗选择 Allow（允许）。工作台会在同一用户资料中新开工作窗口，沿用登录和插件；连接失败时暂停并提示处理。此功能需要 Chrome 144 或更新版本。</p>
+    <div class="fields chrome-connection-fields"><label>连接名称<input name="name" id="chromeConnectionName" required maxlength="160" placeholder="例如：店小秘主账号窗口"></label><label id="chromePortField">Chrome 连接端口<input name="debugPort" id="chromeDebugPort" type="number" min="1024" max="65535" step="1" inputmode="numeric" placeholder="例如：9232"></label></div>
+    <div class="chrome-port-actions"><button type="button" id="inspectChromePort">检查当前 Chrome</button><button type="button" id="suggestChromePort" hidden>选择空闲端口</button><span id="chromeInspectHelp">只读取当前可发现的 Chrome 连接，不打开窗口、不请求授权。</span></div>
+    <p id="chromePortStatus" class="chrome-port-status" role="status" aria-live="polite">选择一个已保存连接，或新增浏览器连接。</p>
+    <details class="chrome-executable" id="browserAdvanced"><summary>Chrome 程序路径（可选）</summary><label>程序路径<input name="executable" placeholder="留空自动查找已安装的 Chrome"></label></details>
     <p id="chromeImpactHint" class="muted" hidden></p>
     <div class="toolbar"><button type="submit" class="primary" id="saveChromeWindow">保存并应用</button><button type="button" id="resetBrowser">恢复已保存配置</button><button type="button" id="refreshChromeRevision" hidden>读取最新配置，保留当前输入</button></div>
-    <p class="chrome-save-help">保存连接不会执行登录、采集或发布。登录时，在下方 ERP 连接中点击“打开登录”。</p>
+    <p class="chrome-save-help">保存连接不会打开浏览器、更改 Chrome 权限或执行登录、采集、发布。需要连接时，在下方 ERP 连接中点击“检查登录”或“打开登录”。</p>
   </form>
-</section>
-<section class="panel" id="erpSettings"><h2>ERP 连接</h2><p>选择 ERP 并保存连接，再点击“打开店小秘登录”，在工作台的谷歌窗口中登录。店铺授权在 ERP 内完成。</p><div id="erpList"></div><form id="erpForm"><input name="key" type="hidden"><div class="fields"><label>ERP 类型<select name="provider" required><option value="dianxiaomi">店小秘</option><option value="miaoshou">妙手 ERP</option></select></label><label>连接名称<input name="name" required placeholder="例如：我的 ERP 主账号"></label><label>登录谷歌浏览器<select name="browserKey" required></select></label><label>账号显示名（自动选品采集必填）<input name="expectedAccount" placeholder="店小秘页面显示的用户名"></label><label>官方入口<input id="erpLoginUrl" value="https://www.dianxiaomi.com/" readonly></label></div><p id="erpProviderHint" class="muted"></p><p class="muted">账号显示名用于核对采集目标；密码和验证码在 ERP 登录页面输入。</p><button class="primary">保存 ERP 连接</button><button id="resetErp" type="button">新增 ERP 连接</button></form></section>
-<section class="panel" id="storeSettings">
-  <h2>店铺与商品母稿</h2>
-  <div class="store-list-heading"><h3>已添加的店铺</h3><button type="button" id="resetStore">＋ 新增店铺</button></div>
-  <div id="storeList"></div>
-  <form id="storeForm" aria-labelledby="storeEditorTitle">
-    <input name="key" type="hidden">
-    <div class="store-editor-heading"><h3 id="storeEditorTitle">新增店铺</h3><p id="storeEditorHelp" class="muted">先填写新店铺信息，再添加该店铺的母稿。</p></div>
-    <section id="storeDetails" aria-labelledby="storeDetailsTitle">
-      <h4 id="storeDetailsTitle">1. 填写店铺信息</h4>
-      <div class="fields"><label>平台<select name="platform"><option value="temu">Temu 半托管</option><option value="amazon">Amazon 亚马逊</option></select></label><label>ERP 中的店铺名称<input name="expectedStore" placeholder="填写要新增的店铺名称" required></label><label>经营站点<input name="expectedSite" placeholder="例如：加拿大站（请填写）" required></label><label>使用的 ERP 连接<select name="erpKey" required></select></label></div>
-      <p class="muted store-details-hint">名称和站点须与店小秘一致。店铺使用所选 ERP 连接绑定的浏览器；如需更换，请在上方 ERP 连接中修改并保存。多家店铺可以使用同一条 ERP 连接，上架页按此关联展示店铺和母稿。</p>
-      <button type="button" class="primary" id="continueStore">下一步：添加该店铺的母稿</button>
+        </details>
+      </section>
+
+      <section class="panel setup-panel" id="erpSettings" aria-labelledby="erpTitle">
+        <div class="section-heading">
+          <div><h2 id="erpTitle">连接并登录 ERP</h2><p>选择账号绑定的浏览器，复用其中已有的店小秘登录；需要登录时在工作窗口中完成，再检查账号是否正确。</p></div>
+          <span class="section-step">第 2 步</span>
+        </div>
+        <div id="erpList"></div>
+        <div class="section-tools"><button id="resetErp" type="button">新增 ERP 账号</button></div>
+        <details class="settings-editor" id="erpEditor">
+          <summary><span id="erpEditorSummary">新增 ERP 账号</span></summary>
+          <form id="erpForm">
+            <input name="key" type="hidden">
+            <div class="fields erp-main-fields">
+              <label>ERP 类型<select name="provider" required><option value="dianxiaomi">店小秘</option><option value="miaoshou">妙手 ERP</option></select></label>
+              <label>账号显示名<input name="expectedAccount" placeholder="填写店小秘页面显示的用户名" aria-describedby="erpAccountHelp"></label>
+            </div>
+            <p id="erpAccountHelp" class="field-help">用于核对是否登录了正确账号。密码和验证码直接在 ERP 登录页面输入。</p>
+            <p id="erpProviderHint" class="muted"></p>
+            <details class="advanced-settings" id="erpAdvanced">
+              <summary>连接名称与浏览器（通常保持默认）</summary>
+              <div class="fields">
+                <label>连接名称（选填）<input name="name" placeholder="留空使用账号显示名"></label>
+                <label>登录谷歌浏览器<select name="browserKey" required></select></label>
+                <label>官方入口<input id="erpLoginUrl" value="https://www.dianxiaomi.com/" readonly></label>
+              </div>
+            </details>
+            <div class="toolbar">
+              <button class="primary" id="saveErp">保存并打开登录</button>
+              <button id="cancelErp" type="button">取消编辑</button>
+            </div>
+          </form>
+        </details>
+      </section>
+
+      <section class="panel setup-panel" id="storeSettings" aria-labelledby="storeSettingsTitle">
+        <div class="section-heading">
+          <div><h2 id="storeSettingsTitle">选择上架方式</h2><p>根据商品来源进入对应流程，使用该 ERP 账号下的店铺。</p></div>
+          <span class="section-step">第 3 步</span>
+        </div>
+        <div class="listing-paths">
+          <div class="listing-path">
+            <h3>采集商品上架</h3>
+            <p>绑定目标平台和店铺，采集后按实际表单补齐必填项，选择正确分类，再批量转入待发布。</p>
+            <a class="button-link" href="#collectionStores">绑定采集箱店铺</a>
+            <small>店铺绑定长期保存，每次采集后直接选择使用。</small>
+          </div>
+          <div class="listing-path">
+            <h3>做图 / 成品图片上架</h3>
+            <p>绑定店铺和商品母稿，沿用母稿资料，为新图片创建商品。</p>
+            <a class="button-link" href="#motherStores">管理店铺与母稿</a>
+            <small>在下方添加店铺，再读取属于该店铺的商品链接。</small>
+          </div>
+        </div>
+
+        <div id="collectionStores" class="collection-stores" aria-labelledby="collectionStoresTitle">
+          <div class="store-list-heading"><div><h3 id="collectionStoresTitle">采集箱目标店铺</h3><p class="muted">按店小秘中的平台和完整店铺名称绑定。采集商品使用这些目的地领取和补全。</p></div><button type="button" id="newCollectionStore">＋ 绑定店铺</button></div>
+          <p id="collectionBackendNotice" class="error" role="status" hidden></p>
+          <div id="collectionStoreList"><p class="muted">正在读取采集箱店铺…</p></div>
+          <form id="collectionStoreForm" class="collection-store-editor" hidden>
+            <input name="key" type="hidden">
+            <div class="store-editor-heading"><h4 id="collectionStoreEditorTitle">绑定采集箱店铺</h4><button type="button" id="cancelCollectionStore">收起编辑</button></div>
+            <div class="fields">
+              <label>店小秘账号<select name="erpKey" required></select></label>
+              <label>目标平台<select name="platform"><option value="shein">SHEIN 希音</option><option value="temu">Temu 半托管</option><option value="tiktok">TikTok</option></select></label>
+              <label>店小秘中的店铺名称<input name="storeName" maxlength="240" required placeholder="填写完整店铺名称"></label>
+              <label>经营站点<input name="site" maxlength="160" placeholder="例如：加拿大站"></label>
+              <label>店小秘店铺 ID（高级选填）<input name="storeId" maxlength="100" placeholder="不清楚可留空，请勿填写商品 ID 或猜测编号"></label>
+            </div>
+            <p id="collectionStoreSiteHint" class="muted"></p>
+            <p class="muted small">店铺名称须与店小秘完全一致。SHEIN 页面未提供店铺 ID 时，按当前账号、平台和唯一完整店名核对；出现同名店铺或实际 ID 冲突时会提示处理。</p>
+            <div class="toolbar"><button type="submit" class="primary" id="saveCollectionStore">保存店铺绑定</button><a href="/sourcing/listing">前往本批补全</a></div>
+          </form>
+          <p class="muted small">同一关键词可分别送到不同平台。每个补全任务使用同一账号、平台和站点的一组店铺。</p>
+        </div>
+
+        <div id="motherStores" class="mother-stores">
+          <div class="store-list-heading"><h3>做图上架使用的店铺</h3><div class="template-actions"><button type="button" id="resumeStore" hidden>继续未保存的填写</button><button type="button" id="resetStore">＋ 新增店铺</button></div></div>
+          <div id="storeList"></div>
+          <div id="storeEditor" hidden>
+            <form id="storeForm" aria-labelledby="storeEditorTitle">
+              <input name="key" type="hidden">
+              <div class="store-editor-heading">
+                <div><h3 id="storeEditorTitle">新增店铺</h3><p id="storeEditorHelp" class="muted">先填写新店铺信息，再添加该店铺的母稿。</p></div>
+                <button type="button" id="cancelStore">收起编辑</button>
+              </div>
+              <section id="storeDetails" aria-labelledby="storeDetailsTitle">
+                <h4 id="storeDetailsTitle">1. 填写店铺信息</h4>
+                <div class="fields">
+                  <label>平台<select name="platform"><option value="temu">Temu 半托管</option><option value="amazon">Amazon 亚马逊</option></select></label>
+                  <label>店小秘中的店铺名称<input name="expectedStore" placeholder="填写要新增的店铺名称" required></label>
+                  <label>经营站点<input name="expectedSite" placeholder="例如：加拿大站（请填写）" required></label>
+                  <label>使用的 ERP 连接<select name="erpKey" required></select></label>
+                </div>
+                <p class="muted store-details-hint">店铺名称和站点请按店小秘填写，程序会通过商品母稿核对。一个 ERP 账号可以关联多家店铺。</p>
+                <button type="button" class="primary" id="continueStore">下一步：添加该店铺的母稿</button>
+              </section>
+              <section id="storeMothers" aria-labelledby="storeMothersTitle" hidden>
+                <h4 id="storeMothersTitle">2. 配置本店铺的母稿</h4>
+                <div class="note">粘贴这家店铺对应站点的商品编辑链接，即可校验并保存；也可先读取母稿查看核对结果。上架时沿用该商品的类目、规格、仓库与运费设置。当前支持单 SKU、单风格规格、单仓库母稿。</div>
+                <div id="templateInputs"></div>
+                <button type="button" id="addTemplate">＋ 为本店铺添加另一份母稿</button>
+                <p id="storeSaveHint" class="muted"></p>
+                <div class="toolbar">
+                  <button class="primary" id="saveStore">校验并保存店铺</button>
+                  <button type="button" id="backStore">返回店铺信息</button>
+                  <a href="/temu/listings">前往店铺上架</a>
+                </div>
+                <p id="storeSaveStatus" role="status" hidden></p>
+              </section>
+            </form>
+          </div>
+        </div>
+      </section>
+
+      <section id="optionalServices" class="optional-services" aria-labelledby="optionalServicesTitle">
+        <div class="optional-heading"><h2 id="optionalServicesTitle">按需配置其他服务</h2><p>使用极鲸云选品时，可单独配置对应服务账号。</p></div>
+        <section class="panel optional-panel" id="geekbiSettings">
+          <div class="optional-service-row"><div><h3>极鲸云选品</h3><p>按关键词、站点和类目筛选商品，单独配置服务账号。</p></div><a href="/sourcing">前往配置与选品</a></div>
+        </section>
+      </section>
     </section>
-    <section id="storeMothers" aria-labelledby="storeMothersTitle" hidden>
-      <h4 id="storeMothersTitle">2. 配置本店铺的母稿</h4>
-      <div class="note">粘贴属于上方店铺和站点的商品编辑链接。上架时沿用该商品的类目、规格、仓库与运费设置。当前支持单 SKU、单风格规格、单仓库母稿。</div>
-      <div id="templateInputs"></div><button type="button" id="addTemplate">＋ 为本店铺添加另一份母稿</button>
-      <p id="storeSaveHint" class="muted"></p>
-      <div class="toolbar"><button class="primary" id="saveStore">保存新店铺</button><a href="/temu/listings">前往店铺上架</a></div>
-      <p id="storeSaveStatus" role="status" hidden></p>
-    </section>
-  </form>
-</section>
-</section></main></body></html>
+  </main>
+</body>
+</html>

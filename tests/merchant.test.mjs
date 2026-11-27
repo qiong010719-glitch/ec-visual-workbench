@@ -57,7 +57,7 @@ test('fresh merchant configuration has no test stores, stores secrets encrypted 
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'merchant-settings-'));t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
   const codec={encode:v=>Buffer.from(v).toString('base64'),decode:v=>Buffer.from(v,'base64').toString()},configuration={};
   const p=createSettings({directory:dir,configuration,codec});assert.equal(p.view().stores.length,0);
-  const saved=p.update({revision:0,models:{PLANNER_API_KEY:'test-secret-only',TITLE_API_FORMAT:'responses'}});
+  const saved=p.update({revision:0,models:{PLANNER_API_KEY:'test-secret-only'}});
   assert.equal(configuration.PLANNER_API_KEY,'test-secret-only');assert.equal(saved.models.PLANNER_API_KEYConfigured,true);
   assert.ok(!JSON.stringify(saved).includes('test-secret-only'));assert.ok(!fs.readFileSync(path.join(dir,'secrets.json'),'utf8').includes('test-secret-only'));
   assert.throws(()=>p.update({revision:0,models:{}}),/刷新/);

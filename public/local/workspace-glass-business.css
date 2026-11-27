@@ -1,0 +1,157 @@
+/* Visual adaptation of established workflows; no business markup or events replaced. */
+html.workspace-shell-enabled body:not(.cockpit-page) {display:block;font-size:14px;line-height:1.65;background-image:radial-gradient(ellipse at 70% 0%,color-mix(in srgb,var(--cockpit-accent) 3%,transparent),transparent 48%);background-attachment:fixed}
+html.workspace-shell-enabled body:not(.cockpit-page) main:not(.listing-main) {max-width:1500px;margin:0 auto;padding:30px 0 56px;min-width:0}
+html.workspace-shell-enabled body:not(.cockpit-page) h1 {font-size:29px;line-height:1.4;letter-spacing:-.03em;color:var(--cockpit-text);font-weight:650}
+html.workspace-shell-enabled body:not(.cockpit-page) :is(h2,h3,h4,strong) {color:var(--cockpit-text)}
+html.workspace-shell-enabled body:not(.cockpit-page) :is(.ws-eyebrow,.eyebrow) {color:var(--cockpit-muted);font-weight:400;letter-spacing:.02em}
+html.workspace-shell-enabled body:not(.cockpit-page) :is(.ws-intro,.heading>div>p,.work-heading p) {color:var(--cockpit-muted);font-size:13px}
+html.workspace-shell-enabled body:not(.cockpit-page) :is(.ws-panel,.ws-product-card,.ws-version-card,.panel,.source-panel,.listing-row,.execution-panel,.platform-flow-bar,.platform-capability-notice,.import-box) {
+  background:linear-gradient(135deg,color-mix(in srgb,var(--cockpit-panel) 96%,transparent),color-mix(in srgb,var(--cockpit-panel) 76%,transparent));
+  border-color:var(--cockpit-line);border-radius:17px;box-shadow:inset 0 1px 0 color-mix(in srgb,var(--cockpit-text) 3%,transparent);
+}
+html.workspace-shell-enabled body:not(.cockpit-page) :is(.ws-panel,.panel,.source-panel) {padding:24px}
+html.workspace-shell-enabled body:not(.cockpit-page) :is(.ws-creation-card.ws-featured,.ws-product-card.is-selected) {border-color:color-mix(in srgb,var(--cockpit-accent) 35%,transparent);background:linear-gradient(135deg,var(--cockpit-soft),var(--cockpit-panel) 78%);box-shadow:inset 0 1px 0 color-mix(in srgb,var(--cockpit-accent) 10%,transparent)}
+html.workspace-shell-enabled body:not(.cockpit-page) .ws-product-grid {gap:18px}
+html.workspace-shell-enabled body:not(.cockpit-page) .ws-product-cover {background:var(--cockpit-input);height:220px;border-bottom-color:var(--cockpit-line);padding:20px}
+html.workspace-shell-enabled body:not(.cockpit-page) .ws-product-cover .ws-badge {background:var(--cockpit-panel);border-color:var(--cockpit-line)}
+html.workspace-shell-enabled body:not(.cockpit-page) :is(.ws-badge.is-current,.ws-specification span,.binding-badge,.state-badge,.badge,.local-pill,.platform-capability-notice,.destination-label) {background:var(--cockpit-soft);color:var(--cockpit-accent);border-color:color-mix(in srgb,var(--cockpit-accent) 24%,transparent)}
+html.workspace-shell-enabled body:not(.cockpit-page) :is(.ws-main,.listing-workspace,main,.purah-pad,dialog,.local-dialog) :is(input,select,textarea) {
+  background:var(--cockpit-input);color:var(--cockpit-text);border-color:var(--cockpit-line);border-radius:9px;box-shadow:none;
+}
+html.workspace-shell-enabled body:not(.cockpit-page) :is(input,textarea)::placeholder {color:var(--cockpit-muted);opacity:.65}
+html.workspace-shell-enabled body:not(.cockpit-page) :is(input,select,textarea):focus {border-color:color-mix(in srgb,var(--cockpit-accent) 58%,transparent)}
+html.workspace-shell-enabled body:not(.cockpit-page) :is(input,select,textarea):disabled {background:var(--cockpit-hover);color:var(--cockpit-muted)}
+html.workspace-shell-enabled body:not(.cockpit-page) :is(select option,select optgroup) {background:var(--cockpit-panel);color:var(--cockpit-text)}
+html.workspace-shell-enabled body:not(.cockpit-page) :is(main,.listing-workspace,.purah-pad,dialog,.local-dialog) :is(button,.ws-button,.button) {
+  background:var(--cockpit-hover);color:var(--cockpit-text);border-color:var(--cockpit-line);border-radius:9px;box-shadow:none;
+}
+html.workspace-shell-enabled body:not(.cockpit-page) :is(main,.listing-workspace,dialog,.local-dialog) :is(button,.ws-button):hover:not(:disabled) {background:var(--cockpit-soft);border-color:color-mix(in srgb,var(--cockpit-accent) 35%,transparent);color:var(--cockpit-accent)}
+html.workspace-shell-enabled body:not(.cockpit-page) :is(main,.listing-workspace,.purah-pad,dialog,.local-dialog) :is(button.primary,.ws-primary,.btn-agent,.btn-ultrahand-main,.modal-btn-confirm,.ms-primary,#editRunBtn,#qmRunBtn,.sg-done,.v13-primary) {
+  background:var(--cockpit-accent)!important;color:var(--cockpit-bg)!important;border-color:var(--cockpit-accent)!important;font-weight:650;
+}
+html.workspace-shell-enabled body:not(.cockpit-page) :is(main,.listing-workspace,dialog) :is(button.primary,.ws-primary):hover:not(:disabled) {filter:brightness(1.08)}
+html.workspace-shell-enabled[data-cockpit-theme="light"] body:not(.cockpit-page) :is(main,.listing-workspace,.purah-pad,dialog,.local-dialog) :is(button.primary,.ws-primary,.btn-agent,.btn-ultrahand-main,.modal-btn-confirm,.ms-primary,#editRunBtn,#qmRunBtn,.sg-done,.v13-primary) {color:var(--cockpit-panel)!important}
+html.workspace-shell-enabled body:not(.cockpit-page) :is(main,.listing-workspace,.purah-pad,dialog,.local-dialog) :is(button[aria-pressed="true"],a[aria-current="page"],.platform-mode-links a.active) {background:var(--cockpit-soft);color:var(--cockpit-accent);border-color:color-mix(in srgb,var(--cockpit-accent) 30%,transparent)}
+html.workspace-shell-enabled body:not(.cockpit-page) :is(.ws-dialog,.local-dialog,.prompt-modal-box,.announce-box,.msm-card,.sg-card,.tip-center-modal,.gsel-pop) {background:var(--cockpit-panel)!important;color:var(--cockpit-text);border-color:var(--cockpit-line);border-radius:18px;box-shadow:0 24px 100px var(--cockpit-shadow)}
+html.workspace-shell-enabled body:not(.cockpit-page) dialog::backdrop {background:color-mix(in srgb,var(--cockpit-bg) 72%,transparent);backdrop-filter:blur(7px)}
+html.workspace-shell-enabled body:not(.cockpit-page) :is(th,.ws-task-table th) {background:var(--cockpit-input);color:var(--cockpit-muted);font-weight:500}
+html.workspace-shell-enabled body:not(.cockpit-page) :is(td,th,.ws-task-table td,.config-row,.mother-editor,.template-row,.execution-row,.previous-import,.set-title,.platform-mode-links) {border-color:var(--cockpit-line)}
+html.workspace-shell-enabled body:not(.cockpit-page) :is(.ws-task-table tbody tr,tbody tr):hover {background:var(--cockpit-hover)}
+html.workspace-shell-enabled body:not(.cockpit-page) .ws-task-panel {padding:0;border-radius:17px;overflow:hidden}
+html.workspace-shell-enabled body:not(.cockpit-page) .ws-page-heading {padding-bottom:23px;border-bottom:1px solid var(--cockpit-line);margin-bottom:24px}
+html.workspace-shell-enabled body:not(.cockpit-page) :is(.ws-empty,.listing-empty) {color:var(--cockpit-muted);border-color:var(--cockpit-line)}
+html.workspace-shell-enabled body:not(.cockpit-page) :is(.listing-empty p:first-child,.back-link,.mother-info a,.execution-row a) {color:var(--cockpit-accent)}
+html.workspace-shell-enabled body:not(.cockpit-page) .listing-workspace {padding:28px 0 40px;min-height:calc(100dvh - 28px);gap:20px;grid-template-columns:245px minmax(0,1fr);max-width:1550px}
+html.workspace-shell-enabled body:not(.cockpit-page) .listing-settings {border:1px solid var(--cockpit-line);border-radius:17px;background:var(--cockpit-panel);padding:23px 20px;align-self:start;position:sticky;top:24px;max-height:calc(100dvh - 48px);overflow:auto}
+html.workspace-shell-enabled body:not(.cockpit-page) .listing-settings h1 {font-size:21px}
+html.workspace-shell-enabled body:not(.cockpit-page) .listing-main {padding:0;min-width:0}
+html.workspace-shell-enabled body:not(.cockpit-page) :is(.mother-info,.chrome-port-status,.mother-source,.store-editor-heading) {background:var(--cockpit-hover);border-color:var(--cockpit-line);color:var(--cockpit-muted)}
+html.workspace-shell-enabled body:not(.cockpit-page) :is(.source-panel,.execution-panel,.listing-row) {border-color:var(--cockpit-line)}
+html.workspace-shell-enabled body:not(.cockpit-page) .execution-panel {border-top-color:var(--cockpit-accent)}
+html.workspace-shell-enabled body:not(.cockpit-page) .listing-thumb img {background:var(--cockpit-input);border-color:var(--cockpit-line);border-radius:8px}
+html.workspace-shell-enabled body:not(.cockpit-page) .steps li {background:var(--cockpit-panel);border-color:var(--cockpit-line);border-radius:12px}
+html.workspace-shell-enabled body:not(.cockpit-page) .steps li.current {background:var(--cockpit-soft);color:var(--cockpit-accent);border-color:color-mix(in srgb,var(--cockpit-accent) 30%,transparent)}
+html.workspace-shell-enabled body:not(.cockpit-page) .workspace {grid-template-columns:300px minmax(0,1fr);gap:20px}
+html.workspace-shell-enabled body:not(.cockpit-page) .workspace aside {display:block}
+html.workspace-shell-enabled body:not(.cockpit-page) .platform-flow-bar {margin:0 0 20px;padding:12px 15px;color:var(--cockpit-muted)}
+html.workspace-shell-enabled body:not(.cockpit-page) .platform-mode-links a {color:var(--cockpit-muted)}
+html.workspace-shell-enabled body:not(.cockpit-page) .platform-mode-links a[aria-current] {background:var(--cockpit-soft);color:var(--cockpit-accent);border-color:var(--cockpit-line)}
+html.workspace-shell-enabled body:not(.cockpit-page) #notice {top:14px;background:var(--ui-success-soft);border-color:var(--cockpit-line)}
+html.workspace-shell-enabled body:not(.cockpit-page) #notice.error {background:var(--ui-danger-soft);color:var(--cockpit-danger)}
+html.workspace-shell-enabled body:not(.cockpit-page) #settingsPage {max-width:1180px}
+html.workspace-shell-enabled body:not(.cockpit-page) :is(.chrome-port-status.available,.chrome-port-status.owned,.chrome-port-status.saved) {background:var(--ui-success-soft);color:var(--cockpit-success);border-color:color-mix(in srgb,var(--cockpit-success) 25%,transparent)}
+html.workspace-shell-enabled body:not(.cockpit-page) :is(.chrome-port-status.error,.chrome-port-status.occupied,.chrome-port-status.profile_running,.chrome-port-status.unavailable) {background:var(--ui-danger-soft);color:var(--cockpit-danger);border-color:color-mix(in srgb,var(--cockpit-danger) 25%,transparent)}
+html.workspace-shell-enabled body:not(.cockpit-page) .chrome-port-status.suggested {background:var(--cockpit-soft);color:var(--cockpit-accent);border-color:var(--cockpit-line)}
+/* The design editor keeps its own internal mode rail and full-height scrolling panes. */
+html.workspace-shell-enabled.temu-theme {--titlebar-h:0px;--sidebar-w:72px;--pad-gutter:20px;color-scheme:dark}
+html.workspace-shell-enabled.temu-theme[data-cockpit-theme="light"] {color-scheme:light}
+html.workspace-shell-enabled body:not(.cockpit-page) .purah-pad {width:100%!important;height:calc(100dvh - 32px);min-width:0;min-height:640px;margin:16px 0;border:1px solid var(--cockpit-line);border-radius:18px;transform:none!important;background:var(--cockpit-bg)!important;box-shadow:none!important}
+html.workspace-shell-enabled body:not(.cockpit-page) .purah-pad .main-content {padding-top:0;min-width:0}
+html.workspace-shell-enabled body:not(.cockpit-page) .purah-pad .sidebar-categories {padding-top:20px;background:var(--cockpit-panel)!important;border-right-color:var(--cockpit-line);width:72px;flex-shrink:0}
+html.workspace-shell-enabled body:not(.cockpit-page) .purah-pad .category-icon {width:54px;height:56px}
+html.workspace-shell-enabled body:not(.cockpit-page) .purah-pad .dashboard-view {padding:24px 22px 18px;gap:18px}
+html.workspace-shell-enabled body:not(.cockpit-page) .purah-pad .workspace-grid {grid-template-columns:minmax(290px,370px) minmax(0,1fr);gap:16px}
+html.workspace-shell-enabled body:not(.cockpit-page) .purah-pad :is(.panel-glass,.status-box-enhanced,.local-card,.ms-panel,.ms-set) {background:var(--cockpit-panel)!important;border-color:var(--cockpit-line)!important;border-radius:14px}
+html.workspace-shell-enabled body:not(.cockpit-page) .purah-pad :is(.sheikah-input,.prompt-textarea,.fe-textarea,.local-dialog input,.local-dialog select,.local-dialog textarea,.ms-page input,.ms-page textarea,.ms-page select) {background:var(--cockpit-input)!important;color:var(--cockpit-text)!important;border-color:var(--cockpit-line)!important}
+html.workspace-shell-enabled body:not(.cockpit-page) .purah-pad :is(.gsel-trigger,.gsel-item,.mode-seg,.mode-thumb,.quest-slot) {color:var(--cockpit-text);border-color:var(--cockpit-line)}
+html.workspace-shell-enabled body:not(.cockpit-page) .purah-pad #mainBtn:disabled {background:var(--cockpit-hover)!important;border-color:var(--cockpit-line)!important;color:var(--cockpit-muted)!important;opacity:.7}
+html.workspace-shell-enabled body:not(.cockpit-page) :is(button,a,input,select,textarea,[role="button"],[tabindex]):focus-visible {outline:2px solid var(--cockpit-accent)!important;outline-offset:3px}
+@media(max-width:1250px) and (min-width:761px) {
+  html.workspace-shell-enabled body:not(.cockpit-page) .ws-creation-grid {grid-template-columns:1fr 1fr}
+  html.workspace-shell-enabled body:not(.cockpit-page) .ws-creation-card.ws-featured {grid-column:1/-1}
+  html.workspace-shell-enabled body:not(.cockpit-page) .ws-product-grid {grid-template-columns:repeat(2,minmax(0,1fr))}
+  html.workspace-shell-enabled body:not(.cockpit-page) .workspace {grid-template-columns:260px minmax(0,1fr);gap:15px}
+  html.workspace-shell-enabled body:not(.cockpit-page) .listing-workspace {grid-template-columns:220px minmax(0,1fr);gap:16px}
+  html.workspace-shell-enabled body:not(.cockpit-page) .listing-settings {padding:20px 16px}
+  html.workspace-shell-enabled body:not(.cockpit-page) .purah-pad .workspace-grid {grid-template-columns:minmax(250px,320px) minmax(0,1fr)}
+  html.workspace-shell-enabled body:not(.cockpit-page) .purah-pad .dashboard-view {padding:20px 16px}
+  html.workspace-shell-enabled body:not(.cockpit-page) .purah-pad .sidebar-categories {width:60px}
+  html.workspace-shell-enabled body:not(.cockpit-page) .ws-page-heading {flex-wrap:wrap}
+}
+@media(max-width:1050px) {
+  html.workspace-shell-enabled body:not(.cockpit-page) .workspace {display:block}
+  html.workspace-shell-enabled body:not(.cockpit-page) .listing-workspace {display:block}
+  html.workspace-shell-enabled body:not(.cockpit-page) .listing-settings {position:static;max-height:none;margin-bottom:20px}
+  html.workspace-shell-enabled body:not(.cockpit-page) .ws-context-fields {grid-template-columns:1fr}
+}
+@media(max-width:760px) {
+  html.workspace-shell-enabled body:not(.cockpit-page) main:not(.listing-main) {padding:4px 0 36px}
+  html.workspace-shell-enabled body:not(.cockpit-page) .listing-workspace {padding:4px 0 36px}
+  html.workspace-shell-enabled body:not(.cockpit-page) :is(.panel,.ws-panel,.source-panel,.listing-row,.execution-panel) {padding:18px}
+  html.workspace-shell-enabled body:not(.cockpit-page) .ws-task-panel {padding:0}
+  html.workspace-shell-enabled body:not(.cockpit-page) h1 {font-size:25px}
+  html.workspace-shell-enabled body:not(.cockpit-page) :is(.ws-product-grid,.ws-creation-grid,.ws-version-grid) {grid-template-columns:1fr}
+  html.workspace-shell-enabled body:not(.cockpit-page) .ws-page-heading {gap:16px;align-items:flex-start;flex-direction:column}
+  html.workspace-shell-enabled body:not(.cockpit-page) .ws-library-toolbar {flex-wrap:wrap;gap:10px}
+  html.workspace-shell-enabled body:not(.cockpit-page) .ws-search {max-width:none;flex-basis:100%}
+  html.workspace-shell-enabled body:not(.cockpit-page) .ws-filter {flex:1;font-size:12px;gap:6px}
+  html.workspace-shell-enabled body:not(.cockpit-page) .ws-filter select {min-width:0;flex:1}
+  html.workspace-shell-enabled body:not(.cockpit-page) .purah-pad {height:auto;min-height:calc(100dvh - 104px);margin:0;overflow:visible;display:block}
+  html.workspace-shell-enabled body:not(.cockpit-page) .purah-pad .sidebar-categories {display:flex;flex-direction:row;width:100%;padding:10px 14px;border-right:0;border-bottom:1px solid var(--cockpit-line);border-radius:18px 18px 0 0;gap:12px}
+  html.workspace-shell-enabled body:not(.cockpit-page) .purah-pad .dashboard-view {height:auto;overflow:visible;padding:20px 14px}
+  html.workspace-shell-enabled body:not(.cockpit-page) .purah-pad .workspace-grid {grid-template-columns:1fr;min-height:0}
+  html.workspace-shell-enabled body:not(.cockpit-page) .purah-pad .workspace-grid>.panel-glass {min-height:400px;max-height:none;overflow:visible}
+  html.workspace-shell-enabled body:not(.cockpit-page) .purah-pad .workspace-grid .scroll-container {max-height:none;overflow:visible}
+  html.workspace-shell-enabled body:not(.cockpit-page) .purah-pad .ws-header {flex-wrap:wrap}
+  html.workspace-shell-enabled body:not(.cockpit-page) .purah-pad .cta-row {flex-wrap:wrap}
+  html.workspace-shell-enabled body:not(.cockpit-page) .fields {grid-template-columns:1fr}
+  html.workspace-shell-enabled body:not(.cockpit-page) .config-row {flex-wrap:wrap}
+  html.workspace-shell-enabled body:not(.cockpit-page) .config-row>div:last-child {flex-wrap:wrap}
+  html.workspace-shell-enabled body:not(.cockpit-page) .ws-task-table {min-width:650px}
+}
+/* Shared-context and recovery bars are inserted before the editor grid. Use
+   content-based flex rows so these bars never inherit the old grid's 1fr row. */
+html.workspace-shell-enabled body:not(.cockpit-page) .purah-pad .dashboard-view {
+  display:flex;flex-direction:column;align-items:stretch;overflow-y:auto;overflow-x:hidden;min-height:0;
+}
+html.workspace-shell-enabled body:not(.cockpit-page) .purah-pad .dashboard-view.hidden {display:none!important}
+html.workspace-shell-enabled body:not(.cockpit-page) .purah-pad .dashboard-view > :is(.ws-header,.design-platform-bar,.design-recovery-panel,.single-plan-review,.cta-row) {flex:none;min-height:0}
+html.workspace-shell-enabled body:not(.cockpit-page) .purah-pad .design-platform-bar,
+html.workspace-shell-enabled body:not(.cockpit-page) .purah-pad .design-recovery-panel {
+  margin:0;padding:15px 18px;gap:18px;border:1px solid var(--cockpit-line);border-radius:12px;
+  background:var(--cockpit-panel);color:var(--cockpit-text);height:auto;
+}
+html.workspace-shell-enabled body:not(.cockpit-page) .purah-pad :is(.design-platform-bar,.design-recovery-panel) :is(p,label) {color:var(--cockpit-muted)}
+html.workspace-shell-enabled body:not(.cockpit-page) .purah-pad :is(.design-platform-bar,.design-recovery-panel) :is(select,button) {background:var(--cockpit-input);color:var(--cockpit-text);border-color:var(--cockpit-line)}
+html.workspace-shell-enabled body:not(.cockpit-page) .purah-pad .design-platform-bar a {color:var(--cockpit-accent);white-space:nowrap}
+html.workspace-shell-enabled body:not(.cockpit-page) .purah-pad .workspace-grid {flex:1 0 530px;min-height:530px;align-items:stretch}
+html.workspace-shell-enabled body:not(.cockpit-page) .purah-pad .workspace-grid > .panel-glass {min-height:0;height:auto!important;overflow:hidden}
+html.workspace-shell-enabled body:not(.cockpit-page) .purah-pad .workspace-grid .scroll-container:not(textarea) {overflow-y:auto;flex:1 1 0;min-height:0}
+html.workspace-shell-enabled body:not(.cockpit-page) .purah-pad .cta-row {position:static;bottom:auto;margin:0;padding:0;background:var(--cockpit-bg)!important;backdrop-filter:none;-webkit-backdrop-filter:none}
+html.workspace-shell-enabled body:not(.cockpit-page) .purah-pad .single-plan-review {background:var(--cockpit-panel);border-color:var(--cockpit-line);border-radius:12px}
+@media(max-width:760px) {
+  html.workspace-shell-enabled body:not(.cockpit-page) .purah-pad .design-platform-bar {flex-wrap:wrap;align-items:flex-start;gap:12px;padding:14px}
+  html.workspace-shell-enabled body:not(.cockpit-page) .purah-pad .design-platform-bar > div {flex-basis:100%}
+  html.workspace-shell-enabled body:not(.cockpit-page) .purah-pad .design-platform-bar label {flex:1;min-width:0;font-size:12px}
+  html.workspace-shell-enabled body:not(.cockpit-page) .purah-pad .design-platform-bar select {max-width:100%;min-width:0}
+  html.workspace-shell-enabled body:not(.cockpit-page) .purah-pad .workspace-grid {flex:0 0 auto;min-height:0;grid-auto-rows:auto}
+  html.workspace-shell-enabled body:not(.cockpit-page) .purah-pad .workspace-grid > .panel-glass {min-height:430px;overflow:visible}
+  html.workspace-shell-enabled body:not(.cockpit-page) .purah-pad .workspace-grid .scroll-container:not(textarea) {overflow:visible;flex:none;max-height:none}
+}
+
+/* Keep the fixed-template two-column workflow distinct from image listing layout. */
+html.workspace-shell-enabled body.fixed-listing-view:not(.cockpit-page) .listing-workspace{grid-template-columns:minmax(0,.85fr) minmax(0,1.15fr);padding:0;min-height:0;max-width:none}
+html.workspace-shell-enabled :is(.free-sourcing-view,.fixed-listing-view) .section-title{flex-wrap:wrap}
+html.workspace-shell-enabled :is(.free-sourcing-view,.fixed-listing-view) :is(.panel,.results,.filters,fieldset){min-width:0}
+html.workspace-shell-enabled :is(.free-sourcing-view,.fixed-listing-view) [id^="job-"]{scroll-margin-top:24px}
+@media(max-width:1100px){html.workspace-shell-enabled body.fixed-listing-view:not(.cockpit-page) .listing-workspace{grid-template-columns:minmax(0,1fr)}}

@@ -30,6 +30,14 @@ test('packaged profiles use bundled adapters and persistent merchant data withou
   assert.equal(profile.configuration.PLANNER_API_KEY,undefined);
 });
 
+test('primary crossborder desktop reuses only its version-checked local service and keeps its data',()=>{
+  const profile=desktopProfile({...context,env:{WORKBENCH_DESKTOP_PRIMARY:'true',WORKBENCH_DESKTOP_DATA:'desktop-preview-data',WORKBENCH_DESKTOP_PORT:'4196',PLANNER_API_KEY:'host-only'}});
+  assert.equal(profile.port,4196);assert.equal(profile.reuseService,true);
+  assert.equal(profile.dataDirectory,path.resolve('desktop-preview-data'));
+  assert.equal(profile.title,'跨境电商工作台');
+  assert.equal(profile.configuration.PLANNER_API_KEY,undefined);
+});
+
 test('invalid manual ports fail; automated tests may use an ephemeral port',()=>{
   for(const port of ['0','NaN','4191.1','65536'])assert.throws(()=>desktopProfile({...context,env:{WORKBENCH_DESKTOP_PORT:port}}),/端口/);
   assert.equal(desktopProfile({...context,env:{WORKBENCH_DESKTOP_TEST:'true'}}).port,0);

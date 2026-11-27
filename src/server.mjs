@@ -26,15 +26,47 @@ import {TEMU_DESIGN_REVISION} from './image-scope.mjs';
 import {createSourcing,SOURCING_REVISION} from './sourcing.mjs';
 import {createWorkspace} from './workspace.mjs';
 import {prepareDesignResult,validateSingleDesignPlatform} from './design-platforms.mjs';
+import {createFreeSourcing,FREE_SOURCING_REVISION} from './free-sourcing.mjs';
+import {createListingTemplates} from './listing-templates.mjs';
+import {createListingWorkflow} from './listing-workflow.mjs';
+import {createDxmTemplateBrowser} from './dxm-template-browser.mjs';
+import {createDxmTemplatePublisher} from './dxm-template-publish.mjs';
+import {createDxmAllocationBrowser} from './dxm-allocation-browser.mjs';
+import {createDxmRequiredPlatformBrowser} from './dxm-required-platform-browser.mjs';
+import {COLLECTION_QUERY_REVISION} from './dxm-collection-query.mjs';
 
 export const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-export const WORKSPACE_REVISION='multi-platform-20261119-2';
+export const WORKSPACE_REVISION='crossborder-category-search-20261127-1';
 const mimes = {'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json; charset=utf-8','.jpg':'image/jpeg','.png':'image/png','.webp':'image/webp','.svg':'image/svg+xml','.ico':'image/x-icon','.woff2':'font/woff2'};
 const validId = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,120}$/.test(value);
 const uuid = () => crypto.randomUUID();
 const fail = (status, message) => Object.assign(new Error(message), {status});
 
-export function createWorkbench({dataDirectory = path.join(root, 'data'), configuration = process.env, provider, download, planner, directionPlanner, titlePlanner, chineseTranslator, productRecognizer, copyRewriter, erpAdapter, sourcingClient, collectionAdapter, chromeInspector, legacyUi = false, researchOptions = {}, settingsCodec} = {}) {
+export function createListingWorkflowDispatcher({temu,requiredFields}){
+  const dispatch=method=>async args=>{
+    const platform=args.templateSnapshot?.platform,automatic=args.workflowMode==='required-fields'&&args.completionMode==='pending';
+    if(method==='publish'&&automatic)throw fail(409,'本次补全仅转入待发布，不能提交平台发布');
+    const backend=platform==='temu'?temu:['shein','tiktok'].includes(platform)&&automatic?requiredFields:null;
+    if(!backend||typeof backend[method]!=='function')throw fail(409,'该平台的当前处理方式尚未接入此操作');
+    if(['prepareBatch','moveToPendingBatch'].includes(method)){
+      const flag=method==='prepareBatch'?'nativePrepare':'nativePending',platforms=backend.capabilities?.[`${flag}Platforms`];
+      if(backend.capabilities?.[flag]!==true||!(platforms===undefined?platform==='shein':Array.isArray(platforms)&&platforms.includes(platform)))throw fail(409,'该平台尚未启用原生批量操作，未改用逐件执行');
+    }
+    if(method==='searchCategories'){const platforms=backend.capabilities?.categorySearchPlatforms;if(!(platforms===undefined?platform==='shein':Array.isArray(platforms)&&platforms.includes(platform)))throw fail(409,'该平台尚未接入当前店铺的分类搜索');}
+    return backend[method](args);
+  };
+  const methods=['inspect','prepare','verify','verifyNativeBatchMember','readCategories','searchCategories','prepareBatch','moveToPendingBatch','moveToPending','verifyPublication','reviewCorrections','publish','openNativeBatch'];
+  const nativePlatforms=(flag,method)=>[...new Set([[temu,['temu']],[requiredFields,['shein','tiktok']]].flatMap(([backend,supported])=>{
+    if(backend.capabilities?.[flag]!==true||typeof backend[method]!=='function')return [];
+    const configured=backend.capabilities?.[`${flag}Platforms`];
+    return (configured===undefined?['shein']:Array.isArray(configured)?configured:[]).filter(platform=>supported.includes(platform));
+  }))];
+  const nativePreparePlatforms=nativePlatforms('nativePrepare','prepareBatch'),nativePendingPlatforms=nativePlatforms('nativePending','moveToPendingBatch');
+  const categorySearchPlatforms=typeof requiredFields.searchCategories==='function'?(requiredFields.capabilities?.categorySearchPlatforms||['shein']).filter(platform=>['shein','tiktok'].includes(platform)):[];
+  return {...Object.fromEntries(methods.map(method=>[method,dispatch(method)])),capabilities:{...temu.capabilities,...requiredFields.capabilities,inspect:true,prepare:true,verify:true,readCategories:true,moveToPending:true,verifyPublication:true,publish:temu.capabilities?.publish===true,reviewCorrections:temu.capabilities?.reviewCorrections===true,nativePrepare:nativePreparePlatforms.length>0,nativePending:nativePendingPlatforms.length>0,nativePreparePlatforms,nativePendingPlatforms,categorySearchPlatforms,platforms:['temu','shein','tiktok']}};
+}
+
+export function createWorkbench({dataDirectory = path.join(root, 'data'), configuration = process.env, provider, download, planner, directionPlanner, titlePlanner, chineseTranslator, productRecognizer, copyRewriter, erpAdapter, sourcingClient, collectionAdapter, chromeInspector, chromeExistingInspector, freeSourcingAdapter, freeCollectionAdapter, freePluginAdapter, claimAdapter, listingPreparer, listingWorkflowAdapter, allocationAdapter, legacyUi = false, researchOptions = {}, settingsCodec} = {}) {
   configuration={...configuration};
   const preferences=createSettings({directory:path.join(dataDirectory,'preferences'),configuration,legacyDirectory:configuration.WORKBENCH_FRESH==='true'?null:path.join(root,'../config'),codec:settingsCodec});
   const store = new Store(dataDirectory);
@@ -42,7 +74,8 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
   fs.mkdirSync(mediaDirectory, {recursive: true});
   const imageDownloader = download || createImageDownloader(configuration);
   const imageProvider = provider || createImageProvider(configuration, mediaDirectory, {download:imageDownloader});
-  const research = new ResearchService({directory:path.join(dataDirectory,'research'),mediaDirectory,configuration:{...configuration,APIFY_TOKEN_FILE:configuration.APIFY_TOKEN_FILE || path.join(root,'.env.apify')},...researchOptions});
+  configuration.APIFY_TOKEN_FILE ||= path.join(root,'.env.apify');
+  const research = new ResearchService({directory:path.join(dataDirectory,'research'),mediaDirectory,configuration,...researchOptions});
   const designPlanner = planner || (p => planProduct(p, configuration, research.library.retrieve(p)));
   const queue = []; let active = 0;
   const concurrency = Math.min(4, Math.max(1, Number(configuration.IMAGE_CONCURRENCY) || 3));
@@ -220,9 +253,16 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
   const multisets=createMultiSetService({store,configuration,mediaDirectory,enqueue,submitPlan,submitImages,publicTask,retryDownload,directionPlanner,copyRewriter});
   const erp=createErpService({directory:path.join(dataDirectory,'erp'),mediaDirectory,store,multisets,configuration,adapter:erpAdapter,preferences});
   const products=createProductBatches({store,mediaDirectory,saveImage,multisets,erp,preferences,configuration,titlePlanner,chineseTranslator,productRecognizer,imageAvailable:()=>!!provider||!!configuration.SUANZHOU_IMAGE_API_KEY});
-  const sourcing=createSourcing({directory:path.join(dataDirectory,'sourcing'),configuration,preferences,client:sourcingClient,adapter:collectionAdapter,isOtherBusy:()=>erp.isBusy()||products.isBusy()});
-  const workspace=createWorkspace({store,preferences,products,multisets,erp,sourcing});
-  const browserConnections=createBrowserConnections({preferences,inspector:chromeInspector,isBusy:()=>active>0||queue.length>0||products.isBusy()||erp.isBusy()||sourcing.isBusy()});
+  let freeSourcing,listingWorkflow;
+  const sourcing=createSourcing({directory:path.join(dataDirectory,'sourcing'),configuration,preferences,client:sourcingClient,adapter:collectionAdapter,claimAdapter,listingPreparer,isOtherBusy:()=>erp.isBusy()||products.isBusy()||!!freeSourcing?.isBusy()||!!listingWorkflow?.isBusy()});
+  freeSourcing=createFreeSourcing({directory:path.join(dataDirectory,'free-sourcing'),configuration,preferences,adapter:freeSourcingAdapter,collectionAdapter:freeCollectionAdapter,pluginAdapter:freePluginAdapter,isOtherBusy:()=>active>0||queue.length>0||erp.isBusy()||products.isBusy()||sourcing.isBusy()||!!listingWorkflow?.isBusy()});
+  const listingTemplates=createListingTemplates({directory:path.join(dataDirectory,'listing-templates'),preferences});
+  const listingBrowser=listingWorkflowAdapter?null:createDxmTemplateBrowser(configuration);
+  const listingPublisher=listingWorkflowAdapter?null:createDxmTemplatePublisher(configuration);
+  const listingAdapter=listingWorkflowAdapter||createListingWorkflowDispatcher({temu:{...listingBrowser,...listingPublisher,capabilities:{...listingBrowser.capabilities,...listingPublisher.capabilities}},requiredFields:createDxmRequiredPlatformBrowser(configuration)});
+  listingWorkflow=createListingWorkflow({directory:path.join(dataDirectory,'listing-workflow'),configuration,preferences,templates:listingTemplates,freeSourcing,adapter:listingAdapter,allocationAdapter:allocationAdapter||(listingWorkflowAdapter?undefined:createDxmAllocationBrowser(configuration)),isOtherBusy:()=>active>0||queue.length>0||erp.isBusy()||products.isBusy()||sourcing.isBusy()||freeSourcing.isBusy()});
+  const workspace=createWorkspace({store,preferences,products,multisets,erp,sourcing,freeSourcing,listingWorkflow});
+  const browserConnections=createBrowserConnections({preferences,inspector:chromeInspector,existingInspector:chromeExistingInspector,configuration,isBusy:()=>active>0||queue.length>0||products.isBusy()||erp.isBusy()||sourcing.isBusy()||freeSourcing.isBusy()||listingWorkflow.isBusy()});
 
   const server = http.createServer(async (request, response) => {
     try {
@@ -237,6 +277,63 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
       if (pathname === '/api/session' && request.method === 'GET') return json(response,200,{token:csrf,user:{id:'local-owner',email:'local@workbench.local'}});
       if (pathname === '/api/temu/config' && request.method === 'GET') return json(response,200,{platform:'temu',workspacePlatform:legacyUi?'legacy':'temu',generationWorkflow:'shared',formats:{'1:1':temuFormats['1:1']},maxImages:14,maxSets:TEMU_MAX_SETS,detailImages:'same-as-main-images-in-order',fissionEnabled:true,publishEnabled:false});
       if (pathname.startsWith('/api/') && !['GET','HEAD'].includes(request.method) && request.headers['x-workbench-token'] !== csrf) throw fail(403, '本地会话已过期，请刷新页面');
+      if(freeSourcing.isBusy()&&request.method==='POST'&&!pathname.startsWith('/api/free-sourcing')&&!(/^\/api\/listing-workflow\/jobs\/[a-zA-Z0-9_-]+\/stop$/.test(pathname)&&listingWorkflow.isBusy()))throw fail(409,'免费采集正在操作浏览器，请等当前步骤完成或暂停后再操作其他任务。');
+      if(listingWorkflow.isBusy()&&request.method==='POST'&&!pathname.startsWith('/api/listing-workflow/'))throw fail(409,'上架联动正在操作浏览器，请等当前步骤完成或暂停后再操作其他任务。');
+      if(pathname==='/api/listing-templates'||pathname.startsWith('/api/listing-templates/')){
+        const route=pathname.slice('/api/listing-templates'.length);
+        if(request.method==='GET'&&!route)return json(response,200,listingTemplates.view());
+        const item=/^\/([a-zA-Z0-9_-]+)$/.exec(route);
+        if(request.method==='GET'&&item)return json(response,200,listingTemplates.get(item[1],{version:url.searchParams.has('version')?Number(url.searchParams.get('version')):undefined}));
+        if(request.method==='POST'){
+          const payload=await body(request,200000);
+          if(!route)return json(response,200,listingTemplates.save(payload));
+          const duplicate=/^\/([a-zA-Z0-9_-]+)\/copy$/.exec(route);
+          if(duplicate)return json(response,201,listingTemplates.copy(duplicate[1],payload));
+        }
+        throw fail(404,'固定上架模板接口不存在');
+      }
+      if(pathname==='/api/listing-workflow'||pathname.startsWith('/api/listing-workflow/')){
+        const route=pathname.slice('/api/listing-workflow'.length);
+        if(request.method==='GET'&&!route)return json(response,200,listingWorkflow.view());
+        const item=/^\/jobs\/([a-zA-Z0-9_-]+)$/.exec(route);
+        if(request.method==='GET'&&item)return json(response,200,listingWorkflow.get(item[1]));
+        if(request.method==='POST'){
+          const payload=await body(request,200000);
+          if(route==='/jobs')return json(response,201,listingWorkflow.create(payload));
+          const allocation=/^\/jobs\/([a-zA-Z0-9_-]+)\/allocation\/(sync|select)$/.exec(route);
+          if(allocation)return json(response,200,allocation[2]==='sync'?await listingWorkflow.syncAllocation(allocation[1],payload):listingWorkflow.selectAllocation(allocation[1],payload));
+          const categories=/^\/jobs\/([a-zA-Z0-9_-]+)\/categories\/(read|select|search|resolve)$/.exec(route);
+          if(categories){const methods={read:'readCategories',select:'selectCategories',search:'searchCategories',resolve:'resolveCategories'};return json(response,200,await listingWorkflow[methods[categories[2]]](categories[1],payload));}
+          const action=/^\/jobs\/([a-zA-Z0-9_-]+)\/(inspect|claim|prepare|pending|publish|reconcile|review-corrections|source-facts|native-edit|process|stop|resolve)$/.exec(route);
+          if(action){
+            if(action[2]==='stop')return json(response,200,listingWorkflow.stop(action[1]));
+            if(action[2]==='resolve')return json(response,200,listingWorkflow.resolve(action[1],payload));
+            if(action[2]==='native-edit')return json(response,202,listingWorkflow.openNative(action[1],payload));
+            return json(response,202,listingWorkflow.run(action[1],action[2]));
+          }
+        }
+        throw fail(404,'上架联动接口不存在');
+      }
+      if(pathname==='/api/free-sourcing'||pathname.startsWith('/api/free-sourcing/')){
+        const route=pathname.slice('/api/free-sourcing'.length);
+        if(request.method==='GET'&&!route)return json(response,200,freeSourcing.view());
+        if(request.method==='GET'&&route==='/captcha')return json(response,200,freeSourcing.captchaStatus());
+        if(request.method==='POST'){
+          const payload=await body(request,20000);
+          if(route==='/plugin/check')return json(response,200,await freeSourcing.checkPlugin(payload));
+          if(route==='/plugin/open')return json(response,200,await freeSourcing.openPlugin(payload));
+          if(route==='/captcha/check')return json(response,200,await freeSourcing.checkCaptcha());
+          if(route==='/jobs')return json(response,202,freeSourcing.start(payload));
+          const action=/^\/jobs\/([a-zA-Z0-9_-]+)\/(resume|reconcile|stop|open|collection)$/.exec(route);
+          if(action){
+            const [,id,kind]=action;
+            if(kind==='stop')return json(response,200,freeSourcing.stop(id));
+            if(kind==='open'||kind==='collection')return json(response,200,await freeSourcing.open(id,kind==='collection'?'collection':'temu'));
+            return json(response,202,freeSourcing.resume(id,{reconcileOnly:kind==='reconcile',retrySubmittedGoodsId:kind==='resume'?payload.retrySubmittedGoodsId:null,deferGoodsIds:kind==='resume'?payload.deferGoodsIds:[],retryUnavailable:kind==='resume'?payload.retryUnavailable:false,reopenFromSearch:kind==='resume'?payload.reopenFromSearch:false,collectionMode:kind==='resume'?payload.collectionMode:undefined}));
+          }
+        }
+        throw fail(404,'免费选品接口不存在');
+      }
       if(pathname==='/api/workspace'&&request.method==='GET')return json(response,200,workspace.view());
       if(pathname==='/api/workspace/context'){
         if(request.method==='GET')return json(response,200,workspace.context());
@@ -306,6 +403,8 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
           const payload=await body(request,200000);
           if(route==='/sites')return json(response,200,await sourcing.sites());
           if(route==='/categories')return json(response,200,await sourcing.categories(payload.parentCatId));
+          if(route==='/stores')return json(response,200,payload.refresh?await sourcing.syncStores(payload.erpKey):sourcing.storeView(payload.erpKey));
+          if(route==='/store-defaults')return json(response,200,await sourcing.storeDefaults(payload));
           if(route==='/parse')return json(response,200,await sourcing.parse(payload.prompt));
           if(route==='/searches')return json(response,202,sourcing.startSearch(payload));
           if(route==='/batches')return json(response,202,sourcing.startBatch(payload));
@@ -395,7 +494,7 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
         if(!operations[action])throw fail(404,'接口不存在');
         return json(response,['directions','plan-text'].includes(action)?200:202,multisets[operations[action]](groupId,payload));
       }
-      if (pathname === '/api/status') return json(response,200,{workbenchVersion:'merchant-1',workspaceRevision:WORKSPACE_REVISION,sourcingRevision:SOURCING_REVISION,copyRepairRevision:COPY_REPAIR_REVISION,erpAutomationRevision:ERP_AUTOMATION_REVISION,singleDesignRevision:SINGLE_DESIGN_REVISION,temuDesignRevision:TEMU_DESIGN_REVISION,workbenchRevision:'chinese-review-mother-selector-20261110',busy:active>0||queue.length>0||products.isBusy()||erp.isBusy()||sourcing.isBusy(),erpPublishEnabled:true,mode:'local', isolatedPreview:configuration.WORKBENCH_STYLE_PREVIEW==='true', imageProvider:provider ? 'test-fixture' : 'configured-image-api', imageConfigured:!!provider || !!configuration.SUANZHOU_IMAGE_API_KEY, model:resolveImageModel(undefined,configuration), imageModels, planner:configuration.PLANNER_API_KEY ? 'configured' : 'local-rules', active, queued:queue.length,queueConcurrency:concurrency,downloadProxyConfigured:!!configuration.IMAGE_DOWNLOAD_PROXY,downloadRecoveryEnabled:true,recoverableDownloads:Object.values(store.state.tasks).filter(t=>t.resultUrl&&t.status==='failed').length, defaultProductStatus:'draft', paymentEnabled:false, publishEnabled:false});
+      if (pathname === '/api/status') return json(response,200,{workbenchVersion:'merchant-1',workspaceRevision:WORKSPACE_REVISION,collectionQueryRevision:COLLECTION_QUERY_REVISION,sourcingRevision:SOURCING_REVISION,copyRepairRevision:COPY_REPAIR_REVISION,erpAutomationRevision:ERP_AUTOMATION_REVISION,singleDesignRevision:SINGLE_DESIGN_REVISION,temuDesignRevision:TEMU_DESIGN_REVISION,workbenchRevision:'chinese-review-mother-selector-20261110',busy:active>0||queue.length>0||products.isBusy()||erp.isBusy()||sourcing.isBusy()||freeSourcing.isBusy()||listingWorkflow.isBusy(),listingWorkflowRevision:'dxm-chinese-category-search-20261127-v1',freeSourcingRevision:FREE_SOURCING_REVISION,erpPublishEnabled:true,mode:'local', isolatedPreview:configuration.WORKBENCH_STYLE_PREVIEW==='true', imageProvider:provider ? 'test-fixture' : 'configured-image-api', imageConfigured:!!provider || !!configuration.SUANZHOU_IMAGE_API_KEY, model:resolveImageModel(undefined,configuration), imageModels, planner:configuration.PLANNER_API_KEY ? 'configured' : 'local-rules', active, queued:queue.length,queueConcurrency:concurrency,downloadProxyConfigured:!!configuration.IMAGE_DOWNLOAD_PROXY,downloadRecoveryEnabled:true,recoverableDownloads:Object.values(store.state.tasks).filter(t=>t.resultUrl&&t.status==='failed').length, defaultProductStatus:'draft', paymentEnabled:false, publishEnabled:false});
       if (pathname === '/api/research/status' && request.method === 'GET') return json(response,200,research.status());
       if (pathname === '/api/research/design-patterns' && request.method === 'GET') return json(response,200,designPatterns(research.library.state));
       if (pathname === '/api/research/products' && request.method === 'GET') return json(response,200,Object.values(research.library.state.products).map(p=>({id:p.id,title:p.title,brand:p.brand,asin:p.asin,url:p.url,category:p.category,categoryMemberships:p.categoryMemberships||[],styleProfileIds:p.styleProfileIds||[],collectionIds:p.collectionIds||[],rank:p.rank,rankBasis:p.rankBasis,provenance:p.provenance,aplusStatus:p.aplusStatus,images:p.assets.length,downloaded:p.assets.filter(a=>a.status==='downloaded').length,analysisStatus:p.analysis?.status || 'pending',analysisError:p.analysis?.error || null,thumbnail:p.assets.find(a=>a.localUrl)?.localUrl || null,warnings:p.warnings})));
@@ -494,11 +593,14 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
       if (pathname.startsWith('/api/')) throw fail(404,'接口不存在');
       if (!['GET','HEAD'].includes(request.method)) throw fail(405,'不支持该方法');
       const encoded=value=>JSON.stringify(value).replace(/</g,'\\u003c').replace(/\u2028/g,'\\u2028').replace(/\u2029/g,'\\u2029');
-      const shell=html=>html.replace('</head>','<link rel="stylesheet" href="/local/workspace-shell.css"><script src="/local/workspace-shell.js" defer></script><script src="/local/workspace-branding.js" defer></script></head>');
+      const shell=html=>html.replace('</head>',
+        (html.includes('href="/local/workspace-shell.css"')?'':'<link rel="stylesheet" href="/local/workspace-shell.css">')+
+        (html.includes('src="/local/workspace-shell.js"')?'':'<script src="/local/workspace-shell.js" defer></script>')+
+        '<script src="/local/workspace-branding.js" defer></script></head>');
       const page=(html)=>{response.writeHead(200,{'Content-Type':mimes['.html'],'Cache-Control':'no-store'});return response.end(request.method==='HEAD'?undefined:shell(html));};
       const legacyPage={'/sourcing.html':'/sourcing','/merchant.html':'/settings'}[pathname];
       if(legacyPage){response.writeHead(302,{Location:legacyPage+url.search,'Cache-Control':'no-cache'});return response.end();}
-      if(pathname==='/app'||!legacyUi&&pathname==='/'){response.writeHead(302,{Location:'/products'+url.search,'Cache-Control':'no-cache'});return response.end();}
+      if(pathname==='/app'||!legacyUi&&pathname==='/'){response.writeHead(302,{Location:'/cockpit.html'+url.search,'Cache-Control':'no-cache'});return response.end();}
       if(!legacyUi&&['/design','/index.html','/temu','/temu/','/temu.html'].includes(pathname.toLowerCase())){
         const platform=pathname==='/design'?(url.searchParams.get('platform')||workspace.context().platform):'temu';
         if(!['amazon','temu'].includes(platform))throw fail(400,'请选择 Amazon 或 Temu');
@@ -525,12 +627,12 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
         let html=fs.readFileSync(path.join(root,'public',file),'utf8')
           // Apply display labels before injecting merchant data and local paths.
           .replace(/极鲸云/g,'选品数据服务').replace(/TEMU · 选品数据服务选品/g,'选品与采集')
-          .replace(/<title>[^<]*<\/title>/,'<title>'+(pathname==='/settings'?'连接设置':source?(pathname==='/sourcing'?'选品与采集':'自动选品上架'):'上架中心')+' · 跨境电商工作台</title>')
+          .replace(/<title>[^<]*<\/title>/,'<title>'+(pathname==='/settings'?'设置':source?(pathname==='/sourcing'?'选品与采集':'自动选品上架'):'上架中心')+' · 跨境电商工作台</title>')
           .replace('</head>','<script>window.WorkspacePageBoot='+encoded({page:source?'sourcing':pathname==='/settings'?'settings':'listings',platform:targetPlatform,context,uiStates})+'</script><script src="/local/workspace-state.js"></script><link rel="stylesheet" href="/local/platform-flow.css"><script src="/local/platform-flow.js" defer></script></head>');
         return page(html);
       }
       const base = pathname.startsWith('/media/') ? mediaDirectory : path.join(root,'public');
-      const relative = pathname.startsWith('/media/') ? pathname.slice(7) : pathname==='/sourcing'?'sourcing.html':pathname==='/settings'?'merchant.html':['/','/index.html'].includes(pathname) ? (legacyUi?'index.html':'temu.html') : ['/temu','/temu/'].includes(pathname)?'temu.html':['/temu/listings','/temu/listings/'].includes(pathname)?'temu-listings.html':pathname.slice(1);
+      const relative = pathname.startsWith('/media/') ? pathname.slice(7) : pathname==='/sourcing/listing'?'listing-workflow.html':pathname==='/sourcing/free'?'free-sourcing.html':pathname==='/sourcing'?'sourcing.html':pathname==='/settings'?'merchant.html':['/','/index.html'].includes(pathname) ? (legacyUi?'index.html':'temu.html') : ['/temu','/temu/'].includes(pathname)?'temu.html':['/temu/listings','/temu/listings/'].includes(pathname)?'temu-listings.html':pathname.slice(1);
       const file = path.resolve(base,relative);
       if (!file.startsWith(path.resolve(base) + path.sep)) throw fail(403,'路径不可访问');
       if (!fs.existsSync(file) || !fs.statSync(file).isFile()) throw fail(404,'文件不存在');
@@ -539,7 +641,7 @@ export function createWorkbench({dataDirectory = path.join(root, 'data'), config
     } catch(error) {json(response,error.status || 400,{error:error.message || '请求失败'});}
   });
   server.on('close',()=>{products.close();research.close();});
-  return {server,store,mediaDirectory,saveImage,research,erp,preferences,products,sourcing,workspace,isBusy:()=>active>0||queue.length>0||products.isBusy()||erp.isBusy()||sourcing.isBusy()};
+  return {server,store,mediaDirectory,saveImage,research,erp,preferences,products,sourcing,freeSourcing,listingTemplates,listingWorkflow,workspace,isBusy:()=>active>0||queue.length>0||products.isBusy()||erp.isBusy()||sourcing.isBusy()||freeSourcing.isBusy()||listingWorkflow.isBusy()};
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

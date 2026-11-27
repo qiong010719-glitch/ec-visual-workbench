@@ -15,6 +15,7 @@ const server=http.createServer(async(req,res)=>{
   try{
     if(url.pathname==='/api/session')return send(200,{token:'fixture-token'});
     if(url.pathname==='/api/settings'&&req.method==='GET')return send(200,settings);
+    if(url.pathname==='/api/workspace'&&req.method==='GET')return send(200,{products:[],tasks:[],context:{},stores:[]});
     if(req.method==='POST'){
       assert.equal(req.headers['x-workbench-token'],'fixture-token');const chunks=[];for await(const chunk of req)chunks.push(chunk);const body=JSON.parse(Buffer.concat(chunks));requests.push({path:url.pathname,body});
       if(url.pathname==='/api/settings/chrome/inspect'){
@@ -39,6 +40,7 @@ const server=http.createServer(async(req,res)=>{
         if(body.revision!==settings.revision)return send(409,{error:'配置版本已变化'});
         for(const key of ['models','browsers','erpConnections','stores'])if(Object.hasOwn(body,key))settings[key]=body[key];settings.revision++;return send(200,settings);
       }
+      if(url.pathname==='/api/temu/erp/open-login')return send(200,{opened:true,message:'Fixture login window'});
       throw new Error('禁止调用真实连接或执行接口：'+url.pathname);
     }
     if(url.pathname==='/settings'){res.writeHead(200,{'Content-Type':'text/html;charset=utf-8'});return res.end(fs.readFileSync(path.join(publicRoot,'merchant.html')));}
@@ -54,20 +56,27 @@ const input=(form,name)=>page.locator('#'+form+' [name="'+name+'"]');
 const idle=()=>page.waitForFunction(()=>!document.getElementById('savedChromeWindow').disabled);
 try{
   await page.goto(base+'/settings');await page.waitForFunction(()=>document.getElementById('savedChromeWindow').value==='chrome-main');
+  await page.locator('[data-browser-edit="chrome-main"]').click();
+  await page.locator('#resetErp').click();
+  await page.locator('#erpAdvanced > summary').evaluate(element=>{element.parentElement.open=true;});
+  await page.locator('#resetStore').click();
   assert.equal(await input('browserForm','debugPort').inputValue(),'9222');assert.match(await page.textContent('#erpList'),/主账号窗口 · 端口 9222/);
-  await input('modelForm','SUANZHOU_IMAGE_BASE_URL').fill('https://unsaved.example/v1');await input('modelForm','SUANZHOU_IMAGE_API_KEY').fill('fixture-only-unsaved-key');
+  assert.equal(await input('modelForm','SUANZHOU_IMAGE_BASE_URL').count(),0);await input('modelForm','SUANZHOU_IMAGE_API_KEY').fill('fixture-only-unsaved-key');
   await input('erpForm','name').fill('未保存 ERP 草稿');await input('erpForm','browserKey').selectOption('chrome-spare');await input('erpForm','expectedAccount').fill('unsaved-account');
   await input('storeForm','expectedStore').fill('未保存店铺资料');
   await page.selectOption('#savedChromeWindow','chrome-spare');assert.equal(await input('browserForm','debugPort').inputValue(),'9333');assert.equal(await input('browserForm','key').inputValue(),'chrome-spare');
   await input('browserForm','debugPort').fill('9444');await page.click('#inspectChromePort');await idle();assert.match(await page.textContent('#chromePortStatus'),/占用/);assert.equal(await page.isEnabled('#saveChromeWindow'),false);
   await input('browserForm','debugPort').fill('9445');assert.match(await page.textContent('#chromePortStatus'),/重新检查/);assert.equal(await page.isEnabled('#saveChromeWindow'),true);
   await input('browserForm','debugPort').fill('9777');await page.click('#inspectChromePort');await slowInspection;await input('browserForm','debugPort').fill('9778');releaseInspection();await idle();assert.match(await page.textContent('#chromePortStatus'),/检测结果已失效/);
-  await page.click('#newChromeWindow');await idle();const addedKey=await input('browserForm','key').inputValue();assert.ok(!['chrome-main','chrome-spare'].includes(addedKey));assert.equal(await input('browserForm','debugPort').inputValue(),'9232');assert.equal(settings.browsers.length,2);
+  await page.click('#newChromeWindow');await idle();const addedKey=await input('browserForm','key').inputValue();assert.ok(!['chrome-main','chrome-spare'].includes(addedKey));
+  assert.equal(await input('browserForm','connectionMode').inputValue(),'existing');
+  await input('browserForm','connectionMode').selectOption('dedicated');await page.click('#suggestChromePort');await idle();
+  assert.equal(await input('browserForm','debugPort').inputValue(),'9232');assert.equal(settings.browsers.length,2);
   await input('browserForm','name').fill('采集独立窗口');await page.click('#saveChromeWindow');await idle();
   assert.equal(settings.browsers.length,3);assert.equal(settings.browsers[0].debugPort,9222);assert.equal(settings.browsers[1].debugPort,9333);assert.equal(settings.browsers[2].key,addedKey);
   assert.equal(await page.inputValue('#savedChromeWindow'),addedKey);assert.match(await page.textContent('#chromePortStatus'),/已保存并应用/);assert.equal(await input('erpForm','browserKey').inputValue(),'chrome-spare','saving a window must not rebind an existing ERP selection');
   assert.match(await input('erpForm','browserKey').textContent(),/采集独立窗口 · 端口 9232/);
-  const assertOtherDrafts=async()=>{assert.equal(await input('modelForm','SUANZHOU_IMAGE_BASE_URL').inputValue(),'https://unsaved.example/v1');assert.equal(await input('modelForm','SUANZHOU_IMAGE_API_KEY').inputValue(),'fixture-only-unsaved-key');assert.equal(await input('erpForm','name').inputValue(),'未保存 ERP 草稿');assert.equal(await input('erpForm','expectedAccount').inputValue(),'unsaved-account');assert.equal(await input('storeForm','expectedStore').inputValue(),'未保存店铺资料');};
+  const assertOtherDrafts=async()=>{assert.equal(await input('modelForm','SUANZHOU_IMAGE_API_KEY').inputValue(),'fixture-only-unsaved-key');assert.equal(await input('erpForm','name').inputValue(),'未保存 ERP 草稿');assert.equal(await input('erpForm','expectedAccount').inputValue(),'unsaved-account');assert.equal(await input('storeForm','expectedStore').inputValue(),'未保存店铺资料');};
   await assertOtherDrafts();assert.equal(settings.models.SUANZHOU_IMAGE_BASE_URL,'https://image.example/v1');assert.ok(await page.evaluate(()=>window.fixtureSettingsEvents.length>0));
   assert.equal(JSON.parse(await page.evaluate(()=>localStorage.getItem('workbench-settings-changed'))).revision,settings.revision);
   settings.browsers.find(browser=>browser.key===addedKey).debugPort=9991;settings.revision++;
@@ -80,6 +89,6 @@ try{
   inspectUnavailable=true;await page.click('#inspectChromePort');await idle();assert.match(await page.textContent('#chromePortStatus'),/后台尚未提供/);assert.equal(await input('browserForm','debugPort').inputValue(),'9994');
   saveMode='success';await input('erpForm','name').fill('绑定采集窗口');await input('erpForm','browserKey').selectOption(addedKey);await input('erpForm','expectedAccount').fill('fixture-new-account');await page.locator('#erpForm button.primary').click();await page.waitForFunction(()=>document.getElementById('erpList').textContent.includes('绑定采集窗口'));
   const savedErp=settings.erpConnections.find(erp=>erp.name==='绑定采集窗口');assert.equal(savedErp.browserKey,addedKey);assert.match(await page.textContent('#erpList'),/采集独立窗口 · 端口 9993/);
-  assert.deepEqual(errors,[]);assert.ok(requests.every(request=>request.path.startsWith('/api/settings')));
-  console.log('Chrome settings UI passed: multiple windows, independent new key, port inspection/stale responses/suggestions, conflict and failure retention, fresh restore, unrelated draft preservation, settings events and ERP window binding. No login, generation or ERP calls.');
+  assert.deepEqual(errors,[]);assert.ok(requests.every(request=>request.path.startsWith('/api/settings')||request.path==='/api/temu/erp/open-login'));
+  console.log('Chrome settings UI passed: multiple windows, independent new key, port inspection/stale responses/suggestions, conflict and failure retention, fresh restore, unrelated draft preservation, settings events and ERP window binding. Login uses a fixture response; no real login, generation or ERP calls.');
 }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}

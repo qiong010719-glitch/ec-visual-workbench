@@ -1,0 +1,23 @@
+<!-- Shared initial navigation. Keep page copies in sync with tools/sync-workspace-shell.mjs. -->
+<header class="workbench-header workspace-shell" data-workspace-shell="glass" aria-label="跨境电商工作台导航">
+  <a class="workbench-brand" href="/cockpit.html" aria-label="跨境工作台，前往总览"><span class="workbench-logo" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18"/></svg></span><span class="ws-shell-brand-copy"><span>跨境工作台</span><span class="ws-shell-brand-subtitle">Commerce workspace</span></span></a>
+  <button id="workspaceMenuToggle" class="ws-shell-menu-toggle" type="button" aria-label="展开工作台导航" aria-expanded="false" aria-controls="workspaceShellMenu"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+  <div id="workspaceShellMenu" class="ws-shell-menu">
+    <div class="ws-shell-nav-caption">工作空间</div>
+    <nav class="workbench-nav" aria-label="工作台导航">
+      <a href="/cockpit.html" data-workspace-entry="overview"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><path d="M14 17.5h7m-3.5-3.5v7"/></svg><span>工作台总览</span><i class="ws-shell-active-dot" aria-hidden="true" hidden></i></a>
+      <a href="/products" data-workspace-entry="products"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5Zm-9 5v9l9 5 9-5V8M12 13v9M7.5 5.5l9 5"/></svg><span>商品库</span><i class="ws-shell-active-dot" aria-hidden="true" hidden></i></a>
+      <a href="/sourcing" data-workspace-entry="sourcing"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5m-13-10h5m-2.5-2.5v5"/></svg><span>选品与采集</span><i class="ws-shell-active-dot" aria-hidden="true" hidden></i></a>
+      <a href="/content" data-workspace-entry="content"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m13 3 1.8 5.2L20 10l-5.2 1.8L13 17l-1.8-5.2L6 10l5.2-1.8ZM5 15l1 3 3 1-3 1-1 3-1-3-3-1 3-1ZM20 2v4m-2-2h4"/></svg><span>内容制作</span><i class="ws-shell-active-dot" aria-hidden="true" hidden></i></a>
+      <a href="/listings?mode=images" data-workspace-entry="listings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 11v9h14v-9M3 7l2-4h14l2 4v4a3 3 0 0 1-6 0 3 3 0 0 1-6 0 3 3 0 0 1-6 0ZM9 20v-6h6v6"/></svg><span>上架中心</span><i class="ws-shell-active-dot" aria-hidden="true" hidden></i></a>
+      <a href="/tasks" data-workspace-entry="tasks"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5h12M8 12h12M8 19h12m-17-14 1 1 2-3m-3 9 1 1 2-3m-3 9 1 1 2-3"/></svg><span>任务记录</span><i class="ws-shell-active-dot" aria-hidden="true" hidden></i></a>
+      <a href="/settings" data-workspace-entry="settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6l.7 2.4 2.2 1.3 2.4-.6 3 5-1.8 1.8v2.4l1.8 1.8-3 5-2.4-.6-2.2 1.3L15 25H9l-.7-2.4-2.2-1.3-2.4.6-3-5 1.8-1.8v-2.4L.7 10.9l3-5 2.4.6 2.2-1.3Z" transform="translate(1.7 0) scale(.78)"/><circle cx="11" cy="11" r="3"/></svg><span>设置</span><i class="ws-shell-active-dot" aria-hidden="true" hidden></i></a>
+    </nav>
+    <div class="ws-shell-bottom">
+      <div class="ws-shell-platforms"><span class="ws-shell-platform amazon">a</span><span class="ws-shell-platform temu">T</span><span>多平台协作</span></div>
+      <button id="workspaceShellAppearance" class="ws-shell-appearance" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16M8 4v6m8 4v6"/></svg><span>外观与动效</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>
+      <div class="ws-shell-local"><span class="ws-shell-local-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18"/></svg></span><div><strong>本机工作区</strong><span id="workspaceShellContext" class="ws-shell-context">读取共享资料…</span></div></div>
+      <button id="workspaceShellSync" class="ws-shell-sync" type="button" data-state="loading" title="刷新商品、当前选择与连接状态"><span class="ws-shell-sync-dot" aria-hidden="true"></span><span>同步中</span></button>
+    </div>
+  </div>
+</header>

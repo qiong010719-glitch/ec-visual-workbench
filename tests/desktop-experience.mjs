@@ -60,7 +60,7 @@ try{
   assert.equal(await page.evaluate(()=>typeof window.desktop.chooseFolder),'function');
   await capture('01-first-launch',{goal:'首次打开，寻找下一步；当前为无店铺的独立验收环境'});
 
-  await page.getByRole('link',{name:'连接设置',exact:true}).click();await page.locator('#modelForm').waitFor();
+  await page.getByRole('link',{name:'设置',exact:true}).click();await page.locator('#modelForm').waitFor();
   await capture('02-settings-entry',{goal:'查找模型、浏览器、ERP与母稿的配置顺序'});
   await page.locator('#browserForm [name="type"]').selectOption('chrome');await page.locator('#browserForm [name="name"]').fill('验收浏览器');await page.locator('#browserForm [name="debugPort"]').fill('9339');await saveForm('#browserForm');
   await page.locator('#erpForm [name="name"]').fill('验收店小秘');await page.locator('#erpForm [name="expectedAccount"]').fill('audit-merchant');await saveForm('#erpForm');

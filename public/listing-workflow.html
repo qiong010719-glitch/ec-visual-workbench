@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh-CN" class="workspace-shell-enabled">
+<head><script src="/local/workspace-appearance.js"></script>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>采集商品批量补全 · 跨境工作台</title>
+  <link rel="stylesheet" href="/local/navigation.css"><link rel="stylesheet" href="/local/sourcing.css"><link rel="stylesheet" href="/local/listing-workflow.css">
+  <script src="/local/listing-workflow.js" defer></script>
+<script src="/local/workspace-state.js"></script><script src="/local/workspace-shell.js" defer></script><link rel="stylesheet" href="/local/workspace-shell.css"><link rel="stylesheet" href="/local/workspace-glass-business.css" data-glass-business></head>
+<body class="has-workbench-header fixed-listing-view">
+<header class="workbench-header workspace-shell" data-workspace-shell="glass" aria-label="跨境电商工作台导航">
+  <a class="workbench-brand" href="/cockpit.html" aria-label="跨境工作台，前往总览"><span class="workbench-logo" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18"/></svg></span><span class="ws-shell-brand-copy"><span>跨境工作台</span><span class="ws-shell-brand-subtitle">Commerce workspace</span></span></a>
+  <button id="workspaceMenuToggle" class="ws-shell-menu-toggle" type="button" aria-label="展开工作台导航" aria-expanded="false" aria-controls="workspaceShellMenu"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+  <div id="workspaceShellMenu" class="ws-shell-menu">
+    <div class="ws-shell-nav-caption">工作空间</div>
+    <nav class="workbench-nav" aria-label="工作台导航">
+      <a href="/cockpit.html" data-workspace-entry="overview"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><path d="M14 17.5h7m-3.5-3.5v7"/></svg><span>工作台总览</span><i class="ws-shell-active-dot" aria-hidden="true" hidden></i></a>
+      <a href="/products" data-workspace-entry="products"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5Zm-9 5v9l9 5 9-5V8M12 13v9M7.5 5.5l9 5"/></svg><span>商品库</span><i class="ws-shell-active-dot" aria-hidden="true" hidden></i></a>
+      <a href="/sourcing" data-workspace-entry="sourcing"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5m-13-10h5m-2.5-2.5v5"/></svg><span>选品与采集</span><i class="ws-shell-active-dot" aria-hidden="true" hidden></i></a>
+      <a href="/content" data-workspace-entry="content"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m13 3 1.8 5.2L20 10l-5.2 1.8L13 17l-1.8-5.2L6 10l5.2-1.8ZM5 15l1 3 3 1-3 1-1 3-1-3-3-1 3-1ZM20 2v4m-2-2h4"/></svg><span>内容制作</span><i class="ws-shell-active-dot" aria-hidden="true" hidden></i></a>
+      <a href="/listings?mode=images" data-workspace-entry="listings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 11v9h14v-9M3 7l2-4h14l2 4v4a3 3 0 0 1-6 0 3 3 0 0 1-6 0 3 3 0 0 1-6 0ZM9 20v-6h6v6"/></svg><span>上架中心</span><i class="ws-shell-active-dot" aria-hidden="true" hidden></i></a>
+      <a href="/tasks" data-workspace-entry="tasks"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5h12M8 12h12M8 19h12m-17-14 1 1 2-3m-3 9 1 1 2-3m-3 9 1 1 2-3"/></svg><span>任务记录</span><i class="ws-shell-active-dot" aria-hidden="true" hidden></i></a>
+      <a href="/settings" data-workspace-entry="settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6l.7 2.4 2.2 1.3 2.4-.6 3 5-1.8 1.8v2.4l1.8 1.8-3 5-2.4-.6-2.2 1.3L15 25H9l-.7-2.4-2.2-1.3-2.4.6-3-5 1.8-1.8v-2.4L.7 10.9l3-5 2.4.6 2.2-1.3Z" transform="translate(1.7 0) scale(.78)"/><circle cx="11" cy="11" r="3"/></svg><span>设置</span><i class="ws-shell-active-dot" aria-hidden="true" hidden></i></a>
+    </nav>
+    <div class="ws-shell-bottom">
+      <div class="ws-shell-platforms"><span class="ws-shell-platform amazon">a</span><span class="ws-shell-platform temu">T</span><span>多平台协作</span></div>
+      <button id="workspaceShellAppearance" class="ws-shell-appearance" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16M8 4v6m8 4v6"/></svg><span>外观与动效</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>
+      <div class="ws-shell-local"><span class="ws-shell-local-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18"/></svg></span><div><strong>本机工作区</strong><span id="workspaceShellContext" class="ws-shell-context">读取共享资料…</span></div></div>
+      <button id="workspaceShellSync" class="ws-shell-sync" type="button" data-state="loading" title="刷新商品、当前选择与连接状态"><span class="ws-shell-sync-dot" aria-hidden="true"></span><span>同步中</span></button>
+    </div>
+  </div>
+</header>
+<main>
+  <a href="/sourcing/free">← 返回免费选品</a>
+  <div class="heading"><div><p class="eyebrow">采集箱 · 本批处理</p><h1>批量补全与上架</h1><p class="muted">领取本批商品，核对分类，保留店小秘已换算的售价；补齐普通属性后转入待发布。</p></div><button id="refreshWorkflow" type="button">刷新记录</button></div>
+  <ol class="steps"><li><b>01</b> 选择店铺并领取<small>本批商品进入对应平台采集箱</small></li><li class="current"><b>02</b> 核对分类与价格<small>普通属性按平台表单补齐</small></li><li><b>03</b> 连续转入待发布<small>缺项单独等待，其余继续处理</small></li></ol>
+  <p id="workflowNotice" role="status" aria-live="polite" hidden></p><p id="workflowBusy" class="muted" role="status"></p>
+
+  <section class="panel workflow-mode-panel" aria-labelledby="workflowModeTitle">
+    <div class="section-title"><div><h2 id="workflowModeTitle">本次处理方式</h2><p class="muted small">分类对应来源类别，店小秘已有售价保持不变；普通属性空项使用各平台表单的可用默认值。</p></div><a href="/settings#collectionStores">管理采集箱店铺 →</a></div>
+    <label>处理方式<select id="listingMode"><option value="required-fields">自动补齐必填项，转入待发布</option><option value="template">使用已有固定模板</option></select></label>
+    <div id="destinationSetup"><label>目标平台与站点<select id="destinationGroup"><option value="">正在读取已绑定店铺</option></select></label><p id="destinationHint" class="small muted">同一任务使用同一账号、平台和站点；不同目的地可分别建立任务。</p></div>
+  </section>
+
+  <section id="templateLibrary" class="panel template-library" aria-labelledby="templateLibraryTitle" hidden>
+    <div class="section-title"><div><h2 id="templateLibraryTitle">固定上架模板</h2><p class="muted small">首次配置后长期复用。修改模板用于后续新任务，已有任务保留当时的设置。</p></div><button id="newTemplate" type="button">新建模板</button></div>
+    <p class="muted small">店小秘的认领分配模板决定商品送到哪些店铺采集箱；这里的固定上架模板保存入箱后的填写规则。尚未认领的商品需先完成认领。</p>
+    <p class="muted small">当前执行支持Temu半托管。TikTok可保存模板配置，固定模板执行尚未接入。</p>
+    <div class="template-picker"><label>本次使用的模板<select id="activeTemplate"><option value="">正在读取模板</option></select></label><div class="actions"><button id="editTemplate" type="button" disabled>编辑模板</button><button id="copyTemplate" type="button" disabled>复制另存</button></div></div>
+    <div id="templateSummary" class="muted" aria-live="polite"></div>
+    <details id="templateEditor">
+      <summary><span id="templateEditorTitle">首次配置模板</span><span id="templateDirty" class="small muted"></span></summary>
+      <form id="templateForm">
+        <div class="fields template-fields">
+          <label>模板名称<input id="templateName" maxlength="160" required placeholder="例如：Temu半托管·加拿大·帆布画"></label>
+          <label>店小秘账号<select id="templateErp" required></select></label>
+          <label>目标平台<select id="templatePlatform"><option value="temu">Temu半托管</option><option value="tiktok">TikTok（仅保存配置）</option></select></label>
+          <label>业务类型<input id="templateBusiness" maxlength="100" placeholder="例如：半托管"></label>
+          <label>销售站点<input id="templateSite" maxlength="160" placeholder="例如：加拿大站"></label>
+          <label>适用商品类型<input id="templateProductType" maxlength="160" placeholder="例如：带框帆布画"></label>
+        </div>
+        <label>商品完整分类路径<input id="templateCategory" maxlength="1200" placeholder="一级分类 > 二级分类 > 末级分类"><small class="muted">填写已在目标平台确认的分类。尚未确认的设置可以先留空保存。</small></label>
+        <label>分类应用方式<select id="templateCategoryMode"><option value="replace">本批商品统一使用模板分类</option><option value="match">仅补空分类，已有分类须与模板一致</option></select><small class="muted">统一分类会替换本批商品已有的分类；不同商品类型请分别建立批次。</small></label>
+        <div class="section-title"><h3>共用属性</h3><button id="addAttribute" type="button">添加属性</button></div>
+        <p class="muted small">只填写适用于这一类商品的共用属性。包装参数和库存可在下方统一设置。</p>
+        <div id="attributeRows"></div>
+        <fieldset class="bulk-defaults"><legend>统一包装与库存</legend>
+          <div class="section-title"><p class="muted small">包装长、宽、高和重量需一起填写；全部留空时保留商品原值。</p><button id="clearPackageDefaults" type="button">保留原包装参数</button></div>
+          <div class="fields package-fields">
+            <label>包装长（cm）<input id="templatePackageLength" type="number" min="0" step="any" inputmode="decimal" placeholder="留空保留原值"></label>
+            <label>包装宽（cm）<input id="templatePackageWidth" type="number" min="0" step="any" inputmode="decimal" placeholder="留空保留原值"></label>
+            <label>包装高（cm）<input id="templatePackageHeight" type="number" min="0" step="any" inputmode="decimal" placeholder="留空保留原值"></label>
+            <label>包装重量（kg）<input id="templatePackageWeight" type="number" min="0" step="any" inputmode="decimal" placeholder="留空保留原值"></label>
+          </div>
+          <div class="fields inventory-fields"><label>库存应用方式<select id="templateInventoryMode"><option value="fixed">每个 SKU 统一库存</option><option value="preserve">保留每个 SKU 原库存</option></select></label><label>每个 SKU 库存<input id="templateInventoryQuantity" type="number" min="0" max="9007199254740991" step="1" inputmode="numeric" value="10000"></label></div>
+          <p class="muted small">统一值会应用到本批每个 SKU。填写后可在店小秘调整个别规格的包装参数，正式发布前使用实际包装数据。</p>
+          <label>填写后的保存方式<select id="templateSaveMode"><option value="draft">包装待补时先保存草稿</option><option value="ready">资料完整后保存</option></select><small class="muted">分类、属性、标题、价格、库存和物流需先补齐；包装尺寸和重量可保存后修改，再点击任务中的“核对包装修改”回读实际值。</small></label>
+        </fieldset>
+        <div class="rule-summary"><span>标题：<strong id="titleRuleSummary">保留商品原内容</strong></span><span>价格：<strong id="priceRuleSummary">保留商品原值</strong></span></div>
+        <div class="section-title binding-title"><h3>适用店铺与各店设置</h3><button id="addStoreBinding" type="button">添加店铺</button></div>
+        <p class="muted small">每家店保存自己的仓库、运费模板和发货时效，下次选模板时自动带出。店铺名称须与店小秘一致。</p>
+        <div id="storeBindingRows"></div>
+        <label>模板备注<textarea id="templateNotes" rows="2" maxlength="2000" placeholder="可记录适用范围和需要单独补充的资料"></textarea></label>
+        <div class="actions"><button class="primary" id="saveTemplate" type="submit">保存固定模板</button><button id="cancelTemplateEdit" type="button">结束编辑</button><span id="templateSaveStatus" class="muted small" role="status"></span></div>
+      </form>
+    </details>
+  </section>
+
+  <div class="listing-workspace">
+    <section class="panel" aria-labelledby="batchSelectionTitle">
+      <h2 id="batchSelectionTitle">本次处理范围</h2>
+      <form id="listingJobForm">
+        <label>已采集批次<select id="sourceBatch" required><option value="">正在读取批次</option></select></label>
+        <p id="sourceBatchSummary" class="muted small"></p>
+        <div class="section-title"><h3>本批商品</h3><label class="inline-choice"><input type="checkbox" id="selectBatchGoods">选择已确认入箱的商品</label></div>
+        <div id="batchGoods" class="batch-goods"><p class="empty">选择一个采集批次。</p></div>
+        <fieldset class="listing-store-picker"><legend>本次处理店铺</legend><div id="runStoreChoices"><p class="muted">正在读取采集箱店铺。</p></div></fieldset>
+        <p id="executionSummary" class="muted" role="status"></p>
+        <button id="createListingJob" class="primary full" type="submit" disabled>建立本批补全任务</button>
+        <p id="createListingHint" class="muted small">先领取到所选店铺；核对分类并保留店小秘已有售价，普通属性空项按平台表单补齐。</p>
+      </form>
+    </section>
+    <section class="panel" aria-labelledby="listingJobsTitle"><div class="section-title"><h2 id="listingJobsTitle">本批逐店处理结果</h2><span id="jobCount" class="muted small"></span></div><p class="muted small">确认的分类可应用到本店相同来源类别的商品。点击继续后按商品连续填写、保存、回读，再转入待发布；缺少分类或价格的条目单独等待。</p><div id="listingJobs" aria-live="polite"><p class="empty">选择本批商品和目标店铺后，建立补全任务。</p></div></section>
+  </div>
+</main>
+</body>
+</html>

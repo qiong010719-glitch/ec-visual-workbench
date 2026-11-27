@@ -1,6 +1,3 @@
 @echo off
-setlocal
-set "WORKBENCH_DESKTOP_DATA=%~dp0..\desktop-preview-data"
-set "WORKBENCH_DESKTOP_PORT=4196"
-start "" "%~dp0node_modules\electron\dist\electron.exe" "%~dp0"
-endlocal
+chcp 65001 >nul
+call "%~dp0启动跨境工作台.cmd"

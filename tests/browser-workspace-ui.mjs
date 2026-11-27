@@ -47,7 +47,8 @@ const idle=()=>page.waitForFunction(()=>!document.getElementById('contentPlatfor
 try {
   await page.goto(base+'/content?product=p1&platform=amazon');
   await page.locator('#contentPage:not([hidden])').waitFor();
-  assert.deepEqual(await page.locator('.workbench-nav a').allTextContents(),['商品库','选品与采集','内容制作','上架中心','任务记录','连接设置']);
+  assert.deepEqual(await page.locator('.workbench-nav a').evaluateAll(links=>links.map(link=>link.getAttribute('href'))),['/cockpit.html','/products','/sourcing','/content','/listings?mode=images','/tasks','/settings']);
+  assert.equal(await page.locator('.workbench-nav a[aria-current="page"]').getAttribute('href'),'/content');
   assert.equal(await page.inputValue('#contentPlatform'),'amazon');
   assert.deepEqual(await page.locator('#contentStore option').allTextContents(),['暂不关联店铺','亚马逊美国店 · 美国站']);
   assert.equal(await page.locator('[data-action="list-version"][data-platform="amazon"]').isEnabled(),true);
@@ -92,7 +93,7 @@ try {
   await page.goto(base+'/design');await page.locator('.workspace-shell').waitFor();assert.equal(await page.locator('#macTitlebar').count(),1);assert.equal(await page.locator('.purah-pad .main-content').count(),1);assert.equal(await page.evaluate(()=>getComputedStyle(document.body).paddingTop),'0px');
   await page.setViewportSize({width:390,height:844});await page.goto(base+'/content');await page.locator('#contentPage:not([hidden])').waitFor();
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1),'mobile content must not overflow horizontally');
-  assert.equal(await page.locator('.workbench-nav a').count(),6);
+  assert.equal(await page.locator('.workbench-nav a').count(),7);
   state.products=[];state.context={...state.context,productId:'',platform:'amazon',storeKey:'',erpKey:'',revision:state.context.revision+1};
   await page.goto(base+'/content');await page.locator('#contentPage:not([hidden])').waitFor();assert.equal(await page.isEnabled('#startSingleDesign'),true);
   await page.click('#startSingleDesign');await page.waitForURL('**/design?platform=amazon');

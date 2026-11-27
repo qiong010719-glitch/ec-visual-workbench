@@ -1,20 +1,125 @@
-@import url('/local/theme-tokens.css');
-
-html.workspace-shell-enabled{--workbench-header-height:80px;scrollbar-gutter:stable}
-.workbench-header.workspace-shell{height:var(--workbench-header-height);position:fixed;inset:0 0 auto;z-index:100;display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:nowrap;padding:0 28px;margin:0;border:0;border-bottom:1px solid var(--ui-border);border-radius:0;background:var(--ui-surface);color:var(--ui-text);font:14px/1.6 var(--ui-font);box-sizing:border-box;letter-spacing:0}
-.workspace-shell *{box-sizing:border-box}
-.workbench-header.workspace-shell .workbench-brand{display:flex;align-items:center;gap:11px;flex:0 0 auto;max-width:260px;min-width:0;text-decoration:none;color:var(--ui-text);font-size:18px;font-weight:700;white-space:nowrap;background:none;border:0;margin:0;padding:0}
-.workbench-header.workspace-shell .workbench-logo{display:grid;place-items:center;flex-shrink:0;width:38px;height:38px;border-radius:10px;background:var(--ui-accent);padding:0;color:#fff;font-size:22px}
-.workbench-header.workspace-shell .workbench-logo svg{width:25px;height:25px;fill:none;stroke:currentColor;stroke-width:1.65;stroke-linejoin:round;stroke-linecap:round}
-.workspace-shell .ws-shell-brand-copy{display:flex;flex-direction:column;gap:2px;overflow:hidden;min-width:0}.workspace-shell .ws-shell-context{font-size:11px;line-height:1.4;font-weight:400;color:var(--ui-muted);overflow:hidden;text-overflow:ellipsis;max-width:200px;letter-spacing:0}
-.workbench-header.workspace-shell .workbench-nav{display:grid;grid-template-columns:repeat(6,minmax(80px,1fr));align-items:center;gap:3px;margin:0 0 0 auto;padding:4px;background:var(--ui-page);border-radius:10px;width:auto;flex:0 1 650px;min-width:0;overflow:auto}
-.workbench-header.workspace-shell .workbench-nav a{display:block;box-sizing:border-box;border:0;border-radius:7px;background:none;padding:10px 12px;color:var(--ui-muted);font:500 13px/22px var(--ui-font);text-align:center;text-decoration:none;white-space:nowrap;letter-spacing:0;box-shadow:none}
-.workbench-header.workspace-shell .workbench-nav a:hover{background:var(--ui-surface);color:var(--ui-text)}
-.workbench-header.workspace-shell .workbench-nav a[aria-current="page"]{background:var(--ui-surface);color:var(--ui-accent);font-weight:700;box-shadow:0 1px 5px #26334c10}
-.workspace-shell .ws-shell-sync{display:flex;align-items:center;gap:7px;flex:0 0 auto;border:0;border-radius:5px;padding:6px 0;background:transparent;color:var(--ui-muted);font:11px/1.5 var(--ui-font);cursor:pointer;white-space:nowrap;box-shadow:none;letter-spacing:0;margin:0}
-.workspace-shell .ws-shell-sync:hover{color:var(--ui-text);background:transparent;border:0}.workspace-shell .ws-shell-sync-dot{display:block;width:6px;height:6px;border-radius:50%;background:#95a2b6}.workspace-shell .ws-shell-sync[data-state="ready"] .ws-shell-sync-dot{background:var(--ui-success)}.workspace-shell .ws-shell-sync[data-state="error"] .ws-shell-sync-dot{background:var(--ui-danger)}.workspace-shell .ws-shell-sync[data-state="error"]{color:var(--ui-danger)}
-.workbench-header.workspace-shell a:focus-visible,.workbench-header.workspace-shell button:focus-visible{outline:3px solid var(--ui-focus);outline-offset:3px}
-body.has-workbench-header{padding-top:var(--workbench-header-height)}
-@media(max-width:1150px){.workbench-header.workspace-shell{padding:0 20px;gap:16px}.workbench-header.workspace-shell .workbench-brand{font-size:16px;max-width:210px}.workspace-shell .ws-shell-context{max-width:155px}.workbench-header.workspace-shell .workbench-nav a{padding:10px 6px;font-size:12px}.workbench-header.workspace-shell .workbench-nav{grid-template-columns:repeat(6,minmax(74px,1fr));flex-basis:570px}.workspace-shell .ws-shell-sync{font-size:10px}}
-@media(max-width:960px){html.workspace-shell-enabled{--workbench-header-height:118px}.workbench-header.workspace-shell{padding:10px 18px;flex-wrap:wrap;align-content:center;gap:9px 16px}.workbench-header.workspace-shell .workbench-brand{max-width:calc(100% - 110px);font-size:17px;order:0}.workspace-shell .ws-shell-context{max-width:300px}.workbench-header.workspace-shell .workbench-logo{width:34px;height:34px;border-radius:9px}.workbench-header.workspace-shell .workbench-nav{flex:1 0 100%;width:100%;margin:0;order:2;grid-template-columns:repeat(6,minmax(75px,1fr));gap:3px;padding:3px}.workbench-header.workspace-shell .workbench-nav a{font-size:12px;padding:6px 5px}.workspace-shell .ws-shell-sync{order:1;margin-left:auto;font-size:11px}}
-@media(max-width:540px){.workbench-header.workspace-shell{padding:10px 12px;gap:10px}.workbench-header.workspace-shell .workbench-nav{grid-template-columns:repeat(6,minmax(82px,1fr));scrollbar-width:thin;padding-bottom:4px}.workbench-header.workspace-shell .workbench-nav a{font-size:12px}.workspace-shell .ws-shell-context{max-width:190px}.workbench-header.workspace-shell .workbench-brand{font-size:16px;gap:8px}}
+/* Commerce workspace: one quiet frame around every existing tool. */
+html.workspace-shell-enabled {
+  --shell-left:248px; --workbench-header-height:0px;
+  --cockpit-bg:#080e12; --cockpit-panel:#10191f; --cockpit-text:#e9f2f4;
+  --cockpit-muted:#8f9fa9; --cockpit-line:rgba(187,218,227,.13); --cockpit-accent:#67ddd5;
+  --cockpit-font:"Segoe UI Variable Text","Microsoft YaHei UI","PingFang SC",sans-serif;
+  --cockpit-input:#0a1319; --cockpit-soft:rgba(103,221,213,.08); --cockpit-hover:rgba(219,244,248,.05);
+  --cockpit-danger:#ffaaa1; --cockpit-success:#82d9b4; --cockpit-shadow:rgba(0,0,0,.22);
+  color-scheme:dark; background:var(--cockpit-bg); scrollbar-color:var(--cockpit-line) transparent;
+  --ui-font:var(--cockpit-font); --ui-page:var(--cockpit-bg); --ui-surface:var(--cockpit-panel);
+  --ui-subtle:var(--cockpit-hover); --ui-text:var(--cockpit-text); --ui-muted:var(--cockpit-muted);
+  --ui-border:var(--cockpit-line); --ui-input-border:var(--cockpit-line); --ui-accent:var(--cockpit-accent);
+  --ui-accent-hover:color-mix(in srgb,var(--cockpit-accent) 82%,white); --ui-accent-soft:var(--cockpit-soft);
+  --ui-accent-text:var(--cockpit-accent); --ui-success:var(--cockpit-success); --ui-success-soft:rgba(93,196,151,.1);
+  --ui-danger:var(--cockpit-danger); --ui-danger-soft:rgba(239,115,101,.1); --ui-focus:var(--cockpit-accent);
+  --border:var(--cockpit-line); --muted:var(--cockpit-muted);
+}
+html.workspace-shell-enabled[data-cockpit-theme="light"] {
+  --cockpit-bg:#eef4f6; --cockpit-panel:#f9fcfd; --cockpit-text:#142b35; --cockpit-muted:#5b737f;
+  --cockpit-line:rgba(36,78,94,.16); --cockpit-input:#fff; --cockpit-hover:rgba(30,80,95,.045);
+  --cockpit-accent:#087d83; --cockpit-soft:rgba(8,125,131,.08); --cockpit-danger:#b64540;
+  --cockpit-success:#277957; --cockpit-shadow:rgba(30,70,90,.08); color-scheme:light;
+}
+html.workspace-shell-enabled[data-cockpit-accent="emerald"] {--cockpit-accent:#75deac; --cockpit-soft:rgba(117,222,172,.08)}
+html.workspace-shell-enabled[data-cockpit-accent="violet"] {--cockpit-accent:#bfa8ff; --cockpit-soft:rgba(191,168,255,.08)}
+html.workspace-shell-enabled[data-cockpit-theme="light"][data-cockpit-accent="emerald"] {--cockpit-accent:#1b8059}
+html.workspace-shell-enabled[data-cockpit-theme="light"][data-cockpit-accent="violet"] {--cockpit-accent:#7252b7}
+html.workspace-shell-enabled body {
+  box-sizing:border-box; min-height:100dvh; margin:0; padding:0 24px 0 var(--shell-left);
+  background:var(--cockpit-bg); color:var(--cockpit-text); font-family:var(--cockpit-font); -webkit-font-smoothing:antialiased;
+}
+html.workspace-shell-enabled .workbench-header.workspace-shell {
+  position:fixed; inset:16px auto 16px 16px; z-index:100; width:216px; height:auto; margin:0;
+  padding:24px 15px 18px; display:flex; flex-direction:column; align-items:stretch; justify-content:flex-start;
+  gap:0; border:1px solid var(--cockpit-line); border-radius:22px; box-sizing:border-box;
+  background:linear-gradient(145deg,color-mix(in srgb,var(--cockpit-panel) 96%,transparent),color-mix(in srgb,var(--cockpit-bg) 87%,transparent));
+  box-shadow:inset 0 1px 0 color-mix(in srgb,var(--cockpit-text) 5%,transparent),0 14px 44px var(--cockpit-shadow);
+  backdrop-filter:blur(24px); -webkit-backdrop-filter:blur(24px); color:var(--cockpit-text); font:13px/1.6 var(--cockpit-font);
+}
+.workspace-shell * {box-sizing:border-box}
+.workspace-shell [hidden] {display:none!important}
+html.workspace-shell-enabled .workspace-shell .workbench-brand {
+  display:flex; gap:10px; align-items:center; padding:0 3px 29px; margin:0; max-width:none; min-width:0;
+  text-decoration:none; font-size:17px; font-weight:650; letter-spacing:.01em; white-space:nowrap;
+  color:var(--cockpit-text); border:0; background:transparent;
+}
+html.workspace-shell-enabled .workspace-shell .workbench-logo {
+  width:34px; height:37px; display:grid; place-items:center; padding:0; flex-shrink:0; border:0;
+  border-radius:10px; color:var(--cockpit-accent); background:transparent;
+}
+.workspace-shell svg {width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+.workspace-shell .workbench-logo svg {width:32px;height:32px;stroke-width:1.25}
+.workspace-shell .ws-shell-brand-copy {display:flex;flex-direction:column;gap:2px;min-width:0}
+.workspace-shell .ws-shell-brand-subtitle {font-size:10px;font-weight:400;letter-spacing:.045em;color:var(--cockpit-muted)}
+.workspace-shell .ws-shell-menu {display:flex;flex:1;flex-direction:column;min-height:0}
+.workspace-shell .ws-shell-nav-caption {color:var(--cockpit-muted);font-size:10px;letter-spacing:.12em;margin:0 12px 12px;opacity:.8}
+html.workspace-shell-enabled .workbench-header.workspace-shell .workbench-nav {
+  display:flex;flex-direction:column;align-items:stretch;gap:7px;padding:0;margin:0;width:auto;min-width:0;flex:none;
+  background:none;border:0;border-radius:0;overflow:visible;
+}
+html.workspace-shell-enabled .workspace-shell .workbench-nav a {
+  display:flex;align-items:center;gap:12px;min-height:45px;position:relative;border:1px solid transparent;border-radius:11px;
+  background:transparent;padding:10px 12px;margin:0;color:var(--cockpit-muted);font:500 13px/22px var(--cockpit-font);
+  letter-spacing:0;box-shadow:none;text-align:left;white-space:nowrap;text-decoration:none;
+}
+html.workspace-shell-enabled .workspace-shell .workbench-nav a:hover {color:var(--cockpit-text);background:var(--cockpit-hover)}
+html.workspace-shell-enabled .workspace-shell .workbench-nav a[aria-current="page"] {
+  color:var(--cockpit-accent);border-color:color-mix(in srgb,var(--cockpit-accent) 20%,transparent);
+  background:linear-gradient(110deg,color-mix(in srgb,var(--cockpit-accent) 13%,transparent),color-mix(in srgb,var(--cockpit-accent) 4%,transparent));
+  box-shadow:inset 0 1px 0 color-mix(in srgb,var(--cockpit-text) 4%,transparent);font-weight:600;
+}
+.workspace-shell .ws-shell-active-dot {width:5px;height:5px;border-radius:50%;background:var(--cockpit-accent);box-shadow:0 0 9px color-mix(in srgb,var(--cockpit-accent) 55%,transparent);margin-left:auto}
+.workspace-shell .ws-shell-bottom {margin-top:auto;padding-top:30px}
+.workspace-shell .ws-shell-platforms {display:flex;gap:6px;align-items:center;padding:0 12px 20px;color:var(--cockpit-muted);font-size:10px}
+.workspace-shell .ws-shell-platforms>span:last-child {margin-left:3px}
+.workspace-shell .ws-shell-platform {display:grid;place-items:center;width:23px;height:23px;border-radius:6px;border:1px solid var(--cockpit-line);background:var(--cockpit-hover);font-size:14px;font-weight:700;color:var(--cockpit-text)}
+.workspace-shell .ws-shell-platform.temu {font-size:11px}
+.workspace-shell .ws-shell-appearance {
+  display:flex;align-items:center;gap:10px;width:100%;padding:12px;border:0;border-top:1px solid var(--cockpit-line);border-radius:0;
+  background:none;color:var(--cockpit-muted);font:12px/20px var(--cockpit-font);cursor:pointer;text-align:left;
+}
+.workspace-shell .ws-shell-appearance:hover {color:var(--cockpit-text);background:var(--cockpit-hover)}
+.workspace-shell .ws-shell-appearance svg:last-child {width:13px;margin-left:auto}
+.workspace-shell .ws-shell-local {display:flex;align-items:center;gap:10px;padding:14px 9px 12px;border-top:1px solid var(--cockpit-line);margin-top:4px;min-width:0}
+.workspace-shell .ws-shell-local-icon {display:grid;place-items:center;width:31px;height:31px;border:1px solid var(--cockpit-line);border-radius:50%;background:var(--cockpit-hover);color:var(--cockpit-muted);flex-shrink:0}
+.workspace-shell .ws-shell-local-icon svg {width:17px;height:17px}
+.workspace-shell .ws-shell-local>div {min-width:0;flex:1}
+.workspace-shell .ws-shell-local strong {font-size:11px;font-weight:500;color:var(--cockpit-text);display:block}
+.workspace-shell .ws-shell-context {font-size:10px;line-height:1.6;color:var(--cockpit-muted);font-weight:400;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:140px;letter-spacing:0}
+.workspace-shell .ws-shell-sync {
+  display:flex;align-items:center;gap:7px;margin:0 0 0 12px;border:0;background:none;padding:0;box-shadow:none;
+  color:var(--cockpit-muted);font:10px/20px var(--cockpit-font);letter-spacing:0;cursor:pointer;
+}
+.workspace-shell .ws-shell-sync:hover {color:var(--cockpit-text);background:transparent}
+.workspace-shell .ws-shell-sync-dot {display:block;width:5px;height:5px;border-radius:50%;background:var(--cockpit-muted)}
+.workspace-shell .ws-shell-sync[data-state="ready"] .ws-shell-sync-dot {background:var(--cockpit-success)}
+.workspace-shell .ws-shell-sync[data-state="error"] .ws-shell-sync-dot {background:var(--cockpit-danger)}
+.workspace-shell .ws-shell-sync[data-state="error"] {color:var(--cockpit-danger)}
+html.workspace-shell-enabled .workspace-shell :is(a,button):focus-visible {outline:2px solid var(--cockpit-accent);outline-offset:3px}
+html.workspace-shell-enabled .workspace-shell .ws-shell-menu-toggle {display:none}
+@media(max-height:740px) and (min-width:761px) {
+  html.workspace-shell-enabled .workbench-header.workspace-shell {padding-top:20px;padding-bottom:14px}
+  html.workspace-shell-enabled .workspace-shell .workbench-brand {padding-bottom:20px}
+  html.workspace-shell-enabled .workspace-shell .workbench-nav {gap:3px}
+  html.workspace-shell-enabled .workspace-shell .workbench-nav a {min-height:40px;padding-top:8px;padding-bottom:8px}
+  .workspace-shell .ws-shell-bottom {padding-top:14px}.workspace-shell .ws-shell-platforms {padding-bottom:12px}
+}
+@media(max-height:580px) and (min-width:761px) {.workspace-shell .ws-shell-menu {overflow-y:auto}.workspace-shell .ws-shell-bottom {margin-top:18px}}
+@media(max-width:760px) {
+  html.workspace-shell-enabled {--shell-left:0px;--workbench-header-height:0px}
+  html.workspace-shell-enabled body {padding:0 12px;display:block}
+  html.workspace-shell-enabled .workbench-header.workspace-shell {position:relative;inset:auto;width:auto;min-height:66px;height:auto;margin:12px 0 16px;padding:15px 16px;border-radius:17px;display:grid;grid-template-columns:1fr auto;align-items:center;gap:0}
+  html.workspace-shell-enabled .workspace-shell .workbench-brand {padding:0;font-size:16px;max-width:none}
+  html.workspace-shell-enabled .workspace-shell .workbench-logo {width:29px;height:30px}.workspace-shell .workbench-logo svg {width:27px;height:27px}
+  html.workspace-shell-enabled .workspace-shell .ws-shell-menu-toggle {display:grid;place-items:center;width:34px;height:34px;background:var(--cockpit-hover);color:var(--cockpit-text);border:1px solid var(--cockpit-line);border-radius:9px;padding:6px;cursor:pointer}
+  .workspace-shell .ws-shell-menu {display:none;grid-column:1/-1;padding-top:22px}
+  .workspace-shell.is-menu-open .ws-shell-menu {display:flex}
+  html.workspace-shell-enabled .workspace-shell .workbench-nav {display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .workspace-shell .ws-shell-nav-caption {margin-left:9px}
+  .workspace-shell .ws-shell-bottom {padding-top:18px;display:grid;grid-template-columns:1fr 1fr;gap:0 8px}
+  .workspace-shell .ws-shell-platforms {padding:8px 12px}.workspace-shell .ws-shell-appearance {border:0}
+  .workspace-shell .ws-shell-local {grid-column:1/-1;margin-top:8px}.workspace-shell .ws-shell-context {max-width:calc(100vw - 140px)}
+  .workspace-shell .ws-shell-sync {grid-column:1/-1;margin-left:12px}
+}
+@media(prefers-reduced-motion:reduce) {.workspace-shell * {scroll-behavior:auto!important;transition:none!important}}

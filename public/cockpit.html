@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="zh-CN" data-cockpit-theme="dark" class="workspace-shell-enabled">
+<head><script src="/local/workspace-appearance.js"></script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>工作台总览 · 跨境电商工作台</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='12' fill='%23101e25'/%3E%3Cpath d='M10 14l10-6 10 6v12l-10 6-10-6zM10 14l10 6 10-6M20 20v12' fill='none' stroke='%2367ddd5' stroke-width='2'/%3E%3C/svg%3E">
+
+  <link rel="stylesheet" href="/local/cockpit.css">
+  <link rel="stylesheet" href="/local/cockpit-scene.css">
+  <script src="/local/workspace-shell.js" defer></script>
+  <script src="/local/cockpit-fluid.js" defer></script>
+  <script src="/local/cockpit.js" defer></script>
+  <script type="importmap">{"imports":{"three":"/vendor/three/three.module.js","three/addons/":"/vendor/three/addons/"}}</script>
+  <script src="/local/cockpit-atmosphere.js" defer></script>
+  <script src="/local/cockpit-scene.js" defer></script>
+<link rel="stylesheet" href="/local/workspace-shell.css"><link rel="stylesheet" href="/local/workspace-glass-business.css" data-glass-business></head>
+<body class="cockpit-page">
+  <div id="cockpitIntro" class="cockpit-intro" hidden aria-label="工作空间开场动画">
+    <div class="intro-wordmark">COMMERCE <span>WORKSPACE</span></div>
+    <div id="introCanvas" class="intro-canvas" aria-hidden="true"></div>
+    <div class="intro-copy"><p>让创意，进入轨道。</p><span>每一个好商品，都有无限可能</span></div>
+    <button id="introSkip" type="button">跳过开场 <span>↗</span></button>
+  </div>
+  <header class="workbench-header workspace-shell" data-workspace-shell="glass" aria-label="跨境电商工作台导航">
+  <a class="workbench-brand" href="/cockpit.html" aria-label="跨境工作台，前往总览"><span class="workbench-logo" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18"/></svg></span><span class="ws-shell-brand-copy"><span>跨境工作台</span><span class="ws-shell-brand-subtitle">Commerce workspace</span></span></a>
+  <button id="workspaceMenuToggle" class="ws-shell-menu-toggle" type="button" aria-label="展开工作台导航" aria-expanded="false" aria-controls="workspaceShellMenu"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+  <div id="workspaceShellMenu" class="ws-shell-menu">
+    <div class="ws-shell-nav-caption">工作空间</div>
+    <nav class="workbench-nav" aria-label="工作台导航">
+      <a href="/cockpit.html" data-workspace-entry="overview"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><path d="M14 17.5h7m-3.5-3.5v7"/></svg><span>工作台总览</span><i class="ws-shell-active-dot" aria-hidden="true" hidden></i></a>
+      <a href="/products" data-workspace-entry="products"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5Zm-9 5v9l9 5 9-5V8M12 13v9M7.5 5.5l9 5"/></svg><span>商品库</span><i class="ws-shell-active-dot" aria-hidden="true" hidden></i></a>
+      <a href="/sourcing" data-workspace-entry="sourcing"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5m-13-10h5m-2.5-2.5v5"/></svg><span>选品与采集</span><i class="ws-shell-active-dot" aria-hidden="true" hidden></i></a>
+      <a href="/content" data-workspace-entry="content"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m13 3 1.8 5.2L20 10l-5.2 1.8L13 17l-1.8-5.2L6 10l5.2-1.8ZM5 15l1 3 3 1-3 1-1 3-1-3-3-1 3-1ZM20 2v4m-2-2h4"/></svg><span>内容制作</span><i class="ws-shell-active-dot" aria-hidden="true" hidden></i></a>
+      <a href="/listings?mode=images" data-workspace-entry="listings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 11v9h14v-9M3 7l2-4h14l2 4v4a3 3 0 0 1-6 0 3 3 0 0 1-6 0 3 3 0 0 1-6 0ZM9 20v-6h6v6"/></svg><span>上架中心</span><i class="ws-shell-active-dot" aria-hidden="true" hidden></i></a>
+      <a href="/tasks" data-workspace-entry="tasks"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5h12M8 12h12M8 19h12m-17-14 1 1 2-3m-3 9 1 1 2-3m-3 9 1 1 2-3"/></svg><span>任务记录</span><i class="ws-shell-active-dot" aria-hidden="true" hidden></i></a>
+      <a href="/settings" data-workspace-entry="settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6l.7 2.4 2.2 1.3 2.4-.6 3 5-1.8 1.8v2.4l1.8 1.8-3 5-2.4-.6-2.2 1.3L15 25H9l-.7-2.4-2.2-1.3-2.4.6-3-5 1.8-1.8v-2.4L.7 10.9l3-5 2.4.6 2.2-1.3Z" transform="translate(1.7 0) scale(.78)"/><circle cx="11" cy="11" r="3"/></svg><span>设置</span><i class="ws-shell-active-dot" aria-hidden="true" hidden></i></a>
+    </nav>
+    <div class="ws-shell-bottom">
+      <div class="ws-shell-platforms"><span class="ws-shell-platform amazon">a</span><span class="ws-shell-platform temu">T</span><span>多平台协作</span></div>
+      <button id="workspaceShellAppearance" class="ws-shell-appearance" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16M8 4v6m8 4v6"/></svg><span>外观与动效</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>
+      <div class="ws-shell-local"><span class="ws-shell-local-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18"/></svg></span><div><strong>本机工作区</strong><span id="workspaceShellContext" class="ws-shell-context">读取共享资料…</span></div></div>
+      <button id="workspaceShellSync" class="ws-shell-sync" type="button" data-state="loading" title="刷新商品、当前选择与连接状态"><span class="ws-shell-sync-dot" aria-hidden="true"></span><span>同步中</span></button>
+    </div>
+  </div>
+</header>
+  <main class="cockpit-main" id="cockpitMain">
+    <header class="cockpit-heading">
+      <div class="heading-copy"><div class="breadcrumb">我的工作空间 <span>/</span> 总览</div><h1>每一个好商品，从这里出发<span class="title-period">.</span></h1><p>选品、创作、上架，让每一步有迹可循。</p></div>
+      <div class="heading-actions">
+        <button class="compact-button intro-replay" id="introReplay" type="button" title="重新播放粒子开场">重播开场</button>
+        <div class="global-search-wrap"><label class="global-search" for="globalSearch"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg><input id="globalSearch" type="search" placeholder="搜索商品、任务或功能…" autocomplete="off" aria-controls="searchResults" aria-expanded="false"><kbd>Ctrl K</kbd></label><div id="searchResults" class="search-results" hidden></div></div>
+        <button class="icon-button" id="appearanceOpen" title="外观与动效" aria-label="外观与动效"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3"/><circle cx="16" cy="17" r="3"/></svg></button>
+        <a class="new-product-button" href="/products"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>管理商品</a>
+      </div>
+    </header>
+
+    <div id="cockpitNotice" class="cockpit-notice" role="status" aria-live="polite" hidden><span></span><button id="retryLoad" type="button">重新连接</button></div>
+    <div class="cockpit-grid">
+      <div class="cockpit-primary">
+        <section class="metric-grid" aria-label="工作台实时概况">
+          <a class="metric-card metric-cyan" href="/products"><canvas class="metric-fluid" data-palette="cyan" aria-hidden="true"></canvas><div class="metric-content"><div class="metric-label">商品资料 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg></div><div class="metric-value"><strong id="metricProducts">—</strong><span>个商品</span></div><div class="metric-foot"><span class="tiny-dot"></span>原图与商品信息统一保存</div></div><div class="metric-ghost" aria-hidden="true">◇</div></a>
+          <a class="metric-card metric-pink" href="/tasks"><canvas class="metric-fluid" data-palette="pink" aria-hidden="true"></canvas><div class="metric-content"><div class="metric-label">待办任务 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg></div><div class="metric-value"><strong id="metricTasks">—</strong><span>项待跟进</span></div><div class="metric-foot" id="taskMetricNote">进行中与需要处理的任务</div></div><div class="metric-ghost" aria-hidden="true">⌘</div></a>
+          <a class="metric-card metric-blue" href="/content"><canvas class="metric-fluid" data-palette="blue" aria-hidden="true"></canvas><div class="metric-content"><div class="metric-label">平台成品 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg></div><div class="metric-value"><strong id="metricVersions">—</strong><span>套已完成</span></div><div class="metric-foot">Amazon · Temu 独立版本</div></div><div class="metric-ghost" aria-hidden="true">▧</div></a>
+          <a class="metric-card metric-chrome" href="/settings#storeSettings"><canvas class="metric-fluid" data-palette="chrome" aria-hidden="true"></canvas><div class="metric-content"><div class="metric-label">关联店铺 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg></div><div class="metric-value"><strong id="metricStores">—</strong><span>家店铺</span></div><div class="metric-foot" id="storeMetricNote">连接你的经营平台</div></div><div class="metric-ghost" aria-hidden="true">⌂</div></a>
+        </section>
+
+        <div class="operation-grid">
+          <section class="work-queue" aria-labelledby="queueTitle">
+            <div class="section-heading"><h2 id="queueTitle">工作队列</h2><a href="/tasks" class="quiet-link">全部 <span aria-hidden="true">↗</span></a></div>
+            <div class="queue-tabs" role="tablist" aria-label="工作队列筛选"><button id="queueRecent" role="tab" aria-selected="true" aria-controls="queueContent" data-queue="recent">最近</button><button id="queueAttention" role="tab" aria-selected="false" aria-controls="queueContent" data-queue="attention">待处理 <span id="attentionCount">0</span></button></div>
+            <div id="queueContent" role="tabpanel" aria-labelledby="queueRecent"><p class="muted-note">正在读取任务…</p></div>
+            <div class="queue-bottom"><div class="connection-mark"><span class="tiny-dot"></span><span id="connectionLabel">正在连接工作台</span></div><p id="lastSynced">商品与任务共用同一份资料</p><button id="refreshOverview" class="text-button" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 8a8 8 0 1 0 .5 7M20 3v5h-5"/></svg>同步状态</button></div>
+          </section>
+
+          <section class="orbit-panel" aria-labelledby="orbitTitle">
+            <div class="orbit-toolbar"><div><h2 id="orbitTitle">你的跨境工作流</h2><p>从一份商品资料，走向多个市场</p></div><div class="orbit-toolbar-buttons"><button id="orbitView" class="compact-button" aria-pressed="false" title="切换为平面卡片">平面视图</button><button id="orbitPlay" class="icon-button small" aria-pressed="false" aria-label="自动浏览功能卡片" title="自动浏览"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 11 7-11 7z"/></svg></button></div></div>
+            <div class="orbit-stage" id="orbitStage">
+              <div class="stage-grid" aria-hidden="true"></div><div class="orbit-halo" aria-hidden="true"></div><div class="orbit-floor" aria-hidden="true"></div>
+              <div class="stage-caption"><span class="tiny-dot"></span>六个板块，一个工作空间</div>
+              <div id="moduleOrbit" class="module-orbit" role="group" aria-label="工作流功能卡片，左右方向键切换"></div>
+              <div class="orbit-navigation"><button id="orbitPrev" class="icon-button small" aria-label="上一个功能"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 6-6 6 6 6"/></svg></button><div id="orbitIndicators" class="orbit-indicators" aria-label="功能卡片位置"></div><button id="orbitNext" class="icon-button small" aria-label="下一个功能"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 6 6 6-6 6"/></svg></button></div>
+            </div>
+            <div class="orbit-bottom"><span><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="2" width="10" height="20" rx="5"/><path d="M12 6v4"/></svg>拖动浏览 · 点击选择 · 双击进入</span><a id="orbitQuickOpen" href="/products"><span id="currentModuleLabel">打开商品库 ↗</span></a></div>
+          </section>
+        </div>
+
+        <section class="recent-panel" aria-labelledby="recentTitle"><div class="section-heading"><div><h2 id="recentTitle">继续你的创作</h2><p>最近更新的商品与平台版本</p></div><a href="/products" class="quiet-link">查看商品库 ↗</a></div><div id="recentProducts" class="recent-products"><p class="muted-note">正在读取商品…</p></div></section>
+      </div>
+
+      <aside class="detail-panel" aria-labelledby="detailTitle">
+        <div class="detail-heading"><h2><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2 3 7 7 3-7 3-3 7-3-7-7-3 7-3z"/></svg>功能详情</h2><span id="detailIndex">01 / 06</span></div>
+        <div class="detail-body"><div id="detailArt" class="detail-art" aria-hidden="true"></div><div class="detail-title-row"><h3 id="detailTitle">商品库</h3><span class="capability-badge" id="detailBadge">共享资料</span></div><p id="detailDescription" class="detail-description">商品事实、原图和平台成品，在这里统一管理。</p><dl class="detail-facts" id="detailFacts"></dl><div class="detail-rule"></div><h4 class="detail-section-label">在这里可以完成</h4><ul id="detailFeatures" class="detail-features"></ul><div class="next-step"><div class="next-step-icon" aria-hidden="true">↗</div><div><h4 id="nextStepTitle">从一份商品资料开始</h4><p id="nextStepDescription">导入原图，或新建一个商品。后续制作会沿用这些资料。</p></div></div><div class="platform-scope"><span class="platform-logo amazon">a</span><span>Amazon</span><span class="platform-logo temu">T</span><span>Temu</span></div><p id="capabilityNote" class="capability-note">各平台成品分别保存，商品原图与事实共用。</p></div>
+        <div class="detail-footer"><a href="/products" id="detailAction" class="primary-action">打开商品库 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></a></div>
+      </aside>
+    </div>
+    <footer class="cockpit-footer"><span><span class="tiny-dot"></span>本机工作空间</span><span>让创意成为生意</span><time id="workspaceDate"></time></footer>
+  </main>
+
+  <dialog id="appearanceDialog" class="appearance-dialog" aria-labelledby="appearanceTitle">
+    <div class="appearance-heading"><div><p>你的工作空间，你的节奏</p><h2 id="appearanceTitle">外观与动效</h2></div><button class="icon-button" id="appearanceClose" aria-label="关闭外观设置">×</button></div>
+    <fieldset><legend>界面主题</legend><div class="theme-options"><button type="button" data-theme="dark" aria-pressed="true"><span class="theme-sample sample-dark"></span>深海黑</button><button type="button" data-theme="light" aria-pressed="false"><span class="theme-sample sample-light"></span>雾光白</button></div></fieldset>
+    <fieldset><legend>强调色</legend><div class="accent-options"><button data-accent="ocean" aria-label="海洋青" aria-pressed="true"><span style="--swatch:#67ddd5"></span>海洋青</button><button data-accent="emerald" aria-label="翡翠绿" aria-pressed="false"><span style="--swatch:#8be5b0"></span>翡翠绿</button><button data-accent="violet" aria-label="星云紫" aria-pressed="false"><span style="--swatch:#baa6ff"></span>星云紫</button></div></fieldset>
+    <label class="preference-row" for="materialToggle"><span><strong>流体玻璃材质</strong><small>顶部数据卡的流动与鼠标响应</small></span><input id="materialToggle" type="checkbox" checked role="switch"></label>
+    <label class="preference-row" for="motionToggle"><span><strong>动态效果</strong><small>关闭后保留静态玻璃与全部功能</small></span><input id="motionToggle" type="checkbox" checked role="switch"></label>
+    <p class="appearance-note" id="motionNote">偏好自动保存在当前浏览器。</p><button class="primary-action appearance-done" id="appearanceDone">完成设置</button>
+  </dialog>
+  <noscript>请启用 JavaScript 以查看商品、任务与工作台功能。</noscript>
+</body>
+</html>

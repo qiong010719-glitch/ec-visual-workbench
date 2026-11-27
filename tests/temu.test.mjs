@@ -121,7 +121,7 @@ test('Temu editing and recovered downloads retain format without generating agai
 
 test('the workspace homepage is shared while former design URLs preserve Temu',async t=>{
   const app=await fixture(t);
-  const home=await fetch(app.base+'/');assert.equal(new URL(home.url).pathname,'/products');assert.match(await home.text(),/workspace-shell\.js/);
+  const home=await fetch(app.base+'/');assert.equal(new URL(home.url).pathname,'/cockpit.html');assert.match(await home.text(),/workspace-shell\.js/);
   for(const route of ['/index.html','/temu','/temu/','/temu.html']){
     const html=await(await fetch(app.base+route)).text();
     assert.match(html,/<title>单品设计 · 跨境工作台/);assert.match(html,/"platform":"temu"/);assert.match(html,/shared-temu\.js/);assert.match(html,/id="designScope"/);assert.match(html,/original-01\.js/);

@@ -38,7 +38,7 @@ else {
       if(workbench?.isBusy()){e.preventDefault();dialog.showMessageBox(window,{type:'info',message:'任务还在运行',detail:'请在工作台暂停任务并等当前商品完成，再关闭窗口。',buttons:['继续查看']});return;}
       quitting=true;workbench?.server.close();
     });
-    await window.loadURL(origin+'/products');window.show();
+    await window.loadURL(origin+'/cockpit.html');window.show();
     if(process.env.WORKBENCH_DESKTOP_TEST==='true')fs.writeFileSync(path.join(dataDirectory,'desktop-ready.json'),JSON.stringify({origin,packaged:app.isPackaged}));
   }).catch(error=>{dialog.showErrorBox('工作台启动失败',error.message);quitting=true;app.quit();});
   app.on('window-all-closed',()=>{if(!workbench?.isBusy())app.quit();});

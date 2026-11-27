@@ -1,0 +1,69 @@
+/* Spatial cockpit: real WebGL geometry with the existing DOM navigation as fallback. */
+.orbit-panel{background:radial-gradient(ellipse at 50% 68%,#15313a99,transparent 65%),linear-gradient(150deg,#122128,#080f15);border-color:#a5dce52b;box-shadow:inset 0 1px 0 #efffff0d,0 18px 50px #0002}
+.orbit-stage{height:420px;min-height:420px;flex:none}
+.orbit-stage:not(.is-flat){overflow:clip}
+.orbit-toolbar{padding:20px 22px 0;align-items:center}
+.orbit-toolbar h2{font-size:16px;letter-spacing:.03em}
+.orbit-toolbar p{font-size:11px;margin-top:5px}
+.orbit-webgl{position:absolute;inset:0;width:100%;height:100%;display:block;z-index:2;touch-action:pan-y;cursor:grab}
+.orbit-webgl:active{cursor:grabbing}
+.stage-caption{top:14px;left:22px;z-index:3;pointer-events:none;font-size:10px;letter-spacing:.1em;color:#8ca7b7}
+.orbit-navigation{z-index:5;bottom:14px}
+.orbit-stage[data-scene=ready]:not(.is-flat) .module-orbit{inset:0;perspective:none;pointer-events:none;z-index:3;transform-style:flat}
+.orbit-stage[data-scene=ready]:not(.is-flat) .module-card{opacity:0!important;pointer-events:none;transition:none;left:0;top:0;margin:0;transform-origin:top left;backdrop-filter:none}
+.orbit-stage[data-scene=ready]:not(.is-flat) .module-card:focus-visible{opacity:1!important;background:transparent!important;border:0;box-shadow:none;outline:2px solid #c4fff7!important}
+.orbit-stage[data-scene=ready]:not(.is-flat) .module-card:focus-visible>*{visibility:hidden}
+.orbit-stage[data-scene=ready]:not(.is-flat) .module-card:focus-visible::before,.orbit-stage[data-scene=ready]:not(.is-flat) .module-card:focus-visible::after{display:none}
+.orbit-stage[data-scene=ready] .stage-grid,.orbit-stage[data-scene=ready] .orbit-floor{display:none}
+.orbit-stage.is-flat .orbit-webgl{display:none}
+.orbit-stage.is-flat .module-card{width:100%!important;height:120px!important}
+.orbit-bottom{padding:14px 20px;font-size:10px}
+.intro-replay{height:34px;padding:6px 11px!important;letter-spacing:.04em}
+.cockpit-intro{position:fixed;inset:0;background:#04080e;z-index:10000;color:#e8f8ff;overflow:hidden}
+.cockpit-intro::after{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at center,transparent 30%,#02070b88 100%)}
+.intro-canvas,.intro-canvas canvas{position:absolute;inset:0;width:100%;height:100%}
+.intro-wordmark{position:absolute;left:4vw;top:5vh;z-index:1;letter-spacing:.25em;font-size:12px;font-weight:650}
+.intro-wordmark span{font-weight:350;color:#6f919f;margin-left:8px}
+.intro-copy{position:absolute;bottom:10vh;left:0;right:0;text-align:center;z-index:1;animation:intro-copy-in 1.3s .65s both;pointer-events:none}
+.intro-copy p{font-size:clamp(28px,2.55vw,46px);font-weight:350;letter-spacing:.12em;text-shadow:0 2px 22px #02060c}
+.intro-copy>span{display:block;font-size:12px;color:#9aafbf;letter-spacing:.23em;margin-top:19px}
+#introSkip{position:absolute;right:4vw;bottom:5vh;z-index:2;border:1px solid #c8f4ff40;border-radius:30px;padding:10px 18px;background:#c8f4ff08;color:#b0c6ce;font-size:12px;letter-spacing:.1em}
+#introSkip span{margin-left:15px;color:#e9ffff}
+.cockpit-intro.is-leaving{opacity:0;transition:opacity .65s ease;pointer-events:none}
+.cockpit-page.is-arriving .cockpit-heading{animation:workspace-arrive .85s both}
+.cockpit-page.is-arriving .metric-grid{animation:workspace-arrive .9s .08s both}
+.cockpit-page.is-arriving .operation-grid{animation:workspace-arrive 1s .16s both}
+.cockpit-page.is-arriving .detail-panel{animation:workspace-arrive 1s .24s both}
+@keyframes workspace-arrive{from{opacity:0;transform:translateY(24px) scale(.985);filter:blur(6px)}to{opacity:1;transform:none;filter:blur(0)}}
+@keyframes intro-copy-in{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+html[data-cockpit-theme=light] .orbit-panel{background:radial-gradient(ellipse at 50% 70%,#bfdae4,transparent 75%),#e9f1f4;border-color:#a8bdc9}
+@media(min-width:1441px){.operation-grid{grid-template-columns:165px minmax(0,1fr);gap:18px}.cockpit-grid{grid-template-columns:minmax(0,1fr) 250px}.orbit-stage{height:440px;min-height:440px}}
+@media(min-width:761px) and (max-width:1440px){
+ .cockpit-grid{grid-template-columns:minmax(0,1fr)}
+ .operation-grid{grid-template-columns:180px minmax(0,1fr);gap:18px}
+ .detail-panel{display:grid;grid-template-columns:minmax(0,1fr) 190px}
+ .detail-heading{grid-column:1/-1;padding:12px 20px}
+ .detail-body{grid-column:1;display:grid;grid-template-columns:100px minmax(0,1fr);gap:6px 20px;padding:18px 20px}
+ .detail-art{grid-row:1/5;height:105px;margin:0}
+ .detail-description,.detail-facts{grid-column:2;min-height:0;margin:0}
+ .detail-rule,.detail-section-label,.detail-features,.next-step,.platform-scope,.capability-note{display:none}
+ .detail-footer{display:flex;align-items:center;border-top:0;border-left:1px solid var(--cockpit-line);padding:20px}
+ .detail-footer .primary-action{width:100%}
+ .heading-copy h1{font-size:22px}.heading-actions{gap:8px}.global-search{width:180px}
+}
+@media(max-width:1000px){.operation-grid{grid-template-columns:150px minmax(0,1fr)}.intro-replay{font-size:10px!important}.global-search{width:160px}.heading-copy h1{font-size:19px}}
+@media(max-width:760px){.operation-grid{grid-template-columns:minmax(0,1fr)}.orbit-stage{height:360px;min-height:360px}.orbit-toolbar{padding:18px 14px 0}.orbit-toolbar h2{font-size:14px}.orbit-bottom{font-size:9px;padding:12px}.stage-caption{left:15px;font-size:9px}.intro-replay{padding:4px 8px!important}.intro-copy{bottom:19vh}.intro-wordmark{font-size:9px}.intro-wordmark span{display:block;margin:5px 0}.heading-actions{flex-wrap:wrap}.global-search-wrap{min-width:160px}.cockpit-heading .new-product-button{display:none}}
+@media(prefers-reduced-motion:reduce){.cockpit-intro{display:none!important}.cockpit-page.is-arriving *{animation:none!important}}
+.cockpit-page[data-motion=off].is-arriving *{animation:none!important}
+.orbit-panel{background:linear-gradient(150deg,#111d27,#080f17);border-color:#c4e6ff24}
+.orbit-stage[data-scene=ready]{background:#080f17}
+.orbit-stage[data-scene=ready] .orbit-halo{display:none}
+.orbit-stage[data-scene=ready] .orbit-navigation .icon-button{color:#9fb8c9;border-color:#adcbe52d;background:#101d29b0}
+.scene-status{position:absolute;bottom:52px;left:18px;right:18px;color:#b8cad6;font-size:11px;text-align:center}
+@media(min-width:1441px){.orbit-stage{height:clamp(440px,43vh,580px);min-height:440px}}
+@media(min-width:761px) and (max-height:850px){
+ .cockpit-main{padding-top:16px}.cockpit-heading{min-height:67px;margin-bottom:16px}
+ .metric-card{height:126px}.metric-content{padding:15px 17px}.metric-value{margin-top:6px}.metric-value strong{font-size:34px}.metric-foot{margin-top:9px}
+ .orbit-stage{height:370px;min-height:370px}.orbit-toolbar{padding-top:16px}.orbit-bottom{padding-top:11px;padding-bottom:11px}
+ .queue-empty{padding:15px 3px}.queue-item{padding:10px 2px}
+}

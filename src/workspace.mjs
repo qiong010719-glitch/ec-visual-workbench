@@ -72,7 +72,7 @@ function mergeVersions(previous=[],next=[]){
  * Historical records are projected by stable reference; no batch is recreated,
  * migrated, resumed or submitted when this service is opened or read.
  */
-export function createWorkspace({store,preferences,products,multisets,erp,sourcing}){
+export function createWorkspace({store,preferences,products,multisets,erp,sourcing,freeSourcing,listingWorkflow}){
   if(!store?.state||typeof store.save!=='function')throw new TypeError('Workspace requires the existing Store');
   if(!store.state.workspace){
     store.state.workspace={version:1,revision:0,products:{},edits:{},requests:{},context:{revision:0,productId:'',platform:'amazon',storeKey:'',erpKey:''},designStates:{},uiStates:{}};
@@ -191,6 +191,8 @@ export function createWorkspace({store,preferences,products,multisets,erp,sourci
     const source=sourcing?.view?.();
     for(const search of source?.searches||[])result.push({id:'sourcing-search:'+search.id,title:(search.filters?.keywords||[]).join(' / ')||'自动选品',type:'自动选品',platform:'temu',status:search.status,url:'/sourcing?search='+encodeURIComponent(search.id),createdAt:search.createdAt});
     for(const batch of source?.batches||[])result.push({id:'sourcing-batch:'+batch.id,title:'采集批次 · '+(batch.erpName||batch.id),type:'选品采集',platform:'temu',status:batch.status,url:'/sourcing?batch='+encodeURIComponent(batch.id),createdAt:batch.createdAt});
+    for(const job of freeSourcing?.view?.().jobs||[])result.push({id:'free-sourcing:'+job.id,title:job.keyword||'免费选品',type:'免费选品',platform:'temu',status:job.status,url:'/sourcing/free#job-'+encodeURIComponent(job.id),createdAt:job.createdAt});
+    for(const job of listingWorkflow?.view?.().jobs||[])result.push({id:'listing-workflow:'+job.id,title:job.keyword||'固定模板上架',type:'固定模板上架',platform:job.templateSnapshot?.platform||'temu',status:job.status,url:'/sourcing/listing#job-'+encodeURIComponent(job.id),createdAt:job.createdAt});
     return result.sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')));
   }
   function getProduct(id){const value=catalog().find(p=>p.id===id);if(!value)throw fail('商品不存在，请从商品库重新选择',404);return value;}
